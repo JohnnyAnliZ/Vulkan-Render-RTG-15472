@@ -1,0 +1,4 @@
+{
+    "C_Cpp.default.cppStandard": "c++20",
+    "C_Cpp.default.intelliSenseMode": "msvc-x64" // or "gcc-x64"/"clang-x64"
+}

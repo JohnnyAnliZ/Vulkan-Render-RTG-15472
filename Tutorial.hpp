@@ -4,7 +4,9 @@
 #include "GeometryGen.hpp"
 #include "PosColVertex.hpp"
 #include "PosNorTexVertex.hpp"
+#include "PosNorTanTexVertex.hpp"
 #include "InputEvent.hpp" 
+#include "S72.hpp"
 
 #include "RTG.hpp"
 #include <corecrt_math_defines.h>
@@ -86,7 +88,7 @@ struct Tutorial : RTG::Application {
 
 		//pipeline layout
 		VkPipelineLayout layout = VK_NULL_HANDLE;
-		using Vertex = PosNorTexVertex;
+		using Vertex = PosNorTanTexVertex;
 		VkPipeline handle = VK_NULL_HANDLE;
 		void create(RTG &,VkRenderPass render_pass, uint32_t subpass);
 		void destroy(RTG &);
@@ -125,15 +127,17 @@ struct Tutorial : RTG::Application {
 	std::vector< Workspace > workspaces;
 
 	//-------------------------------------------------------------------
+	//loading s72
+	S72 scene72 = S72();
+
 	//static scene resources:
 	Helpers::AllocatedBuffer object_vertices;
 	struct ObjectVertices{
 		uint32_t first = 0;
 		uint32_t count = 0;
 	};
-	ObjectVertices plane_vertices;
-	ObjectVertices torus_vertices;
-	ObjectVertices fruit_vertices;
+	ObjectVertices fruit_vertices;//these vertices are hard coded 
+	std::map<std::string, ObjectVertices> mesh_vertices;
 
 	std::vector<Helpers::AllocatedImage> textures;
 	std::vector<VkImageView> texture_views;
@@ -198,6 +202,7 @@ struct Tutorial : RTG::Application {
 
 	//stuff for tree generation
 	vec3 emplace_random_line(vec3 start, uint32_t iter);
+	bool growing = true;
 	std::vector<vec3> starts;
 	uint32_t iters = 0;
 

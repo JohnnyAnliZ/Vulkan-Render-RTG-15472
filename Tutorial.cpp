@@ -19,14 +19,23 @@ unsigned long long seed = std::chrono::system_clock::now().time_since_epoch().co
 std::mt19937 engine((unsigned int)seed);
 std::uniform_real_distribution<float> dist(-1.0f, 1.0f);
 
+
 Tutorial::Tutorial(RTG &rtg_) : rtg(rtg_) {
 
-	lines_vertices.clear();
-	constexpr size_t count = 4096;
-	lines_vertices.reserve(count);
-	
-	starts.reserve(512);
+	//load the scene file
+	try {
+		scene72 = S72::load(rtg.configuration.scene_file);
+	} catch (std::exception &e) {
+		std::cerr << "Failed to load s72-format scene from '" << rtg.configuration.scene_file << "':\n" << e.what() << std::endl;
+		return ;
+	}
 
+	{//preallocate some space on the lines buffer
+		lines_vertices.clear();
+		constexpr size_t lines_vert_count = 4096;
+		lines_vertices.reserve(lines_vert_count);
+		starts.reserve(512);
+	}
 
 	//select a depth format:
 	//  (at least one of these two must be supported, according to the spec; but neither are required)
@@ -262,91 +271,38 @@ Tutorial::Tutorial(RTG &rtg_) : rtg(rtg_) {
 		}
 
 	}
+	
 	{//create objects vertices
-		std::vector<PosNorTexVertex> vertices;
-		{ //A [-1,1]x[-1,1]x{0} quadrilateral:
-			plane_vertices.first = uint32_t(vertices.size());
-			vertices.emplace_back(PosNorTexVertex{
-				.Position{ .x = -1.0f, .y = -1.0f, .z = 0.0f },
-				.Normal{ .x = 0.0f, .y = 0.0f, .z = 1.0f },
-				.TexCoord{ .s = 0.0f, .t = 0.0f },
-			});
-			vertices.emplace_back(PosNorTexVertex{
-				.Position{ .x = 1.0f, .y = -1.0f, .z = 0.0f },
-				.Normal{ .x = 0.0f, .y = 0.0f, .z = 1.0f},
-				.TexCoord{ .s = 1.0f, .t = 0.0f },
-			});
-			vertices.emplace_back(PosNorTexVertex{
-				.Position{ .x = -1.0f, .y = 1.0f, .z = 0.0f },
-				.Normal{ .x = 0.0f, .y = 0.0f, .z = 1.0f},
-				.TexCoord{ .s = 0.0f, .t = 1.0f },
-			});
-			vertices.emplace_back(PosNorTexVertex{
-				.Position{ .x = 1.0f, .y = 1.0f, .z = 0.0f },
-				.Normal{ .x = 0.0f, .y = 0.0f, .z = 1.0f },
-				.TexCoord{ .s = 1.0f, .t = 1.0f },
-			});
-			vertices.emplace_back(PosNorTexVertex{
-				.Position{ .x = -1.0f, .y = 1.0f, .z = 0.0f },
-				.Normal{ .x = 0.0f, .y = 0.0f, .z = 1.0f},
-				.TexCoord{ .s = 0.0f, .t = 1.0f },
-			});
-			vertices.emplace_back(PosNorTexVertex{
-				.Position{ .x = 1.0f, .y = -1.0f, .z = 0.0f },
-				.Normal{ .x = 0.0f, .y = 0.0f, .z = 1.0f},
-				.TexCoord{ .s = 1.0f, .t = 0.0f },
-			});
-			plane_vertices.count = uint32_t(vertices.size()) - plane_vertices.first;
-		}
-		
-		{ //A torus:
-			torus_vertices.first = uint32_t(vertices.size());
-			//Torus:: u is angle around main loop(+z axis), v is anle around tubing
-			constexpr float R1 = 0.75f;//main loop
-			constexpr float R2 = 0.15f;//tube
+		std::vector<PosNorTanTexVertex> vertices;
 
-			constexpr uint32_t U_STEPS = 20;
-			constexpr uint32_t V_STEPS = 16;
-
-			//texture repeats around the torus:
-			constexpr float V_REPEATS = 2.0f;
-			constexpr float U_REPEATS = int(V_REPEATS / R2 * R1 + 0.999f); //approximately square, rounded up
-			
-			auto emplace_vertex = [&](uint32_t ui, uint32_t vi){
-				//convert steps to angles:
-				// (doing the mod since trig on 2 M_PI may not exactly match 0)
-				float ua = (ui % U_STEPS) / float(U_STEPS) * 2.0f * float(M_PI);
-				float va = (vi % V_STEPS) / float(V_STEPS) * 2.0f * float(M_PI);
-				vertices.emplace_back( PosNorTexVertex{
-					.Position{
-						.x = (R1 + R2 * std::cos(va)) * std::cos(ua),
-						.y = (R1 + R2 * std::cos(va)) * std::sin(ua),
-						.z = R2 * std::sin(va),
-					},
-					.Normal{
-						.x = std::cos(va) * std::cos(ua),
-						.y = std::cos(va) * std::sin(ua),
-						.z = std::sin(va),
-					},
-					.TexCoord{
-						.s = ui / float(U_STEPS) * U_REPEATS,
-						.t = vi / float(V_STEPS) * V_REPEATS,
-					},
-				});
-			};
-			for (uint32_t ui = 0; ui < U_STEPS; ++ui) {
-				for (uint32_t vi = 0; vi < V_STEPS; ++vi) {
-					emplace_vertex(ui, vi);
-					emplace_vertex(ui+1, vi);
-					emplace_vertex(ui, vi+1);
-
-					emplace_vertex(ui, vi+1);
-					emplace_vertex(ui+1, vi);
-					emplace_vertex(ui+1, vi+1);
+		{//load vertices from s72 file, so that all the vertex data(attributes) are in one big pool
+			mesh_vertices.clear();
+			size_t base = 0;//base offset for writing in each mesh's vertices into std::vector<PosNorTanTexVertex> vertices
+			uint32_t count = 0;//the number of vertices for each mesh
+			for(auto const &mesh : scene72.meshes ){
+				std::cout<<"loading mesh: "<< mesh.first<<std::endl;
+				//assuming there aren't duplicate meshes, no indices property, use PosNorTanTex attributes
+				assert(mesh_vertices.find(mesh.first) == mesh_vertices.end());
+				//get the indices
+				count = mesh.second.count;
+				mesh_vertices[mesh.first].first = uint32_t(vertices.size());
+				mesh_vertices[mesh.first].count = count;
+				//copy the vertices from file into vertices
+				base = vertices.size();
+				vertices.resize(base + count);//resize for copying
+				S72::Mesh::Attribute const &att_pos = mesh.second.attributes.at("POSITION");//12bytes 
+				S72::Mesh::Attribute const &att_nor = mesh.second.attributes.at("NORMAL");//12bytes
+				S72::Mesh::Attribute const &att_tan = mesh.second.attributes.at("TANGENT");//16bytes
+				S72::Mesh::Attribute const &att_tex= mesh.second.attributes.at("TEXCOORD");//8bytes
+				for(uint32_t i = 0; i<count; ++i){
+					std::memcpy(&vertices[base + i].Position, att_pos.src.data.data() + att_pos.offset + att_pos.stride * i, sizeof(vec3));
+					std::memcpy(&vertices[base + i].Normal, att_nor.src.data.data() + att_nor.offset + att_nor.stride * i, sizeof(vec3));
+					std::memcpy(&vertices[base + i].Tangent, att_tan.src.data.data() + att_tan.offset + att_tan.stride * i, sizeof(vec4));
+					std::memcpy(&vertices[base + i].TexCoord, att_tex.src.data.data() + att_tex.offset + att_tex.stride * i, sizeof(float) * 2);
 				}
 			}
-			torus_vertices.count = uint32_t(vertices.size()) - torus_vertices.first;
 		}
+
 
 		{//a spiky fruit (durian?)
 			fruit_vertices.first = uint32_t(vertices.size());
@@ -357,7 +313,7 @@ Tutorial::Tutorial(RTG &rtg_) : rtg(rtg_) {
 			//now, use the indexed mesh to emplace vertices
 			auto emplace_triangle = [&](Triangle tri){
 				for(int32_t i = 2; i>-1; i--){
-					vertices.emplace_back(PosNorTexVertex{
+					vertices.emplace_back(PosNorTanTexVertex{
 						.Position{
 							.x = ball_mesh.first[tri.vertex[i]].x,
 							.y = ball_mesh.first[tri.vertex[i]].y,
@@ -367,6 +323,12 @@ Tutorial::Tutorial(RTG &rtg_) : rtg(rtg_) {
 							.x = ball_mesh.first[tri.vertex[i]].x,
 							.y = ball_mesh.first[tri.vertex[i]].y,
 							.z = ball_mesh.first[tri.vertex[i]].z,
+						},
+						.Tangent{
+							.x = - ball_mesh.first[tri.vertex[i]].y,
+							.y = ball_mesh.first[tri.vertex[i]].x,
+							.z = 0.0f,
+							.w = 1.0f,
 						},
 						.TexCoord{
 							.s = ball_mesh.first[tri.vertex[i]].x,
@@ -479,7 +441,7 @@ Tutorial::Tutorial(RTG &rtg_) : rtg(rtg_) {
 		assert(texture_views.size() == textures.size());
 	}
 
-	{ //TODO: make a sampler for the textures
+	{ //make a sampler for the textures
 		VkSamplerCreateInfo create_info{
 			.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
 			.flags = 0,
@@ -987,9 +949,8 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params) {
 				};
 				vkCmdBindDescriptorSets(workspace.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, objects_pipeline.layout,
 					0, uint32_t(descriptor_sets.size()),descriptor_sets.data(), 0, nullptr);
-
-				
 			}
+
 			//Camera descriptor set is still bound but unused
 			//draw dat ting
 			for (ObjectInstance const &inst : object_instances) {
@@ -1100,9 +1061,10 @@ void Tutorial::update(float dt) {
 		}
 
 		if(starts.empty())starts.emplace_back(vec3(0.0f,0.0f,0.0f));
-		if(time_elapsed > 0.5f){
+		if(time_elapsed > 0.5f && growing){
 			size_t num_nodes = starts.size();
 			
+			auto verts = mesh_vertices.begin();//iterate through the mesh vertcies to grow them on trees
 			for(size_t i = 0; i < num_nodes; ++i){
 				vec3 cur_node = starts[i];
 				starts.emplace_back(emplace_random_line(cur_node,iters));
@@ -1111,9 +1073,10 @@ void Tutorial::update(float dt) {
 					vec3 fruit_node = emplace_random_line(cur_node,iters);
 					//make fruits
 					if(dist(engine) > 1.0f-(iters-5) * 0.07f && iters>5){
+						
 						{//spiky ball shrunken by a factor
-
-							float scaling_factor = 0.1f;
+							
+							float scaling_factor = 0.5f;
 							mat4 WORLD_FROM_LOCAL{
 								scaling_factor, 0.0f,  0.0f, 0.0f,
 								0.0f,scaling_factor, 0.0f, 0.0f,
@@ -1121,7 +1084,7 @@ void Tutorial::update(float dt) {
 								fruit_node.x,fruit_node.y,fruit_node.z, 1.0f,
 							};
 							object_instances.emplace_back(ObjectInstance{
-								.vertices = fruit_vertices,
+								.vertices = fruit_vertices,//which vertices to use
 								.transform{
 									.CLIP_FROM_LOCAL = CLIP_FROM_WORLD * WORLD_FROM_LOCAL,
 									.WORLD_FROM_LOCAL = WORLD_FROM_LOCAL,
@@ -1130,11 +1093,12 @@ void Tutorial::update(float dt) {
 								.texture = 1,
 							});
 						}
+						verts++;
+						if(verts == mesh_vertices.end())verts = mesh_vertices.begin();
 					}
 					//else branch
 					else starts.emplace_back(fruit_node);
 				}
-				
 			}
 			// Remove the old nodes (keep only the new branches)
         	starts.erase(starts.begin(), starts.begin() + num_nodes);
@@ -1243,6 +1207,11 @@ void Tutorial::on_input(InputEvent const & evt) {
 	if(evt.type == InputEvent::KeyDown && evt.key.key == GLFW_KEY_TAB){
 		//switch camera modes
 		camera_mode = CameraMode((int(camera_mode) + 1) % 2);
+		return;
+	}
+	if(evt.type == InputEvent::KeyDown && evt.key.key == GLFW_KEY_G){
+		//toggle growing
+		growing = !growing;
 		return;
 	}
 

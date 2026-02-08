@@ -58,6 +58,27 @@ struct vec3{
 };
 static_assert(sizeof(vec3) == 3 * 4 );
 
+struct vec2{
+	vec2(float _x, float _y){
+		x = _x;
+		y = _y;
+	};
+	vec2(){
+		x = 0;
+		y = 0;
+	}
+	union {
+		struct {
+			float x;
+			float y;
+		};
+		float data[2] = {};
+	};
+};
+static_assert(sizeof(vec2) == 2 * 4 );
+
+
+
 inline float dot(vec4 const &a,vec4 const &b){
     return a.x*b.x+ a.y*b.y+ a.z*b.z+ a.w*b.w;
 }

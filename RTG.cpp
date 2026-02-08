@@ -47,7 +47,12 @@ void RTG::Configuration::parse(int argc, char **argv) {
 			surface_extent.height = conv("height");
 		} else if (arg == "--headless") {
 			headless = true;
-		}else {
+		} else if(arg == "--scene"){
+			if (argi + 1 >= argc) throw std::runtime_error("--scene requires a scene file.");
+			argi += 1;
+			scene_file = argv[argi];
+		}
+		else {
 			throw std::runtime_error("Unrecognized argument '" + arg + "'.");
 		}
 	}

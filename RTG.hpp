@@ -77,6 +77,9 @@ struct RTG {
 		//run without a window, read events from stdin:
 		bool headless = false;
 
+		//scene file to load from 
+		std::string scene_file =  "";
+		
 		//for configuration construction + management:
 		Configuration() = default;
 		void parse(int argc, char **argv); //parse command-line options; throws on error

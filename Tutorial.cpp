@@ -30,6 +30,11 @@ Tutorial::Tutorial(RTG &rtg_) : rtg(rtg_) {
 		return ;
 	}
 
+	{//load nodes into a new nodes map, trimming the nodes that don't have or lead to anything(meshes, lights, cameras)
+		//This is not necessary, not gonna do this now
+	}
+
+	
 	{//preallocate some space on the lines buffer
 		lines_vertices.clear();
 		constexpr size_t lines_vert_count = 4096;
@@ -1001,6 +1006,102 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params) {
 void Tutorial::update(float dt) {
 	time = std::fmod(time + dt, 5.0f);
 	time_elapsed += dt;
+	
+	object_instances.clear();
+	{//load s72 into the object instances, two lights, and cameras
+		struct Item {
+			S72::Node* node;
+			mat4 parentWorld;
+		};
+		std::deque<Item> current_nodes;
+		for(auto n : scene72.scene.roots){//start with the root nodes
+			current_nodes.emplace_back(Item{n,n->parent_from_local()});
+		}
+
+		//go through the graph using this queue bfs setup (this creates two instances of a child if two nodes have it as one of the children)
+		while(!current_nodes.empty()){
+			auto [node, world_from_parent] = current_nodes.front();
+			current_nodes.pop_front();
+
+			//this node's world transform
+			mat4 world_from_local = world_from_parent * node->parent_from_local();//accumulate transform
+
+			if(node->mesh != nullptr){//if the node has mesh, instance it
+				assert(mesh_vertices.find(node->mesh->name) != mesh_vertices.end());//check that the mesh's vertices has been loaded
+				//std::cout<<"instancing "<<node->mesh->name<<std::endl;
+				object_instances.emplace_back(
+					ObjectInstance{
+						.vertices = mesh_vertices[node->mesh->name],
+						.transform{
+							.CLIP_FROM_LOCAL = CLIP_FROM_WORLD * world_from_local,
+							.WORLD_FROM_LOCAL = world_from_local,
+							.WORLD_FROM_LOCAL_NORMAL = world_from_local,//not correct, TODO	
+						},
+						.texture = 1,
+					}
+				);			
+			}
+
+			 
+			if(node->camera != nullptr){//there could be numerous cameras, but every camera has only one instance 
+				//put every unique camera in the unordered_map, if there is a duplicate, print err and exit
+				assert(loaded_cameras.find(node->camera->name) == loaded_cameras.end(), "multiple instances of the same camera with name: "+node->camera->name);
+				assert(!node->camera->projection.valueless_by_exception());
+
+				S72::Camera::Perspective perspective = get<S72::Camera::Perspective>(node->camera->projection);
+				loaded_cameras[node->camera->name] = BasicCamera{
+					.eye = world_from_local.translation(),
+					.dir = (world_from_local * vec4{0,0,-1,0}).xyz(),
+					.up = (world_from_local * vec4{0,1,0,0}).xyz(),
+					.aspect = perspective.aspect,
+					.vfov = perspective.vfov,
+					.near = perspective.near,
+					.far = perspective.far,
+				};
+			}
+			if(node->light != nullptr){//two lights for A1
+
+				//resolve the variant				
+				std::variant< S72::Light::Sun, S72::Light::Sphere, S72::Light::Spot > &v = node->light->source;
+				vec3 world_dir = normalized((world_from_local * vec4{0,0,-1,0}).xyz());
+				if(std::holds_alternative<S72::Light::Sun>(v)){
+					default_world_lights = false;
+					S72::Light::Sun &sun = get<S72::Light::Sun>(v);
+					if(std::abs(sun.angle - 3.14156926) < 0.001){// a hemisphere light
+						world.SKY_DIRECTION.x = world_dir.x;
+						world.SKY_DIRECTION.y = world_dir.y;
+						world.SKY_DIRECTION.z = world_dir.z;
+
+						world.SKY_ENERGY.r = (node->light->tint * sun.strength).x;
+						world.SKY_ENERGY.g = (node->light->tint * sun.strength).y;
+						world.SKY_ENERGY.b = (node->light->tint * sun.strength).z;
+					}
+					else{
+						world.SUN_DIRECTION.x = world_dir.x;
+						world.SUN_DIRECTION.y = world_dir.y;
+						world.SUN_DIRECTION.z = world_dir.z;
+						world.SUN_ENERGY.r = (node->light->tint * sun.strength).x;
+						world.SUN_ENERGY.g = (node->light->tint * sun.strength).y;
+						world.SUN_ENERGY.b = (node->light->tint * sun.strength).z;
+					}
+				}
+				else if(std::holds_alternative<S72::Light::Sphere>(v)){
+
+				}
+
+				else if(std::holds_alternative<S72::Light::Spot>(v)){
+
+				}
+			}
+			for(S72::Node *child : node->children){
+				current_nodes.emplace_back(child, world_from_local);
+			}
+		}
+		if(rtg.configuration.required_camera != "" && loaded_cameras.find(rtg.configuration.required_camera) == loaded_cameras.end()){
+			std::cerr<<"required camera named: "<< rtg.configuration.required_camera<<" but no such named camera was found"<<std::endl; 
+		}
+	}
+
 	if(camera_mode == CameraMode::Scene){//unresponsive camera orbiting the origin
 		float ang = float(M_PI) * 2.0f * (time/5.0f);
 		CLIP_FROM_WORLD = perspective(
@@ -1024,7 +1125,8 @@ void Tutorial::update(float dt) {
 		assert(0 && "only two camera modes");
 	}
 	
-	{ //moving sun and sky:
+	
+	if(default_world_lights){ //moving sun and sky:
 		float cycle = (sin(6.28f * time / 5.0f) + 0.8f) / 1.8f;
 		world.SKY_DIRECTION.x = 0.0f;
 		world.SKY_DIRECTION.y = 0.0f;
@@ -1044,74 +1146,76 @@ void Tutorial::update(float dt) {
 	}
 
 
-	{//lines stuff
-		if(starts.size() > 64){
-			std::cout<<"too many nodes"<<std::endl;
-			object_instances.clear();
-			starts.clear();
-			lines_vertices.clear();
-			iters = 0;
-		}
-		if(lines_vertices.size() > 1024){
-			std::cout<<"too many vertices"<<std::endl;
-			object_instances.clear();
-			starts.clear();
-			lines_vertices.clear();
-			iters = 0;
-		}
+	// {//lines stuff
+	// 	if(starts.size() > 64){
+	// 		std::cout<<"too many nodes"<<std::endl;
+	// 		object_instances.clear();
+	// 		starts.clear();
+	// 		lines_vertices.clear();
+	// 		iters = 0;
+	// 	}
+	// 	if(lines_vertices.size() > 1024){
+	// 		std::cout<<"too many vertices"<<std::endl;
+	// 		object_instances.clear();
+	// 		starts.clear();
+	// 		lines_vertices.clear();
+	// 		iters = 0;
+	// 	}
 
-		if(starts.empty())starts.emplace_back(vec3(0.0f,0.0f,0.0f));
-		if(time_elapsed > 0.5f && growing){
-			size_t num_nodes = starts.size();
+	// 	if(starts.empty())starts.emplace_back(vec3(0.0f,0.0f,0.0f));
+	// 	if(time_elapsed > 0.5f && growing){
+	// 		size_t num_nodes = starts.size();
 			
-			auto verts = mesh_vertices.begin();//iterate through the mesh vertcies to grow them on trees
-			for(size_t i = 0; i < num_nodes; ++i){
-				vec3 cur_node = starts[i];
-				starts.emplace_back(emplace_random_line(cur_node,iters));
+	// 		auto verts = mesh_vertices.begin();//go through the mesh vertcies (like with poker cards) to grow them on trees
+	// 		for(size_t i = 0; i < num_nodes; ++i){
+	// 			vec3 cur_node = starts[i];
+	// 			starts.emplace_back(emplace_random_line(cur_node,iters));
 				
-				if(dist(engine) > 0.2f){
-					vec3 fruit_node = emplace_random_line(cur_node,iters);
-					//make fruits
-					if(dist(engine) > 1.0f-(iters-5) * 0.07f && iters>5){
+	// 			if(dist(engine) > 0.2f){
+	// 				vec3 fruit_node = emplace_random_line(cur_node,iters);
+	// 				//make fruits
+	// 				if(dist(engine) > 1.0f-(iters-5) * 0.07f && iters>5){
 						
-						{//spiky ball shrunken by a factor
+	// 					{//spiky ball shrunken by a factor
 							
-							float scaling_factor = 0.5f;
-							mat4 WORLD_FROM_LOCAL{
-								scaling_factor, 0.0f,  0.0f, 0.0f,
-								0.0f,scaling_factor, 0.0f, 0.0f,
-								0.0f, 0.0f,   scaling_factor, 0.0f,
-								fruit_node.x,fruit_node.y,fruit_node.z, 1.0f,
-							};
-							object_instances.emplace_back(ObjectInstance{
-								.vertices = fruit_vertices,//which vertices to use
-								.transform{
-									.CLIP_FROM_LOCAL = CLIP_FROM_WORLD * WORLD_FROM_LOCAL,
-									.WORLD_FROM_LOCAL = WORLD_FROM_LOCAL,
-									.WORLD_FROM_LOCAL_NORMAL = WORLD_FROM_LOCAL,	
-								},
-								.texture = 1,
-							});
-						}
-						verts++;
-						if(verts == mesh_vertices.end())verts = mesh_vertices.begin();
-					}
-					//else branch
-					else starts.emplace_back(fruit_node);
-				}
-			}
-			// Remove the old nodes (keep only the new branches)
-        	starts.erase(starts.begin(), starts.begin() + num_nodes);
-			time_elapsed = 0.0f;
-			iters++;
-		}
-	}	
+	// 						float scaling_factor = 0.5f;
+	// 						mat4 WORLD_FROM_LOCAL{
+	// 							scaling_factor, 0.0f,  0.0f, 0.0f,
+	// 							0.0f,scaling_factor, 0.0f, 0.0f,
+	// 							0.0f, 0.0f,   scaling_factor, 0.0f,
+	// 							fruit_node.x,fruit_node.y,fruit_node.z, 1.0f,
+	// 						};
+	// 						object_instances.emplace_back(ObjectInstance{
+	// 							.vertices = fruit_vertices,//which vertices to use
+	// 							.transform{
+	// 								.CLIP_FROM_LOCAL = CLIP_FROM_WORLD * WORLD_FROM_LOCAL,
+	// 								.WORLD_FROM_LOCAL = WORLD_FROM_LOCAL,
+	// 								.WORLD_FROM_LOCAL_NORMAL = WORLD_FROM_LOCAL,	
+	// 							},
+	// 							.texture = 1,
+	// 						});
+	// 					}
+	// 					verts++;
+	// 					if(verts == mesh_vertices.end())verts = mesh_vertices.begin();
+	// 				}
+	// 				//else branch
+	// 				else starts.emplace_back(fruit_node);
+	// 			}
+	// 		}
+	// 		// Remove the old nodes (keep only the new branches)
+    //     	starts.erase(starts.begin(), starts.begin() + num_nodes);
+	// 		time_elapsed = 0.0f;
+	// 		iters++;
+	// 	}
+	// }	
 
+	for(auto & obj: object_instances){
+		//update camera matrix
+		obj.transform.CLIP_FROM_LOCAL = CLIP_FROM_WORLD * obj.transform.WORLD_FROM_LOCAL;
+	}
+	std::cout<<"number of instances"<<object_instances.size()<<std::endl;
 	{//make some objects
-		for(auto & obj: object_instances){
-			//update camera matrix
-			obj.transform.CLIP_FROM_LOCAL = CLIP_FROM_WORLD * obj.transform.WORLD_FROM_LOCAL;
-		}
+		
 		// { //plane translated +x by one unit:
 		// 	mat4 WORLD_FROM_LOCAL{
 		// 		1.0f, 0.0f, 0.0f, 0.0f,

@@ -9,6 +9,7 @@
 #include <optional>
 #include <functional>
 #include <memory>
+#include <deque>
 #include <vector>
 #include <string>
 
@@ -79,6 +80,9 @@ struct RTG {
 
 		//scene file to load from 
 		std::string scene_file =  "";
+
+		//this is the camera that is passed in through command-line option(scene mode camera)
+		std::string required_camera = "";
 		
 		//for configuration construction + management:
 		Configuration() = default;

@@ -345,9 +345,9 @@ S72 S72::load(std::string const &scene_file) {
 				try {
 					std::vector< sejp::value > const &vec = f->second.as_array().value();
 					node.translation = vec3{
-						.x = float(vec.at(0).as_number().value()),
-						.y = float(vec.at(1).as_number().value()),
-						.z = float(vec.at(2).as_number().value()),
+						float(vec.at(0).as_number().value()),
+						float(vec.at(1).as_number().value()),
+						float(vec.at(2).as_number().value()),
 					};
 					if (vec.size() != 3) throw std::runtime_error("trailing values");
 				} catch (std::exception &) {
@@ -376,9 +376,9 @@ S72 S72::load(std::string const &scene_file) {
 				try {
 					std::vector< sejp::value > const &vec = f->second.as_array().value();
 					node.scale = vec3{
-						.x = float(vec.at(0).as_number().value()),
-						.y = float(vec.at(1).as_number().value()),
-						.z = float(vec.at(2).as_number().value()),
+						float(vec.at(0).as_number().value()),
+						float(vec.at(1).as_number().value()),
+						float(vec.at(2).as_number().value()),
 					};
 					if (vec.size() != 3) throw std::runtime_error("trailing values");
 				} catch (std::exception &) {
@@ -684,9 +684,9 @@ S72 S72::load(std::string const &scene_file) {
 						try {
 							std::vector< sejp::value > const &vec = arr.value();
 							pbr.albedo = color{
-								.r = float(vec.at(0).as_number().value()),
-								.g = float(vec.at(1).as_number().value()),
-								.b = float(vec.at(2).as_number().value()),
+								float(vec.at(0).as_number().value()),
+								float(vec.at(1).as_number().value()),
+								float(vec.at(2).as_number().value()),
 							};
 							if (vec.size() != 3) throw std::runtime_error("trailing values");
 						} catch (std::exception &) {
@@ -744,9 +744,9 @@ S72 S72::load(std::string const &scene_file) {
 						try {
 							std::vector< sejp::value > const &vec = arr.value();
 							lambertian.albedo = color{
-								.r = float(vec.at(0).as_number().value()),
-								.g = float(vec.at(1).as_number().value()),
-								.b = float(vec.at(2).as_number().value()),
+								float(vec.at(0).as_number().value()),
+								float(vec.at(1).as_number().value()),
+								float(vec.at(2).as_number().value()),
 							};
 							if (vec.size() != 3) throw std::runtime_error("trailing values");
 						} catch (std::exception &) {
@@ -849,9 +849,9 @@ S72 S72::load(std::string const &scene_file) {
 				try {
 					std::vector< sejp::value > const &vec = f->second.as_array().value();
 					light.tint = color{
-						.r = float(vec.at(0).as_number().value()),
-						.g = float(vec.at(1).as_number().value()),
-						.b = float(vec.at(2).as_number().value()),
+						float(vec.at(0).as_number().value()),
+						float(vec.at(1).as_number().value()),
+						float(vec.at(2).as_number().value()),
 					};
 					if (vec.size() != 3) throw std::runtime_error("trailing values");
 				} catch (std::exception &) {

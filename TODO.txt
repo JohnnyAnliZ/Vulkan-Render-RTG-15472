@@ -1,0 +1,23 @@
+
+-----A1-----
+Done: 
+
+mesh loading
+
+load nodes(scene is not static)
+    ObjectInstances are in world space, load the nodes(trimming ones that don't have anything) and compute the world transform of object ObjectInstances
+
+    Get all instances by traversing the graph using a queue and bfs
+
+    every frame, get all the root nodes and compute all the world transforms for the ObjectInstances objects
+
+TODO:
+
+//show debug lines and frustrum, add another debug camera
+    command line camera choosing
+
+//move
+
+
+
+//cull

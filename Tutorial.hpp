@@ -176,6 +176,22 @@ struct Tutorial : RTG::Application {
 		Free = 1,
 	} camera_mode = CameraMode::Scene;
 
+	
+	//generic camera type with the bare minimum to construct a CLIP from World
+	struct BasicCamera{
+		vec3 eye;//translation of the world transform
+		vec3 dir;//local -z axis in world space
+		vec3 up;//local +y axis in world space
+		float aspect;
+		float vfov;
+		float near;
+		float far = std::numeric_limits< float >::infinity(); //optional, if not specified will be set to infinity
+
+		mat4 clip_from_world(){
+			return perspective(vfov,aspect,near,far) * look_at_free(eye,dir,up);
+		}
+	};
+
 	//used when camera_mode == CameraMode::Free:
 	struct OrbitCamera{
 		vec3 target = vec3();
@@ -188,10 +204,14 @@ struct Tutorial : RTG::Application {
 	} free_camera;
 	mat4 CLIP_FROM_WORLD;
 
+	//camera loaded in from s72 files
+	std::unordered_map<std::string, BasicCamera> loaded_cameras;
 
 	std::vector<LinesPipeline::Vertex> lines_vertices;
 
+	//world has two lights env and sun
 	ObjectsPipeline::World world;
+	bool default_world_lights = true;//if this is true that means there hasn't been any lights loaded
 
 	struct ObjectInstance{
 		ObjectVertices vertices;

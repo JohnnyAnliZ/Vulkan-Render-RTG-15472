@@ -4,6 +4,8 @@
 #include <vulkan/vulkan_core.h>
 #include <vulkan/vulkan.h>
 
+#include "mat4.hpp"
+
 #include <limits>
 #include <fstream>
 #include <iostream>
@@ -35,9 +37,7 @@
 
 struct S72 {
 	//NOTE: redefine these for your vector and quaternion types of choice:
-	using vec3 = struct vec3_internal{ float x, y, z; };
-	using quat = struct quat_internal{ float x, y, z, w; };
-	using color = struct color_internal{ float r, g, b; };
+	using color = vec3;
 
 	//-------------------------------------------------
 
@@ -78,9 +78,9 @@ struct S72 {
 	struct Node {
 		std::string name;
 
-		vec3 translation = vec3{ .x = 0.0f, .y = 0.0f, .z = 0.0f };
-		quat rotation = quat{ .x = 0.0f, .y = 0.0f, .z = 0.0f, .w = 1.0f };
-		vec3 scale = vec3{ .x = 1.0f, .y = 1.0f, .z = 1.0f };
+		vec3 translation = vec3{ 0.0f, 0.0f, 0.0f };
+		quat rotation = quat{ 0.0f, 0.0f, 0.0f, 1.0f };
+		vec3 scale = vec3{ 1.0f, 1.0f, 1.0f };
 
 		std::vector< Node * > children;
 
@@ -89,6 +89,13 @@ struct S72 {
 		Camera *camera = nullptr;
 		Environment *environment = nullptr;
 		Light *light = nullptr;
+
+		mat4 parent_from_local() {
+			return mat4::translate(translation)
+				* mat4::rotate(rotation)
+				* mat4::scale(scale);
+		}
+		
 	};
 	std::unordered_map< std::string, Node > nodes;
 
@@ -205,12 +212,12 @@ struct S72 {
 		//Materials are one of these types:
 		// NOTE: if any of these parameters are the Texture * branch of their variant, they are not null
 		struct PBR {
-			std::variant< color, Texture * > albedo = color{.r = 1.0f, .g = 1.0f, .b = 1.0f};
+			std::variant< color, Texture * > albedo = color{1.0f, 1.0f, 1.0f};
 			std::variant< float, Texture * > roughness = 1.0f;
 			std::variant< float, Texture * > metalness = 0.0f;
 		};
 		struct Lambertian {
-			std::variant< color, Texture * > albedo = color{.r = 1.0f, .g = 1.0f, .b = 1.0f};
+			std::variant< color, Texture * > albedo = color{1.0f, 1.0f, 1.0f};
 		};
 		struct Mirror { /* no parameters */ };
 		struct Environment { /* no parameters */ };
@@ -281,8 +288,9 @@ struct S72 {
 	struct Light {
 		std::string name;
 
-		color tint = color{ .r = 1.0f, .g = 1.0f, .b = 1.0f };
+		color tint = color{1.0f,1.0f,1.0f };
 
+		
 		uint32_t shadow = 0; //optional, if not set will be '0'
 
 		//light has exactly one of these sources:

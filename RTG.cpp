@@ -51,7 +51,11 @@ void RTG::Configuration::parse(int argc, char **argv) {
 			if (argi + 1 >= argc) throw std::runtime_error("--scene requires a scene file.");
 			argi += 1;
 			scene_file = argv[argi];
-		}
+		} else if(arg == "--camera"){
+			if (argi + 1 >= argc) throw std::runtime_error("--camera requires a camera name.");
+			argi += 1;
+			required_camera = argv[argi];
+		} 
 		else {
 			throw std::runtime_error("Unrecognized argument '" + arg + "'.");
 		}
@@ -309,6 +313,7 @@ RTG::RTG(Configuration const &configuration_) : helpers(*this) {
 			}
 			throw std::runtime_error("No present mode matching requested mode(s) found.");
 		}();
+		present_layout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
 	}
 
 	{ //create the `device` (logical interface to the GPU) and the `queue`s to which we can submit commands:

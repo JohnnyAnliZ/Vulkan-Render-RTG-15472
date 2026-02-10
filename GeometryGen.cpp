@@ -13,7 +13,6 @@ VertexList& vertices, Index first, Index second)
 {
     Lookup::key_type key(first, second);
     if (key.first>key.second){
-        std::cout<<"swapping"<<std::endl;
         std::swap(key.first, key.second);
     }
     //lookup is inserted with the new {edge,midpoint} pair

@@ -1007,7 +1007,10 @@ void Tutorial::update(float dt) {
 	time = std::fmod(time + dt, 5.0f);
 	time_elapsed += dt;
 	
+
+	//TODO: if there is no change in any of the nodes, the chunk below shouldn't be run 
 	object_instances.clear();
+	loaded_cameras.clear();
 	{//load s72 into the object instances, two lights, and cameras
 		struct Item {
 			S72::Node* node;
@@ -1018,8 +1021,8 @@ void Tutorial::update(float dt) {
 			current_nodes.emplace_back(Item{n,n->parent_from_local()});
 		}
 
-		//go through the graph using this queue bfs setup (this creates two instances of a child if two nodes have it as one of the children)
-		while(!current_nodes.empty()){
+		
+		while(!current_nodes.empty()){//go through the graph using this queue bfs setup (this creates two instances of a child if two nodes have it as one of the children)
 			auto [node, world_from_parent] = current_nodes.front();
 			current_nodes.pop_front();
 
@@ -1037,7 +1040,7 @@ void Tutorial::update(float dt) {
 							.WORLD_FROM_LOCAL = world_from_local,
 							.WORLD_FROM_LOCAL_NORMAL = world_from_local,//not correct, TODO	
 						},
-						.texture = 1,
+						.texture = 0,
 					}
 				);			
 			}
@@ -1045,7 +1048,11 @@ void Tutorial::update(float dt) {
 			 
 			if(node->camera != nullptr){//there could be numerous cameras, but every camera has only one instance 
 				//put every unique camera in the unordered_map, if there is a duplicate, print err and exit
-				assert(loaded_cameras.find(node->camera->name) == loaded_cameras.end(), "multiple instances of the same camera with name: "+node->camera->name);
+				
+				if(loaded_cameras.find(node->camera->name) != loaded_cameras.end()){
+					std::cout<<"skipping camera "<<node->camera->name<<std::endl;
+					continue;//skip duplicate cameras
+				}
 				assert(!node->camera->projection.valueless_by_exception());
 
 				S72::Camera::Perspective perspective = get<S72::Camera::Perspective>(node->camera->projection);
@@ -1097,23 +1104,37 @@ void Tutorial::update(float dt) {
 				current_nodes.emplace_back(child, world_from_local);
 			}
 		}
-		if(rtg.configuration.required_camera != "" && loaded_cameras.find(rtg.configuration.required_camera) == loaded_cameras.end()){
-			std::cerr<<"required camera named: "<< rtg.configuration.required_camera<<" but no such named camera was found"<<std::endl; 
+		if(rtg.configuration.required_camera != "") {// if there is a command-line specified camera
+			if(loaded_cameras.find(rtg.configuration.required_camera) == loaded_cameras.end()){//and you can't find it *~*
+				throw std::runtime_error(
+					"Required camera named '" + rtg.configuration.required_camera +
+					"' was not found");
+			}
+			//however if you do find it !o!
+			current_camera = loaded_cameras.find(rtg.configuration.required_camera);
+		}
+		else{//if there is no camera specified
+			current_camera = loaded_cameras.begin();
 		}
 	}
 
 	if(camera_mode == CameraMode::Scene){//unresponsive camera orbiting the origin
-		float ang = float(M_PI) * 2.0f * (time/5.0f);
-		CLIP_FROM_WORLD = perspective(
-			60.0f * float(M_PI) / 180.0f, //vfov
-			rtg.swapchain_extent.width / float(rtg.swapchain_extent.height), //aspect
-			0.1f, //near
-			1000.0f //far
-		) * look_at(
-			vec3(13.0f * std::cos(ang), 13.0f * std::sin(ang), 5.0f), //eye
-			vec3(0.0f, 0.0f, 5.0f), //target
-			vec3(0.0f, 0.0f, 1.0f) //up
-		);
+		if(rtg.configuration.required_camera == ""){//hard coded scene camera that rotates around target
+			float ang = float(M_PI) * 2.0f * (time/5.0f);
+			CLIP_FROM_WORLD = perspective(
+				60.0f * float(M_PI) / 180.0f, //vfov
+				rtg.swapchain_extent.width / float(rtg.swapchain_extent.height), //aspect
+				0.1f, //near
+				1000.0f //far
+			) * look_at(
+				vec3(13.0f * std::cos(ang), 13.0f * std::sin(ang), 5.0f), //eye
+				vec3(0.0f, 0.0f, 5.0f), //target
+				vec3(0.0f, 0.0f, 1.0f) //up
+			);
+		}
+		else{//fixed, potentially keyframed camera that is loaded from s72 file
+			CLIP_FROM_WORLD = current_camera->second.clip_from_world();
+		}
 	} else if(camera_mode == CameraMode::Free){
 		CLIP_FROM_WORLD = perspective(
 			60.0f * float(M_PI) / 180.0f, //vfov
@@ -1213,7 +1234,7 @@ void Tutorial::update(float dt) {
 		//update camera matrix
 		obj.transform.CLIP_FROM_LOCAL = CLIP_FROM_WORLD * obj.transform.WORLD_FROM_LOCAL;
 	}
-	std::cout<<"number of instances"<<object_instances.size()<<std::endl;
+	
 	{//make some objects
 		
 		// { //plane translated +x by one unit:

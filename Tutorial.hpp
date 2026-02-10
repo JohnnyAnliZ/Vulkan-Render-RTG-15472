@@ -8,6 +8,9 @@
 #include "InputEvent.hpp" 
 #include "S72.hpp"
 
+
+#include "lib/stb_image.h"
+
 #include "RTG.hpp"
 #include <corecrt_math_defines.h>
 
@@ -206,6 +209,8 @@ struct Tutorial : RTG::Application {
 
 	//camera loaded in from s72 files
 	std::unordered_map<std::string, BasicCamera> loaded_cameras;
+	//the camera currently in use 
+	std::unordered_map<std::string, BasicCamera>::iterator current_camera;
 
 	std::vector<LinesPipeline::Vertex> lines_vertices;
 

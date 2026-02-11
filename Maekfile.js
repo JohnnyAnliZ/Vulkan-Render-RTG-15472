@@ -63,6 +63,7 @@ const objects_shaders = [
 ];
 main_objs.push( maek.CPP('Tutorial-ObjectsPipeline.cpp', undefined, { depends:[...objects_shaders] } ) );
 
+main_objs.push(maek.CPP('stb_image.cpp',undefined));
 
 const main_exe = maek.LINK([...main_objs], 'bin/main');
 

@@ -187,6 +187,8 @@ void Helpers::transfer_to_image(void const *data, size_t size, AllocatedImage &t
 	//check data is the right size:
 	size_t bytes_per_block = vkuFormatTexelBlockSize(target.format);
 	size_t texels_per_block = vkuFormatTexelsPerBlock(target.format);
+	//std::cout<<"bytes per block: "<<bytes_per_block<<"texels_per_block: "<<texels_per_block<<std::endl;
+	//std::cout<<"size: "<<size<<" target size: "<<target.extent.width * target.extent.height * bytes_per_block / texels_per_block<<std::endl;
 	assert(size == target.extent.width * target.extent.height * bytes_per_block / texels_per_block);
 	//create a host-coherent source buffer
 	AllocatedBuffer transfer_src = create_buffer(
@@ -195,7 +197,7 @@ void Helpers::transfer_to_image(void const *data, size_t size, AllocatedImage &t
 		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
 		Mapped
 	);
-
+  
 	//copy image data into the source buffer
 	std::memcpy(transfer_src.allocation.data(), data, size);
 

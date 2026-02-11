@@ -20,10 +20,11 @@ layout(location = 0) out vec4 outColor;
 void main(){
     vec3 n = normalize(normal);
     //direction that the light is from(this should point to -z)
-    vec3 albedo = texture(TEXTURE, texCoord).rgb;
+    vec3 albedo = texture(TEXTURE, vec2(texCoord.y,texCoord.x)).rgb;
     vec3 l = vec3(0,0,1 );
     //hemisphere sky + directional sun:
-	vec3 e = SKY_ENERGY * (0.5 * dot(n,SKY_DIRECTION) + 0.5)
-	       + SUN_ENERGY * max(0.0, dot(n,SUN_DIRECTION)) ;
-    outColor = vec4(e * albedo, 1.0);
+    vec3 energy =
+          SKY_ENERGY * (dot(n, SKY_DIRECTION) * 0.5 + 0.5)
+        + SUN_ENERGY * max(dot(n, SUN_DIRECTION), 0.0);
+    outColor = vec4(albedo / 3.1415926 * energy, 1.0);
 }

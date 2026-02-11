@@ -539,7 +539,7 @@ S72 S72::load(std::string const &scene_file) {
 
 			//mark as parsed:
 			camera.name = name;
-
+			
 			bool have_projection = false;
 
 			if (auto f = object.find("perspective"); f != object.end()) {
@@ -976,7 +976,7 @@ S72 S72::load(std::string const &scene_file) {
 	for (auto &[key, value] : s72.textures) {
 		value.path = scene_folder + value.src;
 
-		value.loadBinaryFile(value.path);
+		value.loadTextureFile(value.path);
 	}
 
 	return s72;

@@ -357,9 +357,16 @@ Tutorial::Tutorial(RTG &rtg_) : rtg(rtg_) {
 		rtg.helpers.transfer_to_buffer(vertices.data(), bytes, object_vertices);
 	}
 
-	{ // make some textures
-		textures.reserve(2);
+	{ // make some textures 
+		//create a map from texture name to texture number
+		uint32_t reserve_size = 5;
+		texture_table.reserve(reserve_size);
+		textures.reserve(reserve_size);
+		uint32_t texture_index = 0;
 		{ //texture 0 will be a dark grey / light grey checkerboard with a red square at the origin.
+			//insert_into lookup table
+			texture_table["light_grey_checkerboard_with_red_square_origin"] = texture_index;
+			texture_index++;
 			//actually make the texture:
 			uint32_t size = 128;
 			std::vector< uint32_t > data;
@@ -389,6 +396,9 @@ Tutorial::Tutorial(RTG &rtg_) : rtg(rtg_) {
 			rtg.helpers.transfer_to_image(data.data(), sizeof(data[0]) * data.size(), textures.back());
 		}
 		{ //texture 1 will be a classic 'xor' texture:
+			//insert into color lookup table
+			texture_table["classic_xor_texture"] = texture_index;
+			texture_index++;
 			//actually make the texture:
 			uint32_t size = 256;
 			std::vector< uint32_t > data;
@@ -413,9 +423,79 @@ Tutorial::Tutorial(RTG &rtg_) : rtg(rtg_) {
 				VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, //should be device-local
 				Helpers::Unmapped
 			));
-
+			
 			//transfer data:
 			rtg.helpers.transfer_to_image(data.data(), sizeof(data[0]) * data.size(), textures.back());
+		}
+		//the rest of the textures are loaded into memory from image files
+		for(auto const &mat: scene72.materials){
+			assert(texture_table.find(mat.first) == texture_table.end());
+			std::cout<<"loading material "<<mat.first<<std::endl;
+			//----insert into color lookup table
+			texture_table[mat.first] = texture_index;
+			texture_index++;
+			//----actually load the texture
+			//resolve the brdf
+			std::variant<S72::Material::PBR, S72::Material::Lambertian, S72::Material::Mirror, S72::Material::Environment> const &v = mat.second.brdf;
+			if(std::holds_alternative<S72::Material::PBR>(v)){
+
+			}
+			else if(std::holds_alternative<S72::Material::Lambertian>(v)){
+				S72::Material::Lambertian const &lamb = get<S72::Material::Lambertian>(v);
+				if(std::holds_alternative<S72::color>(lamb.albedo)){
+					//actually make the texture:
+					uint32_t size = 1;
+					std::vector< uint32_t > data;
+					data.reserve(size * size);
+
+					S72::color c = get<S72::color>(lamb.albedo);
+					uint8_t r = uint8_t(std::round(c.x*255));
+					uint8_t g = uint8_t(std::round(c.y*255));
+					uint8_t b = uint8_t(std::round(c.z*255));
+					uint8_t a = 0xff;
+					data.emplace_back( uint32_t(r) | (uint32_t(g) << 8) | (uint32_t(b) << 16) | (uint32_t(a) << 24) );
+					assert(data.size() == size*size);
+
+					std::cout<<"color of the lambertian material "<< std::setfill('0') << std::setw(8) << std::hex<<data.back()<<std::endl;
+					//make a place for the texture to live on the GPU:
+					textures.emplace_back(rtg.helpers.create_image(
+						VkExtent2D{ .width = size , .height = size }, //size of image
+						VK_FORMAT_R8G8B8A8_SRGB, //how to interpret image data (in this case, SRGB-encoded 8-bit RGBA)
+						VK_IMAGE_TILING_OPTIMAL,
+						VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, //will sample and upload
+						VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, //should be device-local
+						Helpers::Unmapped
+					));
+
+					//transfer data:
+					rtg.helpers.transfer_to_image(data.data(), sizeof(data[0]) * data.size(), textures.back());
+				}
+				else if(std::holds_alternative<S72::Texture*>(lamb.albedo)){
+					S72::Texture * tex_ptr = get<S72::Texture*>(lamb.albedo);
+					//don't have to make the texture, it's loaded
+					uint32_t size = tex_ptr->size;
+						
+					std::cout<<"size of the loaded texture "<<size<<std::endl;
+					//make a place for the texture to live on the GPU:
+					textures.emplace_back(rtg.helpers.create_image(
+						VkExtent2D{ .width = size , .height = size }, //size of image
+						VK_FORMAT_R8G8B8A8_SRGB, //how to interpret image data (in this case, SRGB-encoded 8-bit RGBA)
+						VK_IMAGE_TILING_OPTIMAL,
+						VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, //will sample and upload
+						VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, //should be device-local
+						Helpers::Unmapped
+					));
+
+					//transfer data:
+					rtg.helpers.transfer_to_image(tex_ptr->data.data(), tex_ptr->data.size(), textures.back());//here size is in bytes
+				}
+			}
+			else if(std::holds_alternative<S72::Material::Mirror>(v)){
+				
+			}
+			else if(std::holds_alternative<S72::Material::Environment>(v)){
+
+			}
 		}
 	}
 
@@ -489,7 +569,7 @@ Tutorial::Tutorial(RTG &rtg_) : rtg(rtg_) {
 		VK( vkCreateDescriptorPool(rtg.device, &create_info, nullptr, &texture_descriptor_pool) );	
 	}
 
-	{ //TODO: allocate and write the texture descriptor sets
+	{ //allocate and write the texture descriptor sets
 		//allocate the descriptors (using the same alloc_info):
 		VkDescriptorSetAllocateInfo alloc_info{
 			.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
@@ -497,6 +577,8 @@ Tutorial::Tutorial(RTG &rtg_) : rtg(rtg_) {
 			.descriptorSetCount = 1,
 			.pSetLayouts = &objects_pipeline.set2_TEXTURE,
 		};
+		std::cout<<"allocating and writing "<<textures.size()<<" textures"<<std::endl;
+
 		texture_descriptors.assign(textures.size(), VK_NULL_HANDLE);
 		for (VkDescriptorSet &descriptor_set : texture_descriptors) {
 			VK( vkAllocateDescriptorSets(rtg.device, &alloc_info, &descriptor_set) );
@@ -774,7 +856,7 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params) {
 	}
 
 	{ //upload world info:
-		assert(workspace.Camera_src.size == sizeof(world));
+		assert(workspace.World_src.size == sizeof(world));
 
 		//host-side copy into World_src:
 		memcpy(workspace.World_src.allocation.data(), &world, sizeof(world));
@@ -934,6 +1016,7 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params) {
 				std::array<VkDescriptorSet,1> descriptor_sets{
 					workspace.Camera_descriptors,
 				};
+				std::cout << "Camera: " << workspace.Camera_descriptors << std::endl;
 				vkCmdBindDescriptorSets(workspace.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, lines_pipeline.layout,
 				0,uint32_t(descriptor_sets.size()), descriptor_sets.data(), 0, nullptr);
 			}
@@ -952,6 +1035,8 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params) {
 					workspace.World_descriptors,//0, Transforms
 					workspace.Transforms_descriptors,//1, Transforms
 				};
+				//std::cout << "World: " << workspace.World_descriptors << std::endl;
+				//std::cout << "Transforms: " << workspace.Transforms_descriptors << std::endl;
 				vkCmdBindDescriptorSets(workspace.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, objects_pipeline.layout,
 					0, uint32_t(descriptor_sets.size()),descriptor_sets.data(), 0, nullptr);
 			}
@@ -962,6 +1047,7 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params) {
 				uint32_t index = uint32_t(&inst - &object_instances[0]);
 
 				//bind texture descriptor set
+				//std::cout << "Textures: " << texture_descriptors[inst.texture] << std::endl;
 				vkCmdBindDescriptorSets(
 					workspace.command_buffer,
 					VK_PIPELINE_BIND_POINT_GRAPHICS,
@@ -1018,7 +1104,7 @@ void Tutorial::update(float dt) {
 		};
 		std::deque<Item> current_nodes;
 		for(auto n : scene72.scene.roots){//start with the root nodes
-			current_nodes.emplace_back(Item{n,n->parent_from_local()});
+			current_nodes.emplace_back(Item{n,mat4::identity()});
 		}
 
 		
@@ -1031,7 +1117,8 @@ void Tutorial::update(float dt) {
 
 			if(node->mesh != nullptr){//if the node has mesh, instance it
 				assert(mesh_vertices.find(node->mesh->name) != mesh_vertices.end());//check that the mesh's vertices has been loaded
-				//std::cout<<"instancing "<<node->mesh->name<<std::endl;
+
+				//std::cout<<"instancing "<<node->mesh->name<<"material is"<<node->mesh->material->name<<std::endl;
 				object_instances.emplace_back(
 					ObjectInstance{
 						.vertices = mesh_vertices[node->mesh->name],
@@ -1040,12 +1127,11 @@ void Tutorial::update(float dt) {
 							.WORLD_FROM_LOCAL = world_from_local,
 							.WORLD_FROM_LOCAL_NORMAL = world_from_local,//not correct, TODO	
 						},
-						.texture = 0,
+						.texture = texture_table.at(node->mesh->material->name),
 					}
 				);			
 			}
-
-			 
+		 
 			if(node->camera != nullptr){//there could be numerous cameras, but every camera has only one instance 
 				//put every unique camera in the unordered_map, if there is a duplicate, print err and exit
 				
@@ -1067,10 +1153,9 @@ void Tutorial::update(float dt) {
 				};
 			}
 			if(node->light != nullptr){//two lights for A1
-
 				//resolve the variant				
 				std::variant< S72::Light::Sun, S72::Light::Sphere, S72::Light::Spot > &v = node->light->source;
-				vec3 world_dir = normalized((world_from_local * vec4{0,0,-1,0}).xyz());
+				vec3 world_dir = normalized((world_from_local * vec4{0,0,1,0}).xyz());//local z axis direction(not -z)
 				if(std::holds_alternative<S72::Light::Sun>(v)){
 					default_world_lights = false;
 					S72::Light::Sun &sun = get<S72::Light::Sun>(v);
@@ -1078,10 +1163,10 @@ void Tutorial::update(float dt) {
 						world.SKY_DIRECTION.x = world_dir.x;
 						world.SKY_DIRECTION.y = world_dir.y;
 						world.SKY_DIRECTION.z = world_dir.z;
-
 						world.SKY_ENERGY.r = (node->light->tint * sun.strength).x;
 						world.SKY_ENERGY.g = (node->light->tint * sun.strength).y;
 						world.SKY_ENERGY.b = (node->light->tint * sun.strength).z;
+						///std::cout<<"loaded sky light with strength "<< sun.strength<< "and tint"<< node->light->tint.data<<std::endl; 
 					}
 					else{
 						world.SUN_DIRECTION.x = world_dir.x;
@@ -1090,7 +1175,10 @@ void Tutorial::update(float dt) {
 						world.SUN_ENERGY.r = (node->light->tint * sun.strength).x;
 						world.SUN_ENERGY.g = (node->light->tint * sun.strength).y;
 						world.SUN_ENERGY.b = (node->light->tint * sun.strength).z;
+						///std::cout<<"loaded sun light with strength "<< sun.strength<< "and tint"<< world.SUN_ENERGY.r<<world.SUN_ENERGY.g<<
+						//world.SUN_ENERGY.b<<std::endl; 
 					}
+					
 				}
 				else if(std::holds_alternative<S72::Light::Sphere>(v)){
 
@@ -1234,7 +1322,7 @@ void Tutorial::update(float dt) {
 		//update camera matrix
 		obj.transform.CLIP_FROM_LOCAL = CLIP_FROM_WORLD * obj.transform.WORLD_FROM_LOCAL;
 	}
-	
+
 	{//make some objects
 		
 		// { //plane translated +x by one unit:

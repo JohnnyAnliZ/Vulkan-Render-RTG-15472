@@ -9,7 +9,7 @@
 #include "S72.hpp"
 
 
-#include "lib/stb_image.h"
+
 
 #include "RTG.hpp"
 #include <corecrt_math_defines.h>
@@ -142,6 +142,7 @@ struct Tutorial : RTG::Application {
 	ObjectVertices fruit_vertices;//these vertices are hard coded 
 	std::map<std::string, ObjectVertices> mesh_vertices;
 
+	std::unordered_map<std::string, uint32_t> texture_table;
 	std::vector<Helpers::AllocatedImage> textures;
 	std::vector<VkImageView> texture_views;
 	VkSampler texture_sampler = VK_NULL_HANDLE;

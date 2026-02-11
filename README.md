@@ -3,5 +3,12 @@ My work on top of nakluV https://github.com/15-472/nakluV, the Vulkan tutorial f
 
 # s72 Loader, s72 format to C++ data
 
+
+
+
 this is how to load a scene:
-$ bin\main --scene example_scene\env_cube.s72
+
+go to the nakluV directory
+cd C:\Users\zal17\Documents\RealTimeG\nakluV
+
+$ bin\main --scene scenes\examples\

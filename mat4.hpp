@@ -104,6 +104,8 @@ struct mat4 {
 	inline vec3 translation(){
 		return vec3(data[12], data[13], data[14]);
 	}
+
+	
 	
 	static inline mat4 translate(vec3 const& t) {
 		return mat4{

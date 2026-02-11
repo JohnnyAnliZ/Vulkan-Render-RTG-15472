@@ -6,6 +6,8 @@
 
 #include "mat4.hpp"
 
+#include "stb_image.h"
+
 #include <limits>
 #include <fstream>
 #include <iostream>
@@ -245,31 +247,32 @@ struct S72 {
 		uint32_t size = 0;
 		std::vector<char> data;
 
-		bool loadBinaryFile(const std::string& filename) {
-			std::ifstream file(filename, std::ios::binary | std::ios::ate);
-			if (!file) {
-				std::cerr << "Error opening file: " << filename << '\n';
+		bool loadTextureFile(const std::string& filename) {
+			int width,height,channels;
+			uint32_t desired_channels = 4;//rgba
+			unsigned char* loaded_data = stbi_load(filename.c_str(), &width, &height, &channels, desired_channels);
+			if (!loaded_data) {
+				std::cerr << "Error: Failed to load image." << std::endl;
+				std::cerr << "Reason: " << stbi_failure_reason() << std::endl; // Optional: print failure reason
 				return false;
 			}
+			
+			//Calculate the total size of the image data
+			size_t data_size = width * height * desired_channels;
+			size = (uint32_t)width;
+			//Copy the raw data into a the struct's data field
+			data.resize(data_size);
+			std::memcpy(data.data(), loaded_data, data_size);
 
-			const std::streamsize fileSize = file.tellg();
-			if (fileSize < 0) {
-				std::cerr << "Invalid file size: " << filename << '\n';
-				return false;
-			}
+			//Free the memory allocated by stb_image immediately after copying
+			stbi_image_free(loaded_data);
 
-			file.seekg(0, std::ios::beg);
+			std::cout << "Image loaded successfully: " << std::endl;
+			if(format == Format::linear) std::cout<<"format is linear"<<std::endl;
+			if(format == Format::srgb) std::cout<<"format is srgb"<<std::endl;
 
-			data.resize(static_cast<size_t>(fileSize));
-			if (!file.read(data.data(), fileSize)) {
-				std::cerr << "Error reading file, only read "
-						<< file.gcount() << " bytes\n";
-				data.clear();
-				size = 0;
-				return false;
-			}
-
-			size = static_cast<uint32_t>(fileSize);
+			std::cout << "Width: " << width << ", Height: " << height << ", Channels: " << desired_channels << std::endl;
+			std::cout << "Data size in vector: " << data.size() << " bytes\n" << std::endl;
 			return true;
 		}
 	};

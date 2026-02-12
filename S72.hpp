@@ -40,7 +40,7 @@
 struct S72 {
 	//NOTE: redefine these for your vector and quaternion types of choice:
 	using color = vec3;
-
+	vec3 linear_to_srgb(vec3 linear);
 	//-------------------------------------------------
 
 	static S72 load(std::string const &file); //NOTE: throws on error

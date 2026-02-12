@@ -3,9 +3,10 @@
 #include <vulkan/vulkan_core.h>
 
 #include <cstdint>
+#include "mat4.hpp"
 
 struct PosColVertex{
-    struct {float x,y,z;} Position;
+    vec3 Position;
     struct {uint8_t r,g,b,a;} Color;
     static const VkPipelineVertexInputStateCreateInfo array_input_state;
 };

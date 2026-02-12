@@ -32,6 +32,57 @@ Tutorial::Tutorial(RTG &rtg_) : rtg(rtg_) {
 
 	{//load nodes into a new nodes map, trimming the nodes that don't have or lead to anything(meshes, lights, cameras)
 		//This is not necessary, not gonna do this now
+		std::deque<Item> current_nodes;
+		for(auto n : scene72.scene.roots){//start with the root nodes
+			current_nodes.emplace_back(Item{n,mat4::identity()});
+		}
+
+		while(!current_nodes.empty()){//go through the graph using this queue bfs setup (this creates two instances of a child if two nodes have it as one of the children)
+			auto [node, world_from_parent] = current_nodes.front();
+			current_nodes.pop_front();
+
+			//this node's world transform
+			mat4 world_from_local = world_from_parent * node->parent_from_local();//accumulate transform
+		 
+			if(node->camera != nullptr){//there could be numerous cameras, but every camera has only one instance 
+				//put every unique camera in the unordered_map, if there is a duplicate, print err and exit
+				
+				if(loaded_cameras.find(node->camera->name) != loaded_cameras.end()){
+					std::cerr<<"duplicate camera "<<node->camera->name<<std::endl;
+					throw;
+				}
+				assert(!node->camera->projection.valueless_by_exception());
+				std::cout<<"loading camera: "<<node->camera->name<<std::endl;;
+				S72::Camera::Perspective perspective = get<S72::Camera::Perspective>(node->camera->projection);
+				loaded_cameras[node->camera->name] = BasicCamera{
+					.eye = world_from_local.translation(),
+					.dir = (world_from_local * vec4{0,0,-1,0}).xyz(),
+					.up = (world_from_local * vec4{0,1,0,0}).xyz(),
+					.aspect = perspective.aspect,
+					.vfov = perspective.vfov,
+					.near = perspective.near,
+					.far = perspective.far,
+				};
+				assert(loaded_cameras.find(node->camera->name) != loaded_cameras.end());
+
+			}
+			for(S72::Node *child : node->children){
+				current_nodes.emplace_back(child, world_from_local);
+			}
+		}
+		if(rtg.configuration.required_camera != "") {// if there is a command-line specified camera
+			if(loaded_cameras.find(rtg.configuration.required_camera) == loaded_cameras.end()){//and you can't find it *~*
+				throw std::runtime_error(
+					"Required camera named '" + rtg.configuration.required_camera +
+					"' was not found");
+			}
+			//however if you do find it !o!
+			current_camera = loaded_cameras.find(rtg.configuration.required_camera);
+		}
+		else{//if there is no camera specified
+			current_camera = loaded_cameras.begin();
+		}
+		assert(!loaded_cameras.empty());
 	}
 
 	
@@ -281,17 +332,17 @@ Tutorial::Tutorial(RTG &rtg_) : rtg(rtg_) {
 		std::vector<PosNorTanTexVertex> vertices;
 
 		{//load vertices from s72 file, so that all the vertex data(attributes) are in one big pool
-			mesh_vertices.clear();
+			meshes.clear();
 			size_t base = 0;//base offset for writing in each mesh's vertices into std::vector<PosNorTanTexVertex> vertices
 			uint32_t count = 0;//the number of vertices for each mesh
 			for(auto const &mesh : scene72.meshes ){
 				std::cout<<"loading mesh: "<< mesh.first<<std::endl;
 				//assuming there aren't duplicate meshes, no indices property, use PosNorTanTex attributes
-				assert(mesh_vertices.find(mesh.first) == mesh_vertices.end());
+				assert(meshes.find(mesh.first) == meshes.end());
 				//get the indices
 				count = mesh.second.count;
-				mesh_vertices[mesh.first].first = uint32_t(vertices.size());
-				mesh_vertices[mesh.first].count = count;
+				meshes[mesh.first].verts.first = uint32_t(vertices.size());
+				meshes[mesh.first].verts.count = count;
 				//copy the vertices from file into vertices
 				base = vertices.size();
 				vertices.resize(base + count);//resize for copying
@@ -299,12 +350,24 @@ Tutorial::Tutorial(RTG &rtg_) : rtg(rtg_) {
 				S72::Mesh::Attribute const &att_nor = mesh.second.attributes.at("NORMAL");//12bytes
 				S72::Mesh::Attribute const &att_tan = mesh.second.attributes.at("TANGENT");//16bytes
 				S72::Mesh::Attribute const &att_tex= mesh.second.attributes.at("TEXCOORD");//8bytes
+
+				//copy into vertices while computing bounding box
+				vec3 max_pos = vec3{-INFINITY,-INFINITY,-INFINITY};
+				vec3 min_pos = vec3{INFINITY,INFINITY,INFINITY};
 				for(uint32_t i = 0; i<count; ++i){
 					std::memcpy(&vertices[base + i].Position, att_pos.src.data.data() + att_pos.offset + att_pos.stride * i, sizeof(vec3));
 					std::memcpy(&vertices[base + i].Normal, att_nor.src.data.data() + att_nor.offset + att_nor.stride * i, sizeof(vec3));
 					std::memcpy(&vertices[base + i].Tangent, att_tan.src.data.data() + att_tan.offset + att_tan.stride * i, sizeof(vec4));
 					std::memcpy(&vertices[base + i].TexCoord, att_tex.src.data.data() + att_tex.offset + att_tex.stride * i, sizeof(float) * 2);
+					if(vertices[base + i].Position.x > max_pos.x) max_pos.x = vertices[base + i].Position.x;
+					if(vertices[base + i].Position.y > max_pos.y) max_pos.y = vertices[base + i].Position.y;
+					if(vertices[base + i].Position.z > max_pos.z) max_pos.z = vertices[base + i].Position.z;
+					if(vertices[base + i].Position.x < min_pos.x) min_pos.x = vertices[base + i].Position.x;
+					if(vertices[base + i].Position.y < min_pos.y) min_pos.y = vertices[base + i].Position.y;
+					if(vertices[base + i].Position.z < min_pos.z) min_pos.z = vertices[base + i].Position.z;
 				}
+				meshes[mesh.first].bbox.max = max_pos;
+				meshes[mesh.first].bbox.min = min_pos;
 			}
 		}
 
@@ -1016,7 +1079,7 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params) {
 				std::array<VkDescriptorSet,1> descriptor_sets{
 					workspace.Camera_descriptors,
 				};
-				std::cout << "Camera: " << workspace.Camera_descriptors << std::endl;
+				//std::cout << "Camera: " << workspace.Camera_descriptors << std::endl;
 				vkCmdBindDescriptorSets(workspace.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, lines_pipeline.layout,
 				0,uint32_t(descriptor_sets.size()), descriptor_sets.data(), 0, nullptr);
 			}
@@ -1093,21 +1156,18 @@ void Tutorial::update(float dt) {
 	time = std::fmod(time + dt, 5.0f);
 	time_elapsed += dt;
 	
-
-	//TODO: if there is no change in any of the nodes, the chunk below shouldn't be run 
+	//----update scene graph----
+	//TODO: if there is no change in any of the nodes, the chunk below shouldn't be run
+	lines_vertices.clear(); 
 	object_instances.clear();
-	loaded_cameras.clear();
+
 	{//load s72 into the object instances, two lights, and cameras
-		struct Item {
-			S72::Node* node;
-			mat4 parentWorld;
-		};
+		
 		std::deque<Item> current_nodes;
 		for(auto n : scene72.scene.roots){//start with the root nodes
 			current_nodes.emplace_back(Item{n,mat4::identity()});
 		}
 
-		
 		while(!current_nodes.empty()){//go through the graph using this queue bfs setup (this creates two instances of a child if two nodes have it as one of the children)
 			auto [node, world_from_parent] = current_nodes.front();
 			current_nodes.pop_front();
@@ -1116,12 +1176,12 @@ void Tutorial::update(float dt) {
 			mat4 world_from_local = world_from_parent * node->parent_from_local();//accumulate transform
 
 			if(node->mesh != nullptr){//if the node has mesh, instance it
-				assert(mesh_vertices.find(node->mesh->name) != mesh_vertices.end());//check that the mesh's vertices has been loaded
+				assert(meshes.find(node->mesh->name) != meshes.end());//check that the mesh's vertices has been loaded
 
 				//std::cout<<"instancing "<<node->mesh->name<<"material is"<<node->mesh->material->name<<std::endl;
 				object_instances.emplace_back(
 					ObjectInstance{
-						.vertices = mesh_vertices[node->mesh->name],
+						.vertices = meshes[node->mesh->name].verts,
 						.transform{
 							.CLIP_FROM_LOCAL = CLIP_FROM_WORLD * world_from_local,
 							.WORLD_FROM_LOCAL = world_from_local,
@@ -1129,17 +1189,18 @@ void Tutorial::update(float dt) {
 						},
 						.texture = texture_table.at(node->mesh->material->name),
 					}
-				);			
+				);
+				if(camera_mode == CameraMode::Debug){
+					AABB &b = meshes[node->mesh->name].bbox;
+					add_debug_lines_bbox(b.min, b.max, world_from_local);	
+				}	
 			}
 		 
-			if(node->camera != nullptr){//there could be numerous cameras, but every camera has only one instance 
-				//put every unique camera in the unordered_map, if there is a duplicate, print err and exit
-				
-				if(loaded_cameras.find(node->camera->name) != loaded_cameras.end()){
-					std::cout<<"skipping camera "<<node->camera->name<<std::endl;
-					continue;//skip duplicate cameras
-				}
+			if(node->camera != nullptr){
+				//now that all the cameras are loaded
 				assert(!node->camera->projection.valueless_by_exception());
+				
+				assert(loaded_cameras.find(node->camera->name) != loaded_cameras.end());
 
 				S72::Camera::Perspective perspective = get<S72::Camera::Perspective>(node->camera->projection);
 				loaded_cameras[node->camera->name] = BasicCamera{
@@ -1152,6 +1213,7 @@ void Tutorial::update(float dt) {
 					.far = perspective.far,
 				};
 			}
+
 			if(node->light != nullptr){//two lights for A1
 				//resolve the variant				
 				std::variant< S72::Light::Sun, S72::Light::Sphere, S72::Light::Spot > &v = node->light->source;
@@ -1192,47 +1254,41 @@ void Tutorial::update(float dt) {
 				current_nodes.emplace_back(child, world_from_local);
 			}
 		}
-		if(rtg.configuration.required_camera != "") {// if there is a command-line specified camera
-			if(loaded_cameras.find(rtg.configuration.required_camera) == loaded_cameras.end()){//and you can't find it *~*
-				throw std::runtime_error(
-					"Required camera named '" + rtg.configuration.required_camera +
-					"' was not found");
+		
+	}
+
+	//----Update camera----
+	{//compute CLIP_FROM_WORLD based on what camera mode it is now
+		if(camera_mode == CameraMode::Scene){//unresponsive camera orbiting the origin
+			if(current_camera == loaded_cameras.end()){//hard coded scene camera that rotates around target
+				float ang = float(M_PI) * 2.0f * (time/5.0f);
+				CLIP_FROM_WORLD = perspective(
+					60.0f * float(M_PI) / 180.0f, //vfov
+					rtg.swapchain_extent.width / float(rtg.swapchain_extent.height), //aspect
+					0.1f, //near
+					1000.0f //far
+				) * look_at(
+					vec3(13.0f * std::cos(ang), 13.0f * std::sin(ang), 5.0f), //eye
+					vec3(0.0f, 0.0f, 5.0f), //target
+					vec3(0.0f, 0.0f, 1.0f) //up
+				);
 			}
-			//however if you do find it !o!
-			current_camera = loaded_cameras.find(rtg.configuration.required_camera);
-		}
-		else{//if there is no camera specified
-			current_camera = loaded_cameras.begin();
+			else{//fixed, potentially keyframed camera that is loaded from s72 file
+				CLIP_FROM_WORLD = current_camera->second.clip_from_world();
+			}
+		} else if(camera_mode == CameraMode::Free){
+			CLIP_FROM_WORLD = free_camera.clip_from_world(rtg.swapchain_extent.width / float(rtg.swapchain_extent.height));//aspect passed in 
+		}else if(camera_mode == CameraMode::Debug){
+			CLIP_FROM_WORLD = debug_camera.clip_from_world(rtg.swapchain_extent.width / float(rtg.swapchain_extent.height));//aspect passed in
+			//draw frustrum for previous camera
+			add_debug_lines_frustrum();
+
+		}else {
+			assert(0 && "only three camera modes");
 		}
 	}
 
-	if(camera_mode == CameraMode::Scene){//unresponsive camera orbiting the origin
-		if(rtg.configuration.required_camera == ""){//hard coded scene camera that rotates around target
-			float ang = float(M_PI) * 2.0f * (time/5.0f);
-			CLIP_FROM_WORLD = perspective(
-				60.0f * float(M_PI) / 180.0f, //vfov
-				rtg.swapchain_extent.width / float(rtg.swapchain_extent.height), //aspect
-				0.1f, //near
-				1000.0f //far
-			) * look_at(
-				vec3(13.0f * std::cos(ang), 13.0f * std::sin(ang), 5.0f), //eye
-				vec3(0.0f, 0.0f, 5.0f), //target
-				vec3(0.0f, 0.0f, 1.0f) //up
-			);
-		}
-		else{//fixed, potentially keyframed camera that is loaded from s72 file
-			CLIP_FROM_WORLD = current_camera->second.clip_from_world();
-		}
-	} else if(camera_mode == CameraMode::Free){
-		CLIP_FROM_WORLD = perspective(
-			60.0f * float(M_PI) / 180.0f, //vfov
-			rtg.swapchain_extent.width / float(rtg.swapchain_extent.height), //aspect
-			0.1f, //near
-			1000.0f //far
-		) * orbit(free_camera.target, free_camera.azimuth, free_camera.elevation, free_camera.radius);
-	}else {
-		assert(0 && "only two camera modes");
-	}
+
 	
 	
 	if(default_world_lights){ //moving sun and sky:
@@ -1255,68 +1311,70 @@ void Tutorial::update(float dt) {
 	}
 
 
-	// {//lines stuff
-	// 	if(starts.size() > 64){
-	// 		std::cout<<"too many nodes"<<std::endl;
-	// 		object_instances.clear();
-	// 		starts.clear();
-	// 		lines_vertices.clear();
-	// 		iters = 0;
-	// 	}
-	// 	if(lines_vertices.size() > 1024){
-	// 		std::cout<<"too many vertices"<<std::endl;
-	// 		object_instances.clear();
-	// 		starts.clear();
-	// 		lines_vertices.clear();
-	// 		iters = 0;
-	// 	}
+	{//lines stuff
+		// if(starts.size() > 64){
+		// 	std::cout<<"too many nodes"<<std::endl;
+		// 	object_instances.clear();
+		// 	starts.clear();
+		// 	lines_vertices.clear();
+		// 	iters = 0;
+		// }
+		// if(lines_vertices.size() > 1024){
+		// 	std::cout<<"too many vertices"<<std::endl;
+		// 	object_instances.clear();
+		// 	starts.clear();
+		// 	lines_vertices.clear();
+		// 	iters = 0;
+		// }
 
-	// 	if(starts.empty())starts.emplace_back(vec3(0.0f,0.0f,0.0f));
-	// 	if(time_elapsed > 0.5f && growing){
-	// 		size_t num_nodes = starts.size();
+
+		//----tree stuff----
+		// if(starts.empty())starts.emplace_back(vec3(0.0f,0.0f,0.0f));
+		// if(time_elapsed > 0.5f && growing){
+		// 	size_t num_nodes = starts.size();
 			
-	// 		auto verts = mesh_vertices.begin();//go through the mesh vertcies (like with poker cards) to grow them on trees
-	// 		for(size_t i = 0; i < num_nodes; ++i){
-	// 			vec3 cur_node = starts[i];
-	// 			starts.emplace_back(emplace_random_line(cur_node,iters));
+		// 	auto verts = meshes.begin();//go through the mesh vertcies (like with poker cards) to grow them on trees
+		// 	for(size_t i = 0; i < num_nodes; ++i){
+		// 		vec3 cur_node = starts[i];
+		// 		starts.emplace_back(emplace_random_line(cur_node,iters));
 				
-	// 			if(dist(engine) > 0.2f){
-	// 				vec3 fruit_node = emplace_random_line(cur_node,iters);
-	// 				//make fruits
-	// 				if(dist(engine) > 1.0f-(iters-5) * 0.07f && iters>5){
+		// 		if(dist(engine) > 0.2f){
+		// 			vec3 fruit_node = emplace_random_line(cur_node,iters);
+		// 			//make fruits
+		// 			if(dist(engine) > 1.0f-(iters-5) * 0.07f && iters>5){
 						
-	// 					{//spiky ball shrunken by a factor
+		// 				{//spiky ball shrunken by a factor
 							
-	// 						float scaling_factor = 0.5f;
-	// 						mat4 WORLD_FROM_LOCAL{
-	// 							scaling_factor, 0.0f,  0.0f, 0.0f,
-	// 							0.0f,scaling_factor, 0.0f, 0.0f,
-	// 							0.0f, 0.0f,   scaling_factor, 0.0f,
-	// 							fruit_node.x,fruit_node.y,fruit_node.z, 1.0f,
-	// 						};
-	// 						object_instances.emplace_back(ObjectInstance{
-	// 							.vertices = fruit_vertices,//which vertices to use
-	// 							.transform{
-	// 								.CLIP_FROM_LOCAL = CLIP_FROM_WORLD * WORLD_FROM_LOCAL,
-	// 								.WORLD_FROM_LOCAL = WORLD_FROM_LOCAL,
-	// 								.WORLD_FROM_LOCAL_NORMAL = WORLD_FROM_LOCAL,	
-	// 							},
-	// 							.texture = 1,
-	// 						});
-	// 					}
-	// 					verts++;
-	// 					if(verts == mesh_vertices.end())verts = mesh_vertices.begin();
-	// 				}
-	// 				//else branch
-	// 				else starts.emplace_back(fruit_node);
-	// 			}
-	// 		}
-	// 		// Remove the old nodes (keep only the new branches)
-    //     	starts.erase(starts.begin(), starts.begin() + num_nodes);
-	// 		time_elapsed = 0.0f;
-	// 		iters++;
-	// 	}
-	// }	
+		// 					float scaling_factor = 0.5f;
+		// 					mat4 WORLD_FROM_LOCAL{
+		// 						scaling_factor, 0.0f,  0.0f, 0.0f,
+		// 						0.0f,scaling_factor, 0.0f, 0.0f,
+		// 						0.0f, 0.0f,   scaling_factor, 0.0f,
+		// 						fruit_node.x,fruit_node.y,fruit_node.z, 1.0f,
+		// 					};
+		// 					object_instances.emplace_back(ObjectInstance{
+		// 						.vertices = fruit_vertices,//which vertices to use
+		// 						.transform{
+		// 							.CLIP_FROM_LOCAL = CLIP_FROM_WORLD * WORLD_FROM_LOCAL,
+		// 							.WORLD_FROM_LOCAL = WORLD_FROM_LOCAL,
+		// 							.WORLD_FROM_LOCAL_NORMAL = WORLD_FROM_LOCAL,	
+		// 						},
+		// 						.texture = 1,
+		// 					});
+		// 				}
+		// 				verts++;
+		// 				if(verts == meshes.end())verts = meshes.begin();
+		// 			}
+		// 			//else branch
+		// 			else starts.emplace_back(fruit_node);
+		// 		}
+		// 	}
+		// 	// Remove the old nodes (keep only the new branches)
+		// 	starts.erase(starts.begin(), starts.begin() + num_nodes);
+		// 	time_elapsed = 0.0f;
+		// 	iters++;
+		// }
+	}	
 
 	for(auto & obj: object_instances){
 		//update camera matrix
@@ -1400,11 +1458,11 @@ vec3 Tutorial::emplace_random_line(vec3 start, uint32_t iter){
 	uint8_t b = (static_cast<uint8_t>(std::floor(color_key * 238.0f)));
 	uint8_t a = 1;
 	lines_vertices.emplace_back(PosColVertex{
-		.Position{.x = start.x, .y = start.y, .z = start.z},
+		.Position = start,
 		.Color{.r = r, .g = g, .b = b, .a = a},
 	});
 	lines_vertices.emplace_back(PosColVertex{
-		.Position{.x = new_location.x, .y = new_location.y, .z = new_location.z},
+		.Position = new_location,
 	});
 	return new_location;
 }
@@ -1418,9 +1476,25 @@ void Tutorial::on_input(InputEvent const & evt) {
 	}
 	//general controls
 	if(evt.type == InputEvent::KeyDown && evt.key.key == GLFW_KEY_TAB){
-		//switch camera modes
-		camera_mode = CameraMode((int(camera_mode) + 1) % 2);
+		//switch between 2 camera modes
+		if(camera_mode != CameraMode::Debug)camera_mode = CameraMode((int(camera_mode) + 1) % 2);
+		else if(camera_mode == CameraMode::Debug)prev_camera_mode = CameraMode((int(prev_camera_mode) + 1) % 2);
 		return;
+	}
+	if(evt.type == InputEvent::KeyDown && evt.key.key == GLFW_KEY_D){
+		//go between debug and not debug
+		CameraMode temp_current_mode = camera_mode;
+		camera_mode = prev_camera_mode;
+		prev_camera_mode = temp_current_mode;
+		return;
+	}
+	if(evt.type == InputEvent::KeyDown && evt.key.key == GLFW_KEY_S){
+		std::cout<<loaded_cameras.size()<<"previous camera: "<<current_camera->first<<std::endl;
+		current_camera++;
+		if(current_camera == loaded_cameras.end()){
+			current_camera = loaded_cameras.begin();
+		}
+		std::cout<<loaded_cameras.size()<<"current camera: "<<current_camera->first<<std::endl;
 	}
 	if(evt.type == InputEvent::KeyDown && evt.key.key == GLFW_KEY_G){
 		//toggle growing
@@ -1498,5 +1572,245 @@ void Tutorial::on_input(InputEvent const & evt) {
 			};
 			return;
 		}
+	}else if(camera_mode == CameraMode::Debug){
+		if(evt.type == InputEvent::MouseWheel){
+			//zoom in/out
+			debug_camera.radius *= std::pow(1.1f , -evt.wheel.y);
+			debug_camera.radius = std::min(debug_camera.radius, debug_camera.far);
+			debug_camera.radius = std::max(debug_camera.radius, debug_camera.near);
+		}
+		if(evt.type == InputEvent::MouseButtonDown && evt.button.button == GLFW_MOUSE_BUTTON_LEFT && !(evt.button.mods & GLFW_MOD_SHIFT)){
+			//start tumbling
+			float init_x = evt.button.x;
+			float init_y = evt.button.y;
+			OrbitCamera init_camera = debug_camera;
+
+			action = [this, init_x, init_y, init_camera](InputEvent const &evt){
+				if(evt.type == InputEvent::MouseButtonUp && evt.button.button ==GLFW_MOUSE_BUTTON_LEFT){
+					//cancel upon button lifted:
+					action = nullptr;
+					return;
+				}
+				if(evt.type == InputEvent::MouseMotion){
+					//handle panning
+					float dx = (evt.motion.x - init_x) / rtg.swapchain_extent.height;
+					float dy =-(evt.motion.y - init_y) / rtg.swapchain_extent.height; //note: negated because glfw uses y-down coordinate system
+					
+					//rotate camera based on motion:
+					float speed = float(M_PI);
+					float flip_x = (std::abs(init_camera.elevation) > 0.5f * float(M_PI) ? -1.0f : 1.0f); //switch azimuth rotation when camera is upside-down
+					debug_camera.azimuth = init_camera.azimuth - dx * speed * flip_x;
+					debug_camera.elevation = init_camera.elevation - dy * speed;
+
+					//reduce azimuth and elevation to [-pi,pi] range:
+					const float twopi = 2.0f * float(M_PI);
+					debug_camera.elevation -= std::round(debug_camera.elevation / twopi) * twopi;
+					debug_camera.azimuth -= std::round(debug_camera.azimuth / twopi) * twopi;
+					return;
+				}
+			};
+			return;
+		}
+		if(evt.type == InputEvent::MouseButtonDown && evt.button.button == GLFW_MOUSE_BUTTON_LEFT && (evt.button.mods & GLFW_MOD_SHIFT)){
+			//start panning
+			float init_x = evt.button.x;
+			float init_y = evt.button.y;
+			OrbitCamera init_camera = debug_camera;
+			std::cout<<"start panning"<<std::endl;
+			//handle panning
+			action = [this, init_x, init_y, init_camera](InputEvent const &evt){
+				if(evt.type == InputEvent::MouseButtonUp && evt.button.button ==GLFW_MOUSE_BUTTON_LEFT){
+					//cancel upon button lifted:
+					action = nullptr;
+					return;
+				}
+				if(evt.type == InputEvent::MouseMotion){
+					//handle panning
+					float height = 2.0f * std::tan(debug_camera.fov * 0.5f) * debug_camera.radius;
+					//multiplying dx and dy by height because farther camera should move more so that stuff should glide across screen the same?
+					float dx = (evt.motion.x - init_x) / rtg.swapchain_extent.height * height;
+					float dy =-(evt.motion.y - init_y) / rtg.swapchain_extent.height * height; //note: negated because glfw uses y-down coordinate system
+					
+					//use orbit the extract right and up vectors
+					mat4 camera_from_world = orbit(init_camera.target, init_camera.azimuth, init_camera.elevation, init_camera.radius);
+					vec3 right = vec3(camera_from_world[0], camera_from_world[4], camera_from_world[8]);
+					vec3 up = vec3(camera_from_world[1], camera_from_world[5], camera_from_world[9]);
+					debug_camera.target = init_camera.target - dx * right - dy * up;				
+					return;
+				}
+			};
+			return;
+		}
 	}
+}
+
+void Tutorial::add_debug_lines_frustrum(){
+	//----frustrum drawing
+	std::array<vec3, 8>frustrum_corners;//get the corners
+	vec3 color;
+	if(prev_camera_mode == CameraMode::Scene){
+		frustrum_corners = current_camera->second.get_frustum_corners();
+		color = vec3{0.0,0.0,1.0};
+	}
+	else if(prev_camera_mode == CameraMode::Free){
+		frustrum_corners = free_camera.get_frustum_corners(rtg.swapchain_extent.width / float(rtg.swapchain_extent.height));//aspect passed in 
+		color = vec3{0.0,1.0,0.0};
+	}
+	else{
+		assert(0 && "prev can't also be debug");
+	}
+	// Order: near plane (bottom-left, bottom-right, top-right, top-left),
+	//        far plane (bottom-left, bottom-right, top-right, top-left)
+	uint8_t r = uint8_t(std::round(256 * color.x));
+	uint8_t g = uint8_t(std::round(256 * color.y));
+	uint8_t b = uint8_t(std::round(256 * color.z));
+
+	auto emplace_line = [&](uint32_t from, uint32_t to){
+		lines_vertices.emplace_back(PosColVertex{.Position = frustrum_corners[from], .Color = {.r = r, .g = g, .b = b, .a = 255}});
+		lines_vertices.emplace_back(PosColVertex{.Position = frustrum_corners[to], .Color = {.r = r, .g = g, .b = b, .a = 255}});
+	};
+	//near face
+	emplace_line(0,1);
+	emplace_line(1,2);
+	emplace_line(2,3);
+	emplace_line(3,0);
+	//far face
+	emplace_line(4,5);
+	emplace_line(5,6);
+	emplace_line(6,7);
+	emplace_line(7,4);
+	//connections
+	emplace_line(0,4);
+	emplace_line(1,5);
+	emplace_line(2,6);
+	emplace_line(3,7);
+
+}
+
+void Tutorial::add_debug_lines_bbox(vec3 min, vec3 max, mat4 WORLD_FROM_LOCAL){
+
+	
+	//local corners
+	std::array<vec3, 8>bbox_corners;
+	bbox_corners[0] = vec3{min.x,min.y,min.z};
+	bbox_corners[1] = vec3{max.x,min.y,min.z};
+	bbox_corners[2] = vec3{max.x,max.y,min.z};
+	bbox_corners[3] = vec3{min.x,max.y,min.z};
+	bbox_corners[4] = vec3{min.x,min.y,max.z};
+	bbox_corners[5] = vec3{max.x,min.y,max.z};
+	bbox_corners[6] = vec3{max.x,max.y,max.z};
+	bbox_corners[7] = vec3{min.x,max.y,max.z};
+
+	auto transform_corner = [&](uint32_t i){
+		bbox_corners[i] = (WORLD_FROM_LOCAL * vec4{bbox_corners[i].x, bbox_corners[i].y, bbox_corners[i].z, 1.0f}).xyz();
+	};
+	
+	for(uint32_t i = 0; i < 8; i++){
+		transform_corner(i);
+	}
+
+	auto emplace_line = [&](uint32_t from, uint32_t to){
+		lines_vertices.emplace_back(PosColVertex{.Position = bbox_corners[from], .Color = {.r = 0, .g = 255, .b = 0, .a = 255}});
+		lines_vertices.emplace_back(PosColVertex{.Position = bbox_corners[to], .Color = {.r = 0, .g = 255, .b = 0, .a = 255}});
+	};
+	//near face
+	emplace_line(0,1);
+	emplace_line(1,2);
+	emplace_line(2,3);
+	emplace_line(3,0);
+	//far face
+	emplace_line(4,5);
+	emplace_line(5,6);
+	emplace_line(6,7);
+	emplace_line(7,4);
+	//connections
+	emplace_line(0,4);
+	emplace_line(1,5);
+	emplace_line(2,6);
+	emplace_line(3,7);
+
+
+}
+
+
+std::array<vec3, 8> Tutorial::BasicCamera::get_frustum_corners()const{
+	std::array<vec3, 8> corners;
+	
+	// Calculate frustum dimensions at near plane
+	float near_height = 2.0f * near * std::tan(vfov * 0.5f);
+	float near_width = near_height * aspect;
+	
+	// Calculate frustum dimensions at far plane
+	float far_height = 2.0f * far * std::tan(vfov * 0.5f);
+	float far_width = far_height * aspect;
+	
+	// Build camera basis vectors
+	vec3 forward = normalized(dir);
+	vec3 right = normalized(cross(forward, up));
+	vec3 camera_up = cross(right, forward);
+	
+	// Near plane center and far plane center
+	vec3 near_center = eye + forward * near;
+	vec3 far_center = eye + forward * far;
+	
+	// Near plane corners
+	corners[0] = near_center - right * (near_width * 0.5f) - camera_up * (near_height * 0.5f); // bottom-left
+	corners[1] = near_center + right * (near_width * 0.5f) - camera_up * (near_height * 0.5f); // bottom-right
+	corners[2] = near_center + right * (near_width * 0.5f) + camera_up * (near_height * 0.5f); // top-right
+	corners[3] = near_center - right * (near_width * 0.5f) + camera_up * (near_height * 0.5f); // top-left
+	
+	// Far plane corners
+	corners[4] = far_center - right * (far_width * 0.5f) - camera_up * (far_height * 0.5f); // bottom-left
+	corners[5] = far_center + right * (far_width * 0.5f) - camera_up * (far_height * 0.5f); // bottom-right
+	corners[6] = far_center + right * (far_width * 0.5f) + camera_up * (far_height * 0.5f); // top-right
+	corners[7] = far_center - right * (far_width * 0.5f) + camera_up * (far_height * 0.5f); // top-left
+	
+	return corners;
+}
+
+std::array<vec3, 8> Tutorial::OrbitCamera::get_frustum_corners(float aspect) const{
+	std::array<vec3, 8> corners;
+
+	// Calculate camera position and orientation from orbit camera parameters
+	float cos_elev = std::cos(elevation);
+	float sin_elev = std::sin(elevation);
+	float cos_azim = std::cos(azimuth);
+	float sin_azim = std::sin(azimuth);
+	
+	vec3 eye = target + vec3{
+		radius * cos_elev * cos_azim,
+		radius * cos_elev * sin_azim,
+		radius * sin_elev
+	};
+	
+	// Camera basis vectors
+	vec3 forward = normalized(target - eye);
+	vec3 world_up = vec3{0.0f, 0.0f, 1.0f};
+	vec3 right = normalized(cross(forward, world_up));
+	vec3 up = cross(right, forward);
+	
+	
+	// Calculate frustum dimensions
+	float near_height = 2.0f * near * std::tan(fov * 0.5f);
+	float near_width = near_height * aspect;
+	float far_height = 2.0f * far * std::tan(fov * 0.5f);
+	float far_width = far_height * aspect;
+	
+	// Centers of near and far planes
+	vec3 near_center = eye + forward * near;
+	vec3 far_center = eye + forward * far;
+	
+	// Near plane corners
+	corners[0] = near_center - right * (near_width * 0.5f) - up * (near_height * 0.5f);
+	corners[1] = near_center + right * (near_width * 0.5f) - up * (near_height * 0.5f);
+	corners[2] = near_center + right * (near_width * 0.5f) + up * (near_height * 0.5f);
+	corners[3] = near_center - right * (near_width * 0.5f) + up * (near_height * 0.5f);
+	
+	// Far plane corners
+	corners[4] = far_center - right * (far_width * 0.5f) - up * (far_height * 0.5f);
+	corners[5] = far_center + right * (far_width * 0.5f) - up * (far_height * 0.5f);
+	corners[6] = far_center + right * (far_width * 0.5f) + up * (far_height * 0.5f);
+	corners[7] = far_center - right * (far_width * 0.5f) + up * (far_height * 0.5f);
+	
+	return corners;
 }

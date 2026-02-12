@@ -132,15 +132,27 @@ struct Tutorial : RTG::Application {
 	//-------------------------------------------------------------------
 	//loading s72
 	S72 scene72 = S72();
+	struct Item {
+		S72::Node* node;
+		mat4 parentWorld;
+	};
 
 	//static scene resources:
 	Helpers::AllocatedBuffer object_vertices;
-	struct ObjectVertices{
+	struct ObjectVertices{//vertex indecies for unique meshes
 		uint32_t first = 0;
 		uint32_t count = 0;
 	};
+	struct AABB{
+		vec3 max = vec3{-INFINITY,-INFINITY,-INFINITY};
+		vec3 min = vec3{INFINITY,INFINITY,INFINITY};
+	};
+	struct Mesh{//stats of a unique mesh asset
+		ObjectVertices verts;
+		AABB bbox;
+	};
 	ObjectVertices fruit_vertices;//these vertices are hard coded 
-	std::map<std::string, ObjectVertices> mesh_vertices;
+	std::map<std::string, Mesh> meshes;
 
 	std::unordered_map<std::string, uint32_t> texture_table;
 	std::vector<Helpers::AllocatedImage> textures;
@@ -178,9 +190,11 @@ struct Tutorial : RTG::Application {
 	enum class CameraMode {
 		Scene = 0,
 		Free = 1,
+		Debug = 2,
 	} camera_mode = CameraMode::Scene;
 
-	
+	CameraMode prev_camera_mode = CameraMode::Debug;
+
 	//generic camera type with the bare minimum to construct a CLIP from World
 	struct BasicCamera{
 		vec3 eye;//translation of the world transform
@@ -190,10 +204,14 @@ struct Tutorial : RTG::Application {
 		float vfov;
 		float near;
 		float far = std::numeric_limits< float >::infinity(); //optional, if not specified will be set to infinity
-
+		
 		mat4 clip_from_world(){
 			return perspective(vfov,aspect,near,far) * look_at_free(eye,dir,up);
 		}
+		// Returns the 8 corners of the view frustum in world space
+		// Order: near plane (bottom-left, bottom-right, top-right, top-left),
+		//        far plane (bottom-left, bottom-right, top-right, top-left)
+		std::array<vec3, 8> get_frustum_corners()const;
 	};
 
 	//used when camera_mode == CameraMode::Free:
@@ -205,7 +223,26 @@ struct Tutorial : RTG::Application {
 		float fov = 60.0f / 180.0f * float(M_PI); //vertical field of view (radians)
 		float near = 0.1f; //near clipping plane
 		float far = 1000.0f; //far clipping plane
+
+		mat4 clip_from_world(float aspect){
+			return perspective(
+			60.0f * float(M_PI) / 180.0f, //vfov
+			aspect, //aspect
+			near, //near
+			far //far
+			) * orbit(target, azimuth, elevation, radius);
+		}
+
+		std::array<vec3, 8> get_frustum_corners(float aspect)const;
+		
 	} free_camera;
+
+	//----Debug Camera----
+	OrbitCamera debug_camera;//used when camera_mode == CameraMode::Debug:
+	void add_debug_lines_frustrum();
+	void add_debug_lines_bbox(vec3 min, vec3 max, mat4 WORLD_FROM_LOCAL);
+
+
 	mat4 CLIP_FROM_WORLD;
 
 	//camera loaded in from s72 files

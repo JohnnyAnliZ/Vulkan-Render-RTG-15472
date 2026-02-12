@@ -2,6 +2,7 @@ maek-cache.json
 objs/
 outputs/
 scenes/
+evidence/
 spv/
 .vs/
 bin/main

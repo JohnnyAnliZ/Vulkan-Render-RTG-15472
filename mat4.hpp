@@ -23,6 +23,11 @@ struct vec3{
 		y = 0;
 		z = 0;
 	}
+	vec3(float init){
+		x= init;
+		y= init;
+		z= init;
+	}
 	union {
 		struct {
 			float x;
@@ -158,6 +163,10 @@ struct mat4 {
 		// inverse of unit quaternion = conjugate
 		return rotate(quat{ -q.x, -q.y, -q.z, q.w });
 	}
+
+	//this is taken from https://graphics.stanford.edu/~mdfisher/Code/Engine/Matrix4.cpp.html
+	mat4 inverse();
+
 };
 static_assert(sizeof(mat4) == 16 * 4 );
 

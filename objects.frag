@@ -20,7 +20,7 @@ layout(location = 0) out vec4 outColor;
 void main(){
     vec3 n = normalize(normal);
     //direction that the light is from(this should point to -z)
-    vec3 albedo = texture(TEXTURE, vec2(texCoord.y,texCoord.x)).rgb;
+    vec3 albedo = texture(TEXTURE, vec2(texCoord.y,-texCoord.x)).rgb;
     vec3 l = vec3(0,0,1 );
     //hemisphere sky + directional sun:
     vec3 energy =

@@ -41,6 +41,12 @@ struct S72 {
 	//NOTE: redefine these for your vector and quaternion types of choice:
 	using color = vec3;
 	vec3 linear_to_srgb(vec3 linear);
+	inline static float sRGB(float x){
+    if (x <= 0.00031308f)
+        return 12.92f * x;
+    else
+        return 1.055f*std::pow(x,(1.0f / 2.4f) ) - 0.055f;
+	};
 	//-------------------------------------------------
 
 	static S72 load(std::string const &file); //NOTE: throws on error
@@ -250,6 +256,7 @@ struct S72 {
 		bool loadTextureFile(const std::string& filename) {
 			int width,height,channels;
 			uint32_t desired_channels = 4;//rgba
+			stbi_set_flip_vertically_on_load(1);
 			unsigned char* loaded_data = stbi_load(filename.c_str(), &width, &height, &channels, desired_channels);
 			if (!loaded_data) {
 				std::cerr << "Error: Failed to load image." << std::endl;

@@ -985,12 +985,6 @@ S72 S72::load(std::string const &scene_file) {
 
 //adapted from https://gamedev.stackexchange.com/questions/92015/optimized-linear-to-srgb-glsl
 vec3 S72::linear_to_srgb(vec3 linear){
-	auto sRGB = [&](float x) -> float {
-    if (x <= 0.00031308)
-        return 12.92 * x;
-    else
-        return 1.055*pow(x,(1.0 / 2.4) ) - 0.055;
-	};
-
+	
 	return vec3(sRGB(linear.x),sRGB(linear.y),sRGB(linear.z));
 }

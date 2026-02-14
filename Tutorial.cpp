@@ -512,9 +512,9 @@ Tutorial::Tutorial(RTG &rtg_) : rtg(rtg_) {
 					data.reserve(size * size);
 
 					S72::color c = get<S72::color>(lamb.albedo);
-					uint8_t r = uint8_t(std::round(c.x*255));
-					uint8_t g = uint8_t(std::round(c.y*255));
-					uint8_t b = uint8_t(std::round(c.z*255));
+					uint8_t r = uint8_t(std::round(255 * S72::sRGB(c.x)));
+					uint8_t g = uint8_t(std::round(255 * S72::sRGB(c.y)));
+					uint8_t b = uint8_t(std::round(255 * S72::sRGB(c.z)));
 					uint8_t a = 0xff;
 					data.emplace_back( uint32_t(r) | (uint32_t(g) << 8) | (uint32_t(b) << 16) | (uint32_t(a) << 24) );
 					assert(data.size() == size*size);
@@ -1177,25 +1177,38 @@ void Tutorial::update(float dt) {
 
 			if(node->mesh != nullptr){//if the node has mesh, instance it
 				assert(meshes.find(node->mesh->name) != meshes.end());//check that the mesh's vertices has been loaded
+				//std::cout<<"instancing "<<node->mesh->name<<". material is"<<node->mesh->material->name<<std::endl;
 
-				//std::cout<<"instancing "<<node->mesh->name<<"material is"<<node->mesh->material->name<<std::endl;
-				object_instances.emplace_back(
-					ObjectInstance{
-						.vertices = meshes[node->mesh->name].verts,
-						.transform{
-							.CLIP_FROM_LOCAL = CLIP_FROM_WORLD * world_from_local,
-							.WORLD_FROM_LOCAL = world_from_local,
-							.WORLD_FROM_LOCAL_NORMAL = world_from_local,//not correct, TODO	
-						},
-						.texture = texture_table.at(node->mesh->material->name),
-					}
-				);
+				//Try to cull it 
+				AABB &b = meshes[node->mesh->name].bbox;
+				std::array<vec3, 8> bbox_corners;
+				b.get_box_corners(world_from_local, bbox_corners);
+				std::array<vec3, 8> frustrum_corners;
+				if(camera_mode == CameraMode::Free || prev_camera_mode == CameraMode::Free){
+					frustrum_corners = free_camera.get_frustum_corners(rtg.swapchain_extent.width / float(rtg.swapchain_extent.height));
+				}
+				else if(camera_mode == CameraMode::Scene || prev_camera_mode == CameraMode::Scene){
+					frustrum_corners = current_camera->second.get_frustum_corners();
+				}
+				//cull the box
+				if(!do_cull(frustrum_corners, bbox_corners)){
+					object_instances.emplace_back(
+						ObjectInstance{
+							.vertices = meshes[node->mesh->name].verts,
+							.transform{
+								.CLIP_FROM_LOCAL = CLIP_FROM_WORLD * world_from_local,
+								.WORLD_FROM_LOCAL = world_from_local,
+								.WORLD_FROM_LOCAL_NORMAL = world_from_local,//not correct, TODO	
+							},
+							.texture = texture_table.at(node->mesh->material->name),
+						}
+					);
+				}			
 				if(camera_mode == CameraMode::Debug){
-					AABB &b = meshes[node->mesh->name].bbox;
-					add_debug_lines_bbox(b.min, b.max, world_from_local);	
+					add_debug_lines_bbox(b, world_from_local);	
 				}	
 			}
-		 
+		
 			if(node->camera != nullptr){
 				//now that all the cameras are loaded
 				assert(!node->camera->projection.valueless_by_exception());
@@ -1687,27 +1700,12 @@ void Tutorial::add_debug_lines_frustrum(){
 
 }
 
-void Tutorial::add_debug_lines_bbox(vec3 min, vec3 max, mat4 WORLD_FROM_LOCAL){
+void Tutorial::add_debug_lines_bbox(AABB &bbox, mat4 WORLD_FROM_LOCAL){
 
 	
 	//local corners
 	std::array<vec3, 8>bbox_corners;
-	bbox_corners[0] = vec3{min.x,min.y,min.z};
-	bbox_corners[1] = vec3{max.x,min.y,min.z};
-	bbox_corners[2] = vec3{max.x,max.y,min.z};
-	bbox_corners[3] = vec3{min.x,max.y,min.z};
-	bbox_corners[4] = vec3{min.x,min.y,max.z};
-	bbox_corners[5] = vec3{max.x,min.y,max.z};
-	bbox_corners[6] = vec3{max.x,max.y,max.z};
-	bbox_corners[7] = vec3{min.x,max.y,max.z};
-
-	auto transform_corner = [&](uint32_t i){
-		bbox_corners[i] = (WORLD_FROM_LOCAL * vec4{bbox_corners[i].x, bbox_corners[i].y, bbox_corners[i].z, 1.0f}).xyz();
-	};
-	
-	for(uint32_t i = 0; i < 8; i++){
-		transform_corner(i);
-	}
+	bbox.get_box_corners(WORLD_FROM_LOCAL, bbox_corners);
 
 	auto emplace_line = [&](uint32_t from, uint32_t to){
 		lines_vertices.emplace_back(PosColVertex{.Position = bbox_corners[from], .Color = {.r = 0, .g = 255, .b = 0, .a = 255}});
@@ -1813,4 +1811,88 @@ std::array<vec3, 8> Tutorial::OrbitCamera::get_frustum_corners(float aspect) con
 	corners[7] = far_center - right * (far_width * 0.5f) + up * (far_height * 0.5f);
 	
 	return corners;
+}
+
+
+bool Tutorial::do_cull(std::array<vec3, 8> const &frustrum_corners, std::array<vec3, 8> const &box_corners){
+	auto test_axis = [&](vec3 const &dir) -> bool{
+		//plot all points on a number line
+		std::array<float, 8> box_points;
+		std::array<float, 8> frustrum_points;
+		for(uint32_t i = 0; i < 8; i++){
+			box_points[i] = dot(box_corners[i], dir);
+			frustrum_points[i] = dot(frustrum_corners[i], dir);
+		}
+		//check for overlap
+		std::sort(box_points.begin(), box_points.end());
+		std::sort(frustrum_points.begin(), frustrum_points.end());
+
+		if(box_points[7] < frustrum_points[0] || box_points[0] > frustrum_points[7]){
+			return true;
+		}
+		return false;
+	};
+
+
+	//------go through all the faces' Separating axes
+	vec3 box_axes[3] = {
+		box_corners[1] - box_corners[0], // right edge (x-axis)
+		box_corners[3] - box_corners[0], // up edge (y-axis)
+		box_corners[4] - box_corners[0], // forward edge (z-axis)
+	};
+	{// Test box face normals (3 axes)
+		for(uint32_t i = 0; i < 3; i++){
+			if(test_axis(box_axes[i])) return true;
+		}
+	}
+	//------Test frustum face normals (6 faces)
+	vec3 frustrum_edges[6] = {
+		frustrum_corners[1] - frustrum_corners[0],// near face: bottom, right
+		frustrum_corners[2] - frustrum_corners[1], 
+		frustrum_corners[4] - frustrum_corners[0],// bottom left projecting edge
+		frustrum_corners[6] - frustrum_corners[2],// top right projecting edge
+		frustrum_corners[5] - frustrum_corners[1],//bottom right projecting edge
+		frustrum_corners[7] - frustrum_corners[3],//top left projecting edges
+	};
+	{// Compute face normals
+		vec3 frustrum_normals[5] = {
+			cross(frustrum_edges[0], frustrum_edges[1]), // near
+			cross(frustrum_edges[2], frustrum_edges[1]), // left
+			cross(frustrum_edges[3], frustrum_edges[1]), // right
+			cross(frustrum_edges[2], frustrum_edges[0]), // top
+			cross(frustrum_edges[3], frustrum_edges[0]), // bottom
+		};
+		
+		for(uint32_t i = 0; i < 5; i++){
+			if(test_axis(frustrum_normals[i])) return true;
+		}
+	}
+	//------go through all the cross products
+	//bbox x axis, y axis, z axis cross...
+	for(vec3 const &bedge: box_axes){
+		//frustrum near horizontal edge, near vertical edge, four projecting edges
+		for(vec3 const &fedge : frustrum_edges){
+			if(test_axis(cross(bedge, fedge))) return true;
+		}
+	}
+	return false;//none of the SATs work
+}
+
+void Tutorial::AABB::get_box_corners(mat4 WORLD_FROM_LOCAL, std::array<vec3, 8> &box_corners){
+	box_corners[0] = vec3{min.x,min.y,min.z};
+	box_corners[1] = vec3{max.x,min.y,min.z};
+	box_corners[2] = vec3{max.x,max.y,min.z};
+	box_corners[3] = vec3{min.x,max.y,min.z};
+	box_corners[4] = vec3{min.x,min.y,max.z};
+	box_corners[5] = vec3{max.x,min.y,max.z};
+	box_corners[6] = vec3{max.x,max.y,max.z};
+	box_corners[7] = vec3{min.x,max.y,max.z};
+
+	auto transform_corner = [&](uint32_t i){
+		box_corners[i] = (WORLD_FROM_LOCAL * vec4{box_corners[i].x, box_corners[i].y, box_corners[i].z, 1.0f}).xyz();
+	};
+	
+	for(uint32_t i = 0; i < 8; i++){
+		transform_corner(i);
+	}
 }

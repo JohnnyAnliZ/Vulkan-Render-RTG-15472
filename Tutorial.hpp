@@ -146,6 +146,7 @@ struct Tutorial : RTG::Application {
 	struct AABB{
 		vec3 max = vec3{-INFINITY,-INFINITY,-INFINITY};
 		vec3 min = vec3{INFINITY,INFINITY,INFINITY};
+		void get_box_corners(mat4 WORLD_FROM_LOCAL, std::array<vec3, 8> &box_corners);
 	};
 	struct Mesh{//stats of a unique mesh asset
 		ObjectVertices verts;
@@ -237,10 +238,19 @@ struct Tutorial : RTG::Application {
 		
 	} free_camera;
 
+
+	//----Culling----
+
+	//takes in corners of both boxes in world space, returns true if the box could be culled
+	bool do_cull(std::array<vec3, 8> const &frustrum_corners, 
+				std::array<vec3, 8> const &box_corners
+	);
+
+
 	//----Debug Camera----
 	OrbitCamera debug_camera;//used when camera_mode == CameraMode::Debug:
 	void add_debug_lines_frustrum();
-	void add_debug_lines_bbox(vec3 min, vec3 max, mat4 WORLD_FROM_LOCAL);
+	void add_debug_lines_bbox(AABB &bbox, mat4 WORLD_FROM_LOCAL);
 
 
 	mat4 CLIP_FROM_WORLD;

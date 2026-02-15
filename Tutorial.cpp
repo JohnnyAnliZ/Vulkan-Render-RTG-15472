@@ -6,6 +6,7 @@
 
 #include <array>
 #include <cassert>
+#include <algorithm>
 #include <cmath>
 #include <cstring>
 #include <iostream>
@@ -30,8 +31,8 @@ Tutorial::Tutorial(RTG &rtg_) : rtg(rtg_) {
 		return ;
 	}
 
-	{//load nodes into a new nodes map, trimming the nodes that don't have or lead to anything(meshes, lights, cameras)
-		//This is not necessary, not gonna do this now
+	{//load nodes into a new nodes map, pruning the nodes that don't have or lead to anything(meshes, lights, cameras)
+		//pruning is not necessary, not gonna do this now, right now this pass is just to load the cameras so they have permanent map references
 		std::deque<Item> current_nodes;
 		for(auto n : scene72.scene.roots){//start with the root nodes
 			current_nodes.emplace_back(Item{n,mat4::identity()});
@@ -1161,6 +1162,63 @@ void Tutorial::update(float dt) {
 	lines_vertices.clear(); 
 	object_instances.clear();
 
+	{//go through the animation drivers to update nodes' transforms
+		for(S72::Driver const &d: scene72.drivers){
+			if(scene72.nodes.find(d.node.name) == scene72.nodes.end()){
+				std::cerr<<"can't find "<< d.node.name<< " from the scene's nodes"<<std::endl;
+			}		
+			S72::Node &n = scene72.nodes.at(d.node.name);
+			//get the start keyframe index
+			auto it = std::upper_bound(d.times.begin(), d.times.end(), time_elapsed)-1;//assuming d.times start with zero, upper_bound should never return the first iterator 
+			uint32_t offset = uint32_t(it - d.times.begin()); 
+			float t = time_elapsed - *it;
+			float t_percentage;
+			//if it is the last keyframe, just set 
+			if(it == d.times.end()-1){
+				switch (d.channel){
+					case  S72::Driver::Channel::translation:
+						n.translation = vec3(&d.values[offset * 3]);
+						break;
+					case  S72::Driver::Channel::rotation:
+						n.rotation = quat(&d.values[offset * 4]);
+						break;
+					case  S72::Driver::Channel::scale:
+						n.scale = vec3(&d.values[offset * 3]);
+						break;
+				}
+				continue;
+			}
+			else{
+				float t_total = *(it+1) - *it;
+				t_percentage = t/t_total;//between 0 and 1
+			}
+			
+			
+
+			switch (d.channel){
+				case  S72::Driver::Channel::translation:{
+					vec3 trans0(&d.values[offset * 3]);
+					vec3 trans1(&d.values[(offset + 1) * 3]);
+					n.translation = (trans1 - trans0) * t_percentage + trans0;
+					break;
+				}	
+				case  S72::Driver::Channel::rotation:
+				{
+					quat r0(&d.values[offset * 4]);//quats have a block size of 4 floats
+					quat r1(&d.values[(offset + 1) * 4]);	
+					n.rotation = quat::slerp(r0, r1, t_percentage);
+					break;
+				}
+				case  S72::Driver::Channel::scale:{
+					vec3 scl0(&d.values[offset * 3]);
+					vec3 scl1(&d.values[(offset + 1) * 3]);
+					n.scale = (scl1 - scl0) * t_percentage + scl0;
+					break;
+				}
+			}	
+		}
+	}
+
 	{//load s72 into the object instances, two lights, and cameras
 		
 		std::deque<Item> current_nodes;
@@ -1171,6 +1229,7 @@ void Tutorial::update(float dt) {
 		while(!current_nodes.empty()){//go through the graph using this queue bfs setup (this creates two instances of a child if two nodes have it as one of the children)
 			auto [node, world_from_parent] = current_nodes.front();
 			current_nodes.pop_front();
+
 
 			//this node's world transform
 			mat4 world_from_local = world_from_parent * node->parent_from_local();//accumulate transform
@@ -1560,7 +1619,6 @@ void Tutorial::on_input(InputEvent const & evt) {
 			float init_x = evt.button.x;
 			float init_y = evt.button.y;
 			OrbitCamera init_camera = free_camera;
-			std::cout<<"start panning"<<std::endl;
 			//handle panning
 			action = [this, init_x, init_y, init_camera](InputEvent const &evt){
 				if(evt.type == InputEvent::MouseButtonUp && evt.button.button ==GLFW_MOUSE_BUTTON_LEFT){
@@ -1629,7 +1687,6 @@ void Tutorial::on_input(InputEvent const & evt) {
 			float init_x = evt.button.x;
 			float init_y = evt.button.y;
 			OrbitCamera init_camera = debug_camera;
-			std::cout<<"start panning"<<std::endl;
 			//handle panning
 			action = [this, init_x, init_y, init_camera](InputEvent const &evt){
 				if(evt.type == InputEvent::MouseButtonUp && evt.button.button ==GLFW_MOUSE_BUTTON_LEFT){

@@ -8,7 +8,63 @@
 
 
 
-using quat = struct quat_internal{ float x, y, z, w; };
+struct quat {
+    union {
+        struct { float x, y, z, w; };
+        float data[4];
+    };
+
+    quat() : x(0), y(0), z(0), w(1) {}
+    quat(float _x, float _y, float _z, float _w)
+        : x(_x), y(_y), z(_z), w(_w) {}
+
+	quat(float const* ptr)
+    : x(ptr[0]), y(ptr[1]), z(ptr[2]), w(ptr[3]) {}
+
+    static quat slerp(quat const &v0, quat const &v1, float t);
+
+	void normalize() {
+		float len = std::sqrt(x*x + y*y + z*z + w*w);
+
+		if (len > 0.0f) {
+			float inv = 1.0f / len;
+			x *= inv;
+			y *= inv;
+			z *= inv;
+			w *= inv;
+		}
+	}
+};
+
+
+inline float dot(quat const& a, quat const& b) {
+    return a.x*b.x + a.y*b.y + a.z*b.z + a.w*b.w;
+}
+
+inline quat operator+(quat const& a, quat const& b) {
+    return quat{a.x+b.x, a.y+b.y, a.z+b.z, a.w+b.w};
+}
+
+inline quat operator-(quat const& a, quat const& b) {
+    return quat{a.x-b.x, a.y-b.y, a.z-b.z, a.w-b.w};
+}
+
+inline quat operator*(quat const& q, float s) {
+    return quat{q.x*s, q.y*s, q.z*s, q.w*s};
+}
+
+inline quat operator*(float s, quat const& q) {
+    return q * s;
+}
+
+inline float length(quat const& q) {
+    return std::sqrt(dot(q,q));
+}
+
+inline quat normalized(quat const& q) {
+    return q * (1.0f / length(q));
+}
+
 
 
 
@@ -28,6 +84,12 @@ struct vec3{
 		y= init;
 		z= init;
 	}
+	vec3(float const *f_ptr){
+		x = f_ptr[0];
+		y = f_ptr[1];
+		z = f_ptr[2];
+
+	}
 	union {
 		struct {
 			float x;
@@ -38,6 +100,7 @@ struct vec3{
 	};
 };
 static_assert(sizeof(vec3) == 3 * 4 );
+
 
 
 
@@ -176,6 +239,8 @@ static_assert(sizeof(mat4) == 16 * 4 );
 inline float dot(vec4 const &a,vec4 const &b){
     return a.x*b.x+ a.y*b.y+ a.z*b.z+ a.w*b.w;
 }
+
+
 
 
 

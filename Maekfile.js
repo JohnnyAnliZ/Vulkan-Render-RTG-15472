@@ -34,6 +34,7 @@ const main_objs = [
 	maek.CPP('PosNorTanTexVertex.cpp'),
 	maek.CPP('RTG.cpp'),
 	maek.CPP('Helpers.cpp'),
+	maek.CPP('mat4.cpp'),
 	maek.CPP('sejp.cpp'),
 	maek.CPP('S72.cpp'),
 	maek.CPP('main.cpp'),

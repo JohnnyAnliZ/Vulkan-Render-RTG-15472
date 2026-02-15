@@ -360,10 +360,10 @@ S72 S72::load(std::string const &scene_file) {
 				try {
 					std::vector< sejp::value > const &vec = f->second.as_array().value();
 					node.rotation = quat{
-						.x = float(vec.at(0).as_number().value()),
-						.y = float(vec.at(1).as_number().value()),
-						.z = float(vec.at(2).as_number().value()),
-						.w = float(vec.at(3).as_number().value()),
+						float(vec.at(0).as_number().value()),
+						float(vec.at(1).as_number().value()),
+						float(vec.at(2).as_number().value()),
+						float(vec.at(3).as_number().value()),
 					};
 					if (vec.size() != 4) throw std::runtime_error("trailing values");
 				} catch (std::exception &) {

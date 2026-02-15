@@ -174,3 +174,34 @@ mat4 mat4::inverse()
         }
     }*/
 }
+
+
+//taken and modified from http://number-none.com/product/Understanding%20Slerp,%20Then%20Not%20Using%20It/
+quat quat::slerp(quat const &v0, quat const &v1, float t){
+    // v0 and v1 should be unit length or else
+    // something broken will happen.
+
+    // Compute the cosine of the angle between the two vectors.
+    float dot_product = dot(v0, v1);
+
+    const float DOT_THRESHOLD = 0.9995f;
+    if (dot_product > DOT_THRESHOLD) {
+        // If the inputs are too close for comfort, linearly interpolate
+        // and normalize the result.
+
+        quat result = v0 + t*(v1 - v0);
+        result.normalize();
+        return result;
+    }
+
+    dot_product = std::min(dot_product, 1.0f);
+    dot_product = std::max(dot_product, -1.0f);// Robustness: Stay within domain of acos()
+    
+    float theta_0 = acos(dot_product);  // theta_0 = angle between input vectors
+    float theta = theta_0*t;    // theta = angle between v0 and result 
+
+    quat v2 = v1 - v0*dot_product;
+    v2.normalize();              // { v0, v2 } is now an orthonormal basis
+
+    return v0*cos(theta) + v2*sin(theta);
+}

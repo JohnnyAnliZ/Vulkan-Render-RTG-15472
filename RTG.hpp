@@ -55,6 +55,8 @@ struct RTG {
 		//  `--debug` and `--no-debug` command-line flags
 		bool debug = true;
 
+		bool cull = true;
+
 		//if set, use a specific device for rendering:
 		// `--physical-device <name>` command-line flag
 		std::string physical_device_name = "";

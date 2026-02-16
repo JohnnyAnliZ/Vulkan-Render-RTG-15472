@@ -185,6 +185,11 @@ struct Tutorial : RTG::Application {
 
 	float time = 0.0f;
 	float time_elapsed = 0.0f;
+
+	uint32_t frame_number = 0;
+	float frame_time = 0.0f;
+	
+
 	
 	//-----camera stuff-----
 	//for selecting between cameras:

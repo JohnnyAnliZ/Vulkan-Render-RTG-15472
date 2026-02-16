@@ -1154,6 +1154,19 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params) {
 
 
 void Tutorial::update(float dt) {
+
+	// Add at the very beginning of the function
+    static auto last_update_time = std::chrono::high_resolution_clock::now();
+    auto current_time = std::chrono::high_resolution_clock::now();
+    auto actual_dt = std::chrono::duration<float>(current_time - last_update_time).count();
+    
+    std::cout << "Actual time between updates: " << actual_dt << " seconds (dt parameter: " << dt << ")" << std::endl;
+    
+    last_update_time = current_time;
+
+
+
+
 	time = std::fmod(time + dt, 5.0f);
 	time_elapsed += dt;
 	
@@ -1240,17 +1253,18 @@ void Tutorial::update(float dt) {
 
 				//Try to cull it 
 				AABB &b = meshes[node->mesh->name].bbox;
-				std::array<vec3, 8> bbox_corners;
-				b.get_box_corners(world_from_local, bbox_corners);
+				std::array<vec3, 8> bbox_corners;				
 				std::array<vec3, 8> frustrum_corners;
+				b.get_box_corners(world_from_local, bbox_corners);
 				if(camera_mode == CameraMode::Free || prev_camera_mode == CameraMode::Free){
 					frustrum_corners = free_camera.get_frustum_corners(rtg.swapchain_extent.width / float(rtg.swapchain_extent.height));
 				}
 				else if(camera_mode == CameraMode::Scene || prev_camera_mode == CameraMode::Scene){
 					frustrum_corners = current_camera->second.get_frustum_corners();
 				}
-				//cull the box
-				if(!do_cull(frustrum_corners, bbox_corners)){
+				//cull the box				
+
+				if(!rtg.configuration.cull || !do_cull(frustrum_corners, bbox_corners)){
 					object_instances.emplace_back(
 						ObjectInstance{
 							.vertices = meshes[node->mesh->name].verts,
@@ -1259,7 +1273,8 @@ void Tutorial::update(float dt) {
 								.WORLD_FROM_LOCAL = world_from_local,
 								.WORLD_FROM_LOCAL_NORMAL = world_from_local,//not correct, TODO	
 							},
-							.texture = texture_table.at(node->mesh->material->name),
+							//if the scenefile doesn't specify material just use the 0 debug material
+							.texture = node->mesh->material == nullptr ? 0 : texture_table.at(node->mesh->material->name),
 						}
 					);
 				}			
@@ -1448,10 +1463,6 @@ void Tutorial::update(float dt) {
 		// }
 	}	
 
-	for(auto & obj: object_instances){
-		//update camera matrix
-		obj.transform.CLIP_FROM_LOCAL = CLIP_FROM_WORLD * obj.transform.WORLD_FROM_LOCAL;
-	}
 
 	{//make some objects
 		
@@ -1513,6 +1524,9 @@ void Tutorial::update(float dt) {
 		// }
 	}
 }
+
+
+//helper functions
 
 vec3 Tutorial::emplace_random_line(vec3 start, uint32_t iter){
 	//do some approximation of tree growing based on current iteration number and height

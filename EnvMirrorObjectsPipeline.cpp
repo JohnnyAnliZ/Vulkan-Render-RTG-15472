@@ -8,14 +8,14 @@ static uint32_t vert_code[] =
 ;
 
 static uint32_t frag_code[] = 
-#include "spv/objects.frag.inl"
+#include "spv/env_mirror_objects.frag.inl"
 ;
 
-void Tutorial::ObjectsPipeline::create(RTG &rtg, VkRenderPass render_pass, uint32_t subpass){
+void Tutorial::EnvMirrorObjectsPipeline::create(RTG &rtg, VkRenderPass render_pass, uint32_t subpass){
     VkShaderModule vert_module = rtg.helpers.create_shader_module(vert_code);
     VkShaderModule frag_module = rtg.helpers.create_shader_module(frag_code);
 
-    { //the set0_World layout holds world info in a uniform buffer used in the fragment shader:
+    { //the set0_Eye layout holds eye position in a uniform buffer used in the fragment shader for lighting calculations:
 		std::array< VkDescriptorSetLayoutBinding, 1 > bindings{
 			VkDescriptorSetLayoutBinding{
 				.binding = 0,
@@ -31,7 +31,7 @@ void Tutorial::ObjectsPipeline::create(RTG &rtg, VkRenderPass render_pass, uint3
 			.pBindings = bindings.data(),
 		};
 
-		VK( vkCreateDescriptorSetLayout(rtg.device, &create_info, nullptr, &set0_World) );
+		VK( vkCreateDescriptorSetLayout(rtg.device, &create_info, nullptr, &set0_Eye) );
 	}
 
     {//the set1_Transform layout holds an array of Transform structures in a storage buffer used in the vertex shader:
@@ -71,8 +71,14 @@ void Tutorial::ObjectsPipeline::create(RTG &rtg, VkRenderPass render_pass, uint3
     }    
 
     {//create pipeline layout
+        VkPushConstantRange range{
+            .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+            .offset = 0,
+            .size = sizeof(Push),
+        };
+
         std::array< VkDescriptorSetLayout, 3 > layouts{
-			set0_World,
+			set0_Eye,
             set1_Transforms,
             set2_TEXTURE,
 		};
@@ -81,8 +87,8 @@ void Tutorial::ObjectsPipeline::create(RTG &rtg, VkRenderPass render_pass, uint3
             .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
             .setLayoutCount = uint32_t(layouts.size()),
             .pSetLayouts = layouts.data(),
-            .pushConstantRangeCount = 0,
-            .pPushConstantRanges = nullptr,
+            .pushConstantRangeCount = 1,
+            .pPushConstantRanges = &range,
         };
 
         VK(vkCreatePipelineLayout(rtg.device, &create_info, nullptr, &layout));
@@ -190,7 +196,7 @@ void Tutorial::ObjectsPipeline::create(RTG &rtg, VkRenderPass render_pass, uint3
     vkDestroyShaderModule(rtg.device, frag_module, nullptr);
 }
 
-void Tutorial::ObjectsPipeline::destroy(RTG &rtg){
+void Tutorial::EnvMirrorObjectsPipeline::destroy(RTG &rtg){
     if(handle != VK_NULL_HANDLE){
         vkDestroyPipeline(rtg.device, handle, nullptr);
         handle = VK_NULL_HANDLE;
@@ -199,9 +205,9 @@ void Tutorial::ObjectsPipeline::destroy(RTG &rtg){
         vkDestroyPipelineLayout(rtg.device, layout, nullptr);
         layout = VK_NULL_HANDLE;
     }
-    if (set0_World != VK_NULL_HANDLE) {
-		vkDestroyDescriptorSetLayout(rtg.device, set0_World, nullptr);
-		set0_World = VK_NULL_HANDLE;
+    if (set0_Eye != VK_NULL_HANDLE) {
+		vkDestroyDescriptorSetLayout(rtg.device, set0_Eye, nullptr);
+		set0_Eye = VK_NULL_HANDLE;
 	}
     if (set1_Transforms != VK_NULL_HANDLE) {
 		vkDestroyDescriptorSetLayout(rtg.device, set1_Transforms, nullptr);

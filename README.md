@@ -11,4 +11,5 @@ this is how to load a scene:
 go to the nakluV directory
 cd C:\Users\zal17\Documents\RealTimeG\nakluV
 
+
 $ bin\main --scene scenes\examples\

@@ -60,9 +60,12 @@ main_objs.push( maek.CPP('Tutorial-LinesPipeline.cpp', undefined, { depends:[...
 //uncomment to build objects shaders and pipeline:
 const objects_shaders = [
 	maek.GLSLC('objects.vert'),
-	maek.GLSLC('objects.frag'),
+	maek.GLSLC('lambertian_objects.frag'),
+	maek.GLSLC('env_mirror_objects.frag'),
 ];
-main_objs.push( maek.CPP('Tutorial-ObjectsPipeline.cpp', undefined, { depends:[...objects_shaders] } ) );
+main_objs.push( maek.CPP('LambertianObjectsPipeline.cpp', undefined, { depends:[...objects_shaders] } ) );
+main_objs.push( maek.CPP('EnvMirrorObjectsPipeline.cpp', undefined, { depends:[...objects_shaders] } ) );
+
 
 main_objs.push(maek.CPP('stb_image.cpp',undefined));
 

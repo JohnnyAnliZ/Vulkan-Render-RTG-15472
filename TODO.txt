@@ -17,7 +17,34 @@ TODO:
     command line camera choosing
 
 //move
-
+    done
 
 
 //cull
+    done
+
+//gpu-bottleneck with overlapping planes
+    done
+
+
+----A2----
+
+//env 
+    need to load the cubemap png into the c++ code, convert rgbe in the png to VK_FORMAT_R32G32B32A32_SFLOAT
+
+    need to update the create_image() and transfer_to_image() functions to take cubemap images
+
+    update the create image view
+
+    refactor the tutorial code 
+
+    now that I've layed the groundwork for a material to textures lookup unordered_map, I should make different pipelines and bind them 
+    accordingly based on the material type
+
+    in the update loop, put objects of different materials into differnt bins, also update the EYE to pass into the shader for light calculations
+
+    in the render loop, bind the pipeline for different bins and upload the resources each pipeline need
+
+//diffuse 
+    create the cubemap utility to, i guess, preconvolve the environment onto a sphere by sampling from the cubemap for every sphere cubemap 
+    texel

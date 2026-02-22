@@ -23,68 +23,7 @@ std::uniform_real_distribution<float> dist(-1.0f, 1.0f);
 
 Tutorial::Tutorial(RTG &rtg_) : rtg(rtg_) {
 
-	//load the scene file
-	try {
-		scene72 = S72::load(rtg.configuration.scene_file);
-	} catch (std::exception &e) {
-		std::cerr << "Failed to load s72-format scene from '" << rtg.configuration.scene_file << "':\n" << e.what() << std::endl;
-		return ;
-	}
-
-	{//load nodes into a new nodes map, pruning the nodes that don't have or lead to anything(meshes, lights, cameras)
-		//pruning is not necessary, not gonna do this now, right now this pass is just to load the cameras so they have permanent map references
-		std::deque<Item> current_nodes;
-		for(auto n : scene72.scene.roots){//start with the root nodes
-			current_nodes.emplace_back(Item{n,mat4::identity()});
-		}
-
-		while(!current_nodes.empty()){//go through the graph using this queue bfs setup (this creates two instances of a child if two nodes have it as one of the children)
-			auto [node, world_from_parent] = current_nodes.front();
-			current_nodes.pop_front();
-
-			//this node's world transform
-			mat4 world_from_local = world_from_parent * node->parent_from_local();//accumulate transform
-		 
-			if(node->camera != nullptr){//there could be numerous cameras, but every camera has only one instance 
-				//put every unique camera in the unordered_map, if there is a duplicate, print err and exit
-				
-				if(loaded_cameras.find(node->camera->name) != loaded_cameras.end()){
-					std::cerr<<"duplicate camera "<<node->camera->name<<std::endl;
-					throw;
-				}
-				assert(!node->camera->projection.valueless_by_exception());
-				std::cout<<"loading camera: "<<node->camera->name<<std::endl;;
-				S72::Camera::Perspective perspective = get<S72::Camera::Perspective>(node->camera->projection);
-				loaded_cameras[node->camera->name] = BasicCamera{
-					.eye = world_from_local.translation(),
-					.dir = (world_from_local * vec4{0,0,-1,0}).xyz(),
-					.up = (world_from_local * vec4{0,1,0,0}).xyz(),
-					.aspect = perspective.aspect,
-					.vfov = perspective.vfov,
-					.near = perspective.near,
-					.far = perspective.far,
-				};
-				assert(loaded_cameras.find(node->camera->name) != loaded_cameras.end());
-
-			}
-			for(S72::Node *child : node->children){
-				current_nodes.emplace_back(child, world_from_local);
-			}
-		}
-		if(rtg.configuration.required_camera != "") {// if there is a command-line specified camera
-			if(loaded_cameras.find(rtg.configuration.required_camera) == loaded_cameras.end()){//and you can't find it *~*
-				throw std::runtime_error(
-					"Required camera named '" + rtg.configuration.required_camera +
-					"' was not found");
-			}
-			//however if you do find it !o!
-			current_camera = loaded_cameras.find(rtg.configuration.required_camera);
-		}
-		else{//if there is no camera specified
-			current_camera = loaded_cameras.begin();
-		}
-		assert(!loaded_cameras.empty());
-	}
+	
 
 	
 	{//preallocate some space on the lines buffer
@@ -173,7 +112,6 @@ Tutorial::Tutorial(RTG &rtg_) : rtg(rtg_) {
 			.dependencyCount = uint32_t(dependencies.size()),
 			.pDependencies = dependencies.data(),
 		};
-
 		VK( vkCreateRenderPass(rtg.device, &create_info, nullptr, &render_pass) );
 	}
 
@@ -188,15 +126,15 @@ Tutorial::Tutorial(RTG &rtg_) : rtg(rtg_) {
 
 	background_pipeline.create(rtg, render_pass, 0);
 	lines_pipeline.create(rtg, render_pass, 0);
-	objects_pipeline.create(rtg, render_pass,0);
+	lambertian_objects_pipeline.create(rtg, render_pass,0);
+	env_mirror_objects_pipeline.create(rtg, render_pass,0);
 	{//create descriptor pool
 		uint32_t per_workspace = uint32_t(rtg.workspaces.size());
 
 		std::array<VkDescriptorPoolSize, 2> pool_sizes{
 			VkDescriptorPoolSize{
-				//we only need uniform buffer descriptors for the moment:
 				.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-				.descriptorCount = 2 * per_workspace,//one descriptor per set, one set per workspace
+				.descriptorCount = 3 * per_workspace,//three descriptor per set, one set per workspace(Camera, World and Eye)
 			},
 			VkDescriptorPoolSize{
 				.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
@@ -206,12 +144,13 @@ Tutorial::Tutorial(RTG &rtg_) : rtg(rtg_) {
 		VkDescriptorPoolCreateInfo create_info{
 			.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
 			.flags = 0,
-			.maxSets = 3 * per_workspace,
+			.maxSets = 4 * per_workspace,
 			.poolSizeCount = uint32_t(pool_sizes.size()),
 			.pPoolSizes = pool_sizes.data(),
 		};
 		VK(vkCreateDescriptorPool(rtg.device, &create_info, nullptr, &descriptor_pool));
 	}
+
 
 	workspaces.resize(rtg.workspaces.size());
 	for (Workspace &workspace : workspaces) {
@@ -248,15 +187,39 @@ Tutorial::Tutorial(RTG &rtg_) : rtg(rtg_) {
 			VK(vkAllocateDescriptorSets(rtg.device, &alloc_info, &workspace.Camera_descriptors));
 		}
 
-	//buffers for World descriptors
+		//buffers for eye descriptors
+		workspace.Eye_src = rtg.helpers.create_buffer(
+			sizeof(EnvMirrorObjectsPipeline::Eye),
+			VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT|VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+			Helpers::Mapped
+		);
+		workspace.Eye = rtg.helpers.create_buffer(
+			sizeof(EnvMirrorObjectsPipeline::Eye),
+			VK_BUFFER_USAGE_TRANSFER_DST_BIT|VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+			Helpers::Unmapped
+		);
+
+		{//allocate descriptor set for Eye descriptor
+			VkDescriptorSetAllocateInfo alloc_info{
+				.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+				.descriptorPool = descriptor_pool,
+				.descriptorSetCount = 1,
+				.pSetLayouts = &env_mirror_objects_pipeline.set0_Eye,
+			};
+			VK(vkAllocateDescriptorSets(rtg.device, &alloc_info, &workspace.Eye_descriptors));
+		}
+
+		//buffers for World descriptors
 		workspace.World_src = rtg.helpers.create_buffer(
-			sizeof(ObjectsPipeline::World),
+			sizeof(LambertianObjectsPipeline::World),
 			VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
 			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
 			Helpers::Mapped
 		);
 		workspace.World = rtg.helpers.create_buffer(
-			sizeof(ObjectsPipeline::World),
+			sizeof(LambertianObjectsPipeline::World),
 			VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
 			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
 			Helpers::Unmapped
@@ -267,7 +230,7 @@ Tutorial::Tutorial(RTG &rtg_) : rtg(rtg_) {
 				.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
 				.descriptorPool = descriptor_pool,
 				.descriptorSetCount = 1,
-				.pSetLayouts = &objects_pipeline.set0_World,
+				.pSetLayouts = &lambertian_objects_pipeline.set0_World,
 			};
 			VK( vkAllocateDescriptorSets(rtg.device, &alloc_info, &workspace.World_descriptors) );
 			//NOTE: will actually fill in this descriptor set just a bit lower
@@ -278,13 +241,13 @@ Tutorial::Tutorial(RTG &rtg_) : rtg(rtg_) {
 				.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
 				.descriptorPool = descriptor_pool,
 				.descriptorSetCount = 1,
-				.pSetLayouts = &objects_pipeline.set1_Transforms,
+				.pSetLayouts = &lambertian_objects_pipeline.set1_Transforms,
 			};
 			VK(vkAllocateDescriptorSets(rtg.device, &alloc_info, &workspace.Transforms_descriptors));
 			//NOTE: will fill in this descriptor set in render when buffers are [re-]allocated
 		}
 		
-		{//point descriptor to Camera buffer
+		{//Write the descriptor sets for camera, world, and eye
 			VkDescriptorBufferInfo Camera_info{
 				.buffer = workspace.Camera.handle,
 				.offset = 0,
@@ -296,8 +259,13 @@ Tutorial::Tutorial(RTG &rtg_) : rtg(rtg_) {
 				.offset = 0,
 				.range = workspace.World.size,
 			};
+			VkDescriptorBufferInfo Eye_info{
+				.buffer = workspace.Eye.handle,
+				.offset = 0,
+				.range = workspace.Eye.size,
+			};
 			
-			std::array<VkWriteDescriptorSet, 2> writes{
+			std::array<VkWriteDescriptorSet, 3> writes{
 				VkWriteDescriptorSet{
 					.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
 					.dstSet = workspace.Camera_descriptors,
@@ -316,6 +284,15 @@ Tutorial::Tutorial(RTG &rtg_) : rtg(rtg_) {
 					.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
 					.pBufferInfo = &World_info,
 				},
+				VkWriteDescriptorSet{
+					.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+					.dstSet = workspace.Eye_descriptors,
+					.dstBinding = 0,
+					.dstArrayElement = 0,
+					.descriptorCount = 1,
+					.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+					.pBufferInfo = &Eye_info,
+				},
 			};
 
 			vkUpdateDescriptorSets(
@@ -326,13 +303,74 @@ Tutorial::Tutorial(RTG &rtg_) : rtg(rtg_) {
 				nullptr //pDescriptorCopies
 			);
 		}
+	}
+	
+	//load the scene file
+	try {
+		scene72 = S72::load(rtg.configuration.scene_file);
+	} catch (std::exception &e) {
+		std::cerr << "Failed to load s72-format scene from '" << rtg.configuration.scene_file << "':\n" << e.what() << std::endl;
+		return ;
+	}
 
+	{//load cameras in the scene file and get references to one of them as the current camera, which is an iterator 
+		std::deque<Item> current_nodes;
+		for(auto n : scene72.scene.roots){//start with the root nodes
+			current_nodes.emplace_back(Item{n,mat4::identity()});
+		}
+
+		while(!current_nodes.empty()){//go through the graph using this queue bfs setup (this creates two instances of a child if two nodes have it as one of the children)
+			auto [node, world_from_parent] = current_nodes.front();
+			current_nodes.pop_front();
+
+			//this node's world transform
+			mat4 world_from_local = world_from_parent * node->parent_from_local();//accumulate transform
+		 
+			if(node->camera != nullptr){//there could be numerous cameras, but every camera has only one instance 
+				//put every unique camera in the unordered_map, if there is a duplicate, print err and exit
+				
+				if(loaded_cameras.find(node->camera->name) != loaded_cameras.end()){
+					std::cerr<<"duplicate camera "<<node->camera->name<<std::endl;
+					throw;
+				}
+				assert(!node->camera->projection.valueless_by_exception());
+				std::cout<<"loading camera: "<<node->camera->name<<std::endl;;
+				S72::Camera::Perspective perspective = get<S72::Camera::Perspective>(node->camera->projection);
+				loaded_cameras[node->camera->name] = BasicCamera{
+					.eye = world_from_local.translation(),
+					.dir = (world_from_local * vec4{0,0,-1,0}).xyz(),
+					.up = (world_from_local * vec4{0,1,0,0}).xyz(),
+					.aspect = perspective.aspect,
+					.vfov = perspective.vfov,
+					.near = perspective.near,
+					.far = perspective.far,
+				};
+				assert(loaded_cameras.find(node->camera->name) != loaded_cameras.end());
+
+			}
+			for(S72::Node *child : node->children){
+				current_nodes.emplace_back(child, world_from_local);
+			}
+		}
+		if(rtg.configuration.required_camera != "") {// if there is a command-line specified camera
+			if(loaded_cameras.find(rtg.configuration.required_camera) == loaded_cameras.end()){//and you can't find it *~*
+				throw std::runtime_error(
+					"Required camera named '" + rtg.configuration.required_camera +
+					"' was not found");
+			}
+			//however if you do find it !o!
+			current_camera = loaded_cameras.find(rtg.configuration.required_camera);
+		}
+		else{//if there is no camera specified
+			current_camera = loaded_cameras.begin();
+		}
+		assert(!loaded_cameras.empty());
 	}
 	
 	{//create objects vertices
 		std::vector<PosNorTanTexVertex> vertices;
 
-		{//load vertices from s72 file, so that all the vertex data(attributes) are in one big pool
+		{//load vertices from s72 file, so that all meshes' vertex data(attributes) are in one big pool
 			meshes.clear();
 			size_t base = 0;//base offset for writing in each mesh's vertices into std::vector<PosNorTanTexVertex> vertices
 			uint32_t count = 0;//the number of vertices for each mesh
@@ -421,16 +459,22 @@ Tutorial::Tutorial(RTG &rtg_) : rtg(rtg_) {
 		rtg.helpers.transfer_to_buffer(vertices.data(), bytes, object_vertices);
 	}
 
+
+	
+
+	
 	{ // make some textures 
 		//create a map from texture name to texture number
 		uint32_t reserve_size = 5;
-		texture_table.reserve(reserve_size);
+		material_textures_table.reserve(reserve_size);
 		textures.reserve(reserve_size);
 		uint32_t texture_index = 0;
 		{ //texture 0 will be a dark grey / light grey checkerboard with a red square at the origin.
 			//insert_into lookup table
-			texture_table["light_grey_checkerboard_with_red_square_origin"] = texture_index;
-			texture_index++;
+			material_textures_table["light_grey_checkerboard_with_red_square_origin"] = Tutorial::Texture_Indices{
+				.albedo_index = (int)texture_index,
+			};
+			texture_index++;//now texture index is the next texture to be loaded
 			//actually make the texture:
 			uint32_t size = 128;
 			std::vector< uint32_t > data;
@@ -461,8 +505,10 @@ Tutorial::Tutorial(RTG &rtg_) : rtg(rtg_) {
 		}
 		{ //texture 1 will be a classic 'xor' texture:
 			//insert into color lookup table
-			texture_table["classic_xor_texture"] = texture_index;
-			texture_index++;
+			material_textures_table["classic_xor_texture"] = Tutorial::Texture_Indices{
+				.albedo_index = (int)texture_index,
+			};
+			texture_index++;//now texture index is the next texture to be loaded
 			//actually make the texture:
 			uint32_t size = 256;
 			std::vector< uint32_t > data;
@@ -493,11 +539,9 @@ Tutorial::Tutorial(RTG &rtg_) : rtg(rtg_) {
 		}
 		//the rest of the textures are loaded into memory from image files
 		for(auto const &mat: scene72.materials){
-			assert(texture_table.find(mat.first) == texture_table.end());
+			assert(material_textures_table.find(mat.first) == material_textures_table.end());
 			std::cout<<"loading material "<<mat.first<<std::endl;
-			//----insert into color lookup table
-			texture_table[mat.first] = texture_index;
-			texture_index++;
+			
 			//----actually load the texture
 			//resolve the brdf
 			std::variant<S72::Material::PBR, S72::Material::Lambertian, S72::Material::Mirror, S72::Material::Environment> const &v = mat.second.brdf;
@@ -506,6 +550,14 @@ Tutorial::Tutorial(RTG &rtg_) : rtg(rtg_) {
 			}
 			else if(std::holds_alternative<S72::Material::Lambertian>(v)){
 				S72::Material::Lambertian const &lamb = get<S72::Material::Lambertian>(v);
+				//----insert into material_textures_table
+				assert(textures.size() == texture_index);//this index should be the newly inserted texture
+				material_textures_table[mat.first] = Tutorial::Texture_Indices{
+					.albedo_index = (int)texture_index,//albedo texture is the only texture descriptor it needs
+				};
+				// ^ here we assign it assuming textures at texture_index will be populated with a new texture, 
+				//but if the texture is already loaded, overwrite with index to it kept track of by textures_name_to_index
+
 				if(std::holds_alternative<S72::color>(lamb.albedo)){
 					//actually make the texture:
 					uint32_t size = 1;
@@ -520,7 +572,7 @@ Tutorial::Tutorial(RTG &rtg_) : rtg(rtg_) {
 					data.emplace_back( uint32_t(r) | (uint32_t(g) << 8) | (uint32_t(b) << 16) | (uint32_t(a) << 24) );
 					assert(data.size() == size*size);
 
-					std::cout<<"color of the lambertian material "<< std::setfill('0') << std::setw(8) << std::hex<<data.back()<<std::endl;
+					std::cout<<"color of the lambertian material "<< std::setfill('0') << std::setw(8) << std::hex<<data.back()<<std::dec<<std::endl;
 					//make a place for the texture to live on the GPU:
 					textures.emplace_back(rtg.helpers.create_image(
 						VkExtent2D{ .width = size , .height = size }, //size of image
@@ -530,35 +582,101 @@ Tutorial::Tutorial(RTG &rtg_) : rtg(rtg_) {
 						VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, //should be device-local
 						Helpers::Unmapped
 					));
+					texture_index++;//now texture_index is the next texture
 
 					//transfer data:
 					rtg.helpers.transfer_to_image(data.data(), sizeof(data[0]) * data.size(), textures.back());
 				}
 				else if(std::holds_alternative<S72::Texture*>(lamb.albedo)){
 					S72::Texture * tex_ptr = get<S72::Texture*>(lamb.albedo);
-					//don't have to make the texture, it's loaded
+
+					//check for multiple references of the same texture
+					std::string texture_unique_key = tex_ptr->src;
+					if(textures_name_to_index.find(texture_unique_key) == textures_name_to_index.end()){
+						//record this loaded texture
+						textures_name_to_index[texture_unique_key] = texture_index;
+
+						uint32_t size = tex_ptr->size;
+						// std::cout<<"texture name: "<<tex_ptr->path<<std::endl;
+						// std::cout<<"size of the loaded texture "<<size<<std::endl;
+						//make a place for the texture to live on the GPU:
+						textures.emplace_back(rtg.helpers.create_image(
+							VkExtent2D{ .width = size , .height = size }, //size of image
+							tex_ptr->format == S72::Texture::Format::srgb ? VK_FORMAT_R8G8B8A8_SRGB: VK_FORMAT_R32G32B32A32_SFLOAT, //how to interpret image data (in this case, SRGB-encoded 8-bit RGBA)
+							VK_IMAGE_TILING_OPTIMAL,
+							VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, //will sample and upload
+							VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, //should be device-local
+							Helpers::Unmapped
+						));
+						texture_index++;//now texture_index is the next texture
+
+						//transfer data:
+						rtg.helpers.transfer_to_image(tex_ptr->data.data(), tex_ptr->data.size(), textures.back());//here size is in bytes
+					}
+					else{//the texture has already been emplaced into the texture vector
+						material_textures_table[mat.first] = Tutorial::Texture_Indices{
+							.albedo_index = (int)textures_name_to_index.at(texture_unique_key),
+						};
+						std::cout<<"Already emplaced into textures: "<<texture_unique_key<<std::endl;
+						//no need to emplace new texture nor increment texture_index
+					}			
+				}
+				
+			}
+			else if(std::holds_alternative<S72::Material::Mirror>(v)||std::holds_alternative<S72::Material::Environment>(v)){
+				std::string environment_name;
+				if(std::holds_alternative<S72::Material::Environment>(v)){
+					S72::Material::Environment const &env = get<S72::Material::Environment>(v);
+					environment_name = env.name;
+				}
+				else if (std::holds_alternative<S72::Material::Mirror>(v)){
+					S72::Material::Mirror const &mir = get<S72::Material::Mirror>(v);
+					environment_name = mir.env_name;
+				}
+				
+
+				if(textures_name_to_index.find(environment_name) == textures_name_to_index.end()){
+					textures_name_to_index[environment_name] = texture_index;
+					//----insert into material_textures_table
+					assert(textures.size() == texture_index);//this index should be the newly inserted texture
+					material_textures_table[mat.first] = Tutorial::Texture_Indices{
+						.environment_index = (int)texture_index,//only need environment texture
+					};
+					texture_index++;
+					
+					std::cout<<"accessimg scene72.environments at: "<<environment_name<<std::endl;
+					S72::Texture * tex_ptr = scene72.environments.at(environment_name).radiance;//this is supposed to be a rgbe cubemap
+					assert(tex_ptr->type == S72::Texture::Type::cube && tex_ptr->format == S72::Texture::Format::rgbe);
+
+					//decode rgbe to radiance value stored in r32g32b32a32 with a channel unused
 					uint32_t size = tex_ptr->size;
-						
-					std::cout<<"size of the loaded texture "<<size<<std::endl;
+					std::vector<float> converted_data;
+					converted_data.resize(4 * size * size * 6);//4 float channels, 6 cube faces
+					rgbe_to_radiance(tex_ptr->data, converted_data, size);
+
+					std::cout<<"texture name: "<<tex_ptr->path<<std::endl;
+					std::cout<<"size of the loaded rgbe cubemap image "<<size<<std::endl;
 					//make a place for the texture to live on the GPU:
 					textures.emplace_back(rtg.helpers.create_image(
 						VkExtent2D{ .width = size , .height = size }, //size of image
-						VK_FORMAT_R8G8B8A8_SRGB, //how to interpret image data (in this case, SRGB-encoded 8-bit RGBA)
+						VK_FORMAT_R32G32B32A32_SFLOAT, //Convert to RGB float, A is unused
 						VK_IMAGE_TILING_OPTIMAL,
 						VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, //will sample and upload
 						VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, //should be device-local
-						Helpers::Unmapped
+						Helpers::Unmapped,
+						true
 					));
 
 					//transfer data:
-					rtg.helpers.transfer_to_image(tex_ptr->data.data(), tex_ptr->data.size(), textures.back());//here size is in bytes
+					assert(sizeof(converted_data[0]) == 4u);
+					rtg.helpers.transfer_to_image(converted_data.data(), converted_data.size() * sizeof(converted_data[0]), textures.back(), true);//here size is in bytes
 				}
-			}
-			else if(std::holds_alternative<S72::Material::Mirror>(v)){
-				
-			}
-			else if(std::holds_alternative<S72::Material::Environment>(v)){
-
+				else{
+					std::cout<<"already has "<<environment_name<<std::endl;
+					material_textures_table[mat.first] = Tutorial::Texture_Indices{
+						.environment_index = (int)textures_name_to_index.at(environment_name),//only need environment texture
+					};
+				}			
 			}
 		}
 	}
@@ -570,7 +688,7 @@ Tutorial::Tutorial(RTG &rtg_) : rtg(rtg_) {
 				.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
 				.flags = 0,
 				.image = image.handle,
-				.viewType = VK_IMAGE_VIEW_TYPE_2D,
+				.viewType = image.is_cubemap ? VK_IMAGE_VIEW_TYPE_CUBE : VK_IMAGE_VIEW_TYPE_2D,
 				.format = image.format,
 				// .components sets swizzling and is fine when zero-initialized
 				.subresourceRange{
@@ -578,7 +696,7 @@ Tutorial::Tutorial(RTG &rtg_) : rtg(rtg_) {
 					.baseMipLevel = 0,
 					.levelCount = 1,
 					.baseArrayLayer = 0,
-					.layerCount = 1,
+					.layerCount = image.is_cubemap ? 6u : 1u,
 				},
 			};
 
@@ -590,7 +708,7 @@ Tutorial::Tutorial(RTG &rtg_) : rtg(rtg_) {
 		assert(texture_views.size() == textures.size());
 	}
 
-	{ //make a sampler for the textures
+	{ //make a sampler for the 2D textures
 		VkSamplerCreateInfo create_info{
 			.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
 			.flags = 0,
@@ -639,7 +757,7 @@ Tutorial::Tutorial(RTG &rtg_) : rtg(rtg_) {
 			.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
 			.descriptorPool = texture_descriptor_pool,
 			.descriptorSetCount = 1,
-			.pSetLayouts = &objects_pipeline.set2_TEXTURE,
+			.pSetLayouts = &lambertian_objects_pipeline.set2_TEXTURE,
 		};
 		std::cout<<"allocating and writing "<<textures.size()<<" textures"<<std::endl;
 
@@ -662,7 +780,7 @@ Tutorial::Tutorial(RTG &rtg_) : rtg(rtg_) {
 			};
 			writes[i] = VkWriteDescriptorSet{
 				.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-				.dstSet = texture_descriptors[i],
+				.dstSet = texture_descriptors[i],//texture descriptors have the same index as textures
 				.dstBinding = 0,
 				.dstArrayElement = 0,
 				.descriptorCount = 1,
@@ -730,6 +848,12 @@ Tutorial::~Tutorial() {
 		if (workspace.Camera.handle != VK_NULL_HANDLE) {
 			rtg.helpers.destroy_buffer(std::move(workspace.Camera));
 		}
+		if (workspace.Eye_src.handle != VK_NULL_HANDLE) {
+			rtg.helpers.destroy_buffer(std::move(workspace.Eye_src));
+		}
+		if (workspace.Eye.handle != VK_NULL_HANDLE) {
+			rtg.helpers.destroy_buffer(std::move(workspace.Eye));
+		}
 		//Camera_descriptors freed when pool is destroyed.
 		if (workspace.World_src.handle != VK_NULL_HANDLE) {
 			rtg.helpers.destroy_buffer(std::move(workspace.World_src));
@@ -756,7 +880,8 @@ Tutorial::~Tutorial() {
 
 	background_pipeline.destroy(rtg);
 	lines_pipeline.destroy(rtg);
-	objects_pipeline.destroy(rtg);
+	lambertian_objects_pipeline.destroy(rtg);
+	env_mirror_objects_pipeline.destroy(rtg);
 
 	if (command_pool != VK_NULL_HANDLE) {
 		vkDestroyCommandPool(rtg.device, command_pool, nullptr);
@@ -783,7 +908,8 @@ void Tutorial::on_swapchain(RTG &rtg_, RTG::SwapchainEvent const &swapchain) {
 		VK_IMAGE_TILING_OPTIMAL, 
 		VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
 		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-		Helpers::Unmapped
+		Helpers::Unmapped,
+		false
 	);
 	{ //create depth image view:
 		VkImageViewCreateInfo create_info{
@@ -935,10 +1061,30 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params) {
 		vkCmdCopyBuffer(workspace.command_buffer, workspace.World_src.handle, workspace.World.handle, 1, &copy_region);
 	}
 
+	{ //upload eye info:
+		EnvMirrorObjectsPipeline::Eye i{
+			.EYE = EYE,
+		};
+		assert(workspace.Eye_src.size == sizeof(i));
+
+		//host-side copy into World_src:
+		memcpy(workspace.Eye_src.allocation.data(), &i, sizeof(i));
+
+		//add device-side copy from World_src -> World:
+		assert(workspace.Eye_src.size == workspace.Eye.size);
+		VkBufferCopy copy_region{
+			.srcOffset = 0,
+			.dstOffset = 0,
+			.size = workspace.Eye_src.size,
+		};
+		vkCmdCopyBuffer(workspace.command_buffer, workspace.Eye_src.handle, workspace.Eye.handle, 1, &copy_region);
+	}
+
+
 	//upload object transforms
-	if(!object_instances.empty()){
+	if(!lambertian_object_instances.empty() || !env_mirror_object_instances.empty()){
 		//allocate or reallocate transforms buffer as needed
-		size_t needed_bytes = object_instances.size() * sizeof(ObjectsPipeline::Transform);
+		size_t needed_bytes = (lambertian_object_instances.size() + env_mirror_object_instances.size()) * sizeof(Transform);
 		if(workspace.Transforms_src.handle == VK_NULL_HANDLE || workspace.Transforms_src.size < needed_bytes){
 			//resize rounding up to 4k
 			size_t new_bytes = ((needed_bytes + 4096) / 4096) * 4096;
@@ -989,8 +1135,12 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params) {
 		{//copy transforms into Transforms_src
 			assert(workspace.Transforms_src.allocation.mapped);
 			// Strict aliasing violation, but it doesn't matter
-			ObjectsPipeline::Transform * out = reinterpret_cast< ObjectsPipeline::Transform * >(workspace.Transforms_src.allocation.data()); 
-			for (ObjectInstance const &inst : object_instances) {
+			Transform * out = reinterpret_cast< Transform * >(workspace.Transforms_src.allocation.data()); 
+			for (LambertianObjectInstance const &inst : lambertian_object_instances) {
+				*out = inst.transform;
+				++out;
+			}
+			for (EnvMirrorObjectInstance const &inst : env_mirror_object_instances){
 				*out = inst.transform;
 				++out;
 			}
@@ -1087,39 +1237,77 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params) {
 			//draw lines vertices
 			vkCmdDraw(workspace.command_buffer, uint32_t(lines_vertices.size()), 1, 0, 0);
 		}
-		if(!object_instances.empty()){//draw with the objects pipeline
-			vkCmdBindPipeline(workspace.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, objects_pipeline.handle);
-			{//use object_vertices (offset 0) as vertex buffer binding 0:
+
+		{//draw with the different materialed objects' pipelines
+			{//use object_vertices (offset 0) as vertex buffer binding 0: they all share vertex buffer
 				std::array<VkBuffer,1> vertex_buffers{object_vertices.handle};
 				std::array<VkDeviceSize, 1> offsets{0};
 				vkCmdBindVertexBuffers(workspace.command_buffer, 0, uint32_t(vertex_buffers.size()), vertex_buffers.data(), offsets.data());
 			}
-			{////bind World and Transforms descriptor sets:
-				std::array<VkDescriptorSet, 2> descriptor_sets{
-					workspace.World_descriptors,//0, Transforms
-					workspace.Transforms_descriptors,//1, Transforms
-				};
-				//std::cout << "World: " << workspace.World_descriptors << std::endl;
-				//std::cout << "Transforms: " << workspace.Transforms_descriptors << std::endl;
-				vkCmdBindDescriptorSets(workspace.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, objects_pipeline.layout,
-					0, uint32_t(descriptor_sets.size()),descriptor_sets.data(), 0, nullptr);
+			uint32_t index_offset = 0;//since they all share the same transforms descriptor as well, an offset for indexing the transforms is needed
+			if(!lambertian_object_instances.empty()){//draw the lambertian object instances
+				vkCmdBindPipeline(workspace.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, lambertian_objects_pipeline.handle);
+				
+				{////bind World and Transforms descriptor sets:
+					std::array<VkDescriptorSet, 2> descriptor_sets{
+						workspace.World_descriptors,//0, World
+						workspace.Transforms_descriptors,//1, Transforms
+					};
+					vkCmdBindDescriptorSets(workspace.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, lambertian_objects_pipeline.layout,
+						0, uint32_t(descriptor_sets.size()),descriptor_sets.data(), 0, nullptr);
+				}
+	
+				//draw dat ting
+				for (LambertianObjectInstance const &inst : lambertian_object_instances) {
+					uint32_t index = uint32_t(&inst - &lambertian_object_instances[0]);
+
+					//bind texture descriptor set		
+					vkCmdBindDescriptorSets(
+						workspace.command_buffer,
+						VK_PIPELINE_BIND_POINT_GRAPHICS,
+						lambertian_objects_pipeline.layout,
+						2, 1, &texture_descriptors[inst.texture.albedo_index],
+						0,nullptr
+					);
+					vkCmdDraw(workspace.command_buffer, inst.vertices.count, 1, inst.vertices.first, index+index_offset);
+				}
 			}
+			index_offset = (uint32_t)lambertian_object_instances.size();//update index_offset for the next batch of instances
+			if(!env_mirror_object_instances.empty()){//draw the env_mirror object instances
+				vkCmdBindPipeline(workspace.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, env_mirror_objects_pipeline.handle);
+				
+				{////bind World and Transforms descriptor sets:
+					std::array<VkDescriptorSet, 2> descriptor_sets{
+						workspace.Eye_descriptors,//0, Eye
+						workspace.Transforms_descriptors,//1, Transforms
+					};
 
-			//Camera descriptor set is still bound but unused
-			//draw dat ting
-			for (ObjectInstance const &inst : object_instances) {
-				uint32_t index = uint32_t(&inst - &object_instances[0]);
+					vkCmdBindDescriptorSets(workspace.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, lambertian_objects_pipeline.layout,
+						0, uint32_t(descriptor_sets.size()),descriptor_sets.data(), 0, nullptr);
+				}
+	
+				//draw dat ting
+				for (EnvMirrorObjectInstance const &inst : env_mirror_object_instances) {
+					uint32_t index = uint32_t(&inst - &env_mirror_object_instances[0]);
 
-				//bind texture descriptor set
-				//std::cout << "Textures: " << texture_descriptors[inst.texture] << std::endl;
-				vkCmdBindDescriptorSets(
-					workspace.command_buffer,
-					VK_PIPELINE_BIND_POINT_GRAPHICS,
-					objects_pipeline.layout,
-					2, 1, &texture_descriptors[inst.texture],
-					0,nullptr
-				);
-				vkCmdDraw(workspace.command_buffer, inst.vertices.count, 1, inst.vertices.first, index);
+					//bind texture descriptor set			
+					vkCmdBindDescriptorSets(
+						workspace.command_buffer,
+						VK_PIPELINE_BIND_POINT_GRAPHICS,
+						lambertian_objects_pipeline.layout,
+						2, 1, &texture_descriptors[inst.texture.environment_index],
+						0,nullptr
+					);
+
+					{//push constant to determine whether it's mirror or environment
+						EnvMirrorObjectsPipeline::Push push{
+							.is_env = inst.is_env,
+						};
+						vkCmdPushConstants(workspace.command_buffer, env_mirror_objects_pipeline.layout, VK_SHADER_STAGE_FRAGMENT_BIT,
+						0, sizeof(push), &push);
+					}
+					vkCmdDraw(workspace.command_buffer, inst.vertices.count, 1, inst.vertices.first, index + index_offset);
+				}
 			}
 		}
 
@@ -1156,16 +1344,16 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params) {
 void Tutorial::update(float dt) {
 
 	// Add at the very beginning of the function
+	static auto start_time = std::chrono::high_resolution_clock::now();
     static auto last_update_time = std::chrono::high_resolution_clock::now();
     auto current_time = std::chrono::high_resolution_clock::now();
     auto actual_dt = std::chrono::duration<float>(current_time - last_update_time).count();
-    
-    std::cout << "Actual time between updates: " << actual_dt << " seconds (dt parameter: " << dt << ")" << std::endl;
-    
+	if(rtg.configuration.headless){
+		 std::cout << "Actual time between updates: " << actual_dt << " seconds (dt parameter: " << dt << ") ";
+   		std::cout << "Current time: " << std::chrono::duration<float>(current_time - start_time).count() << " seconds " << std::endl;
+	} 
     last_update_time = current_time;
-
-
-
+	
 
 	time = std::fmod(time + dt, 5.0f);
 	time_elapsed += dt;
@@ -1173,7 +1361,8 @@ void Tutorial::update(float dt) {
 	//----update scene graph----
 	//TODO: if there is no change in any of the nodes, the chunk below shouldn't be run
 	lines_vertices.clear(); 
-	object_instances.clear();
+	lambertian_object_instances.clear();
+	env_mirror_object_instances.clear();
 
 	{//go through the animation drivers to update nodes' transforms
 		for(S72::Driver const &d: scene72.drivers){
@@ -1243,7 +1432,6 @@ void Tutorial::update(float dt) {
 			auto [node, world_from_parent] = current_nodes.front();
 			current_nodes.pop_front();
 
-
 			//this node's world transform
 			mat4 world_from_local = world_from_parent * node->parent_from_local();//accumulate transform
 
@@ -1265,18 +1453,39 @@ void Tutorial::update(float dt) {
 				//cull the box				
 
 				if(!rtg.configuration.cull || !do_cull(frustrum_corners, bbox_corners)){
-					object_instances.emplace_back(
-						ObjectInstance{
-							.vertices = meshes[node->mesh->name].verts,
-							.transform{
-								.CLIP_FROM_LOCAL = CLIP_FROM_WORLD * world_from_local,
-								.WORLD_FROM_LOCAL = world_from_local,
-								.WORLD_FROM_LOCAL_NORMAL = world_from_local,//not correct, TODO	
-							},
-							//if the scenefile doesn't specify material just use the 0 debug material
-							.texture = node->mesh->material == nullptr ? 0 : texture_table.at(node->mesh->material->name),
-						}
-					);
+					auto v = node->mesh->material->brdf;
+					
+			
+					if(std::holds_alternative<S72::Material::Lambertian>(v)){
+						lambertian_object_instances.emplace_back(
+							LambertianObjectInstance{
+								.vertices = meshes[node->mesh->name].verts,
+								.transform{
+									.CLIP_FROM_LOCAL = CLIP_FROM_WORLD * world_from_local,
+									.WORLD_FROM_LOCAL = world_from_local,
+									.WORLD_FROM_LOCAL_NORMAL = world_from_local,//not correct, TODO	
+								},
+								//if the scenefile doesn't specify material just use the 0 debug material
+								.texture = (node->mesh->material == nullptr) ? Texture_Indices{.albedo_index=0} : material_textures_table.at(node->mesh->material->name),
+							}
+						);
+					}
+					else if(std::holds_alternative<S72::Material::Mirror>(v) || std::holds_alternative<S72::Material::Environment>(v)){
+						bool _is_env = std::holds_alternative<S72::Material::Environment>(v);
+						env_mirror_object_instances.emplace_back(
+							EnvMirrorObjectInstance{
+								.vertices = meshes[node->mesh->name].verts,
+								.transform{
+									.CLIP_FROM_LOCAL = CLIP_FROM_WORLD * world_from_local,
+									.WORLD_FROM_LOCAL = world_from_local,
+									.WORLD_FROM_LOCAL_NORMAL = world_from_local,//not correct, TODO	
+								},
+								//if the scenefile doesn't specify material just use the 0 debug material
+								.texture = (node->mesh->material == nullptr) ? Texture_Indices{.albedo_index=0} : material_textures_table.at(node->mesh->material->name),
+								.is_env = _is_env ? 1 : 0,
+							}
+						);
+					}
 				}			
 				if(camera_mode == CameraMode::Debug){
 					add_debug_lines_bbox(b, world_from_local);	
@@ -1359,14 +1568,18 @@ void Tutorial::update(float dt) {
 					vec3(0.0f, 0.0f, 5.0f), //target
 					vec3(0.0f, 0.0f, 1.0f) //up
 				);
+				EYE = vec3(13.0f * std::cos(ang), 13.0f * std::sin(ang), 5.0f);
 			}
 			else{//fixed, potentially keyframed camera that is loaded from s72 file
 				CLIP_FROM_WORLD = current_camera->second.clip_from_world();
+				EYE = current_camera->second.eye;
 			}
 		} else if(camera_mode == CameraMode::Free){
 			CLIP_FROM_WORLD = free_camera.clip_from_world(rtg.swapchain_extent.width / float(rtg.swapchain_extent.height));//aspect passed in 
+			EYE = free_camera.get_eye();
 		}else if(camera_mode == CameraMode::Debug){
 			CLIP_FROM_WORLD = debug_camera.clip_from_world(rtg.swapchain_extent.width / float(rtg.swapchain_extent.height));//aspect passed in
+			EYE = debug_camera.get_eye();
 			//draw frustrum for previous camera
 			add_debug_lines_frustrum();
 
@@ -1837,9 +2050,7 @@ std::array<vec3, 8> Tutorial::BasicCamera::get_frustum_corners()const{
 	return corners;
 }
 
-std::array<vec3, 8> Tutorial::OrbitCamera::get_frustum_corners(float aspect) const{
-	std::array<vec3, 8> corners;
-
+vec3 Tutorial::OrbitCamera::get_eye() const{
 	// Calculate camera position and orientation from orbit camera parameters
 	float cos_elev = std::cos(elevation);
 	float sin_elev = std::sin(elevation);
@@ -1851,6 +2062,14 @@ std::array<vec3, 8> Tutorial::OrbitCamera::get_frustum_corners(float aspect) con
 		radius * cos_elev * sin_azim,
 		radius * sin_elev
 	};
+	return eye;
+}
+
+
+std::array<vec3, 8> Tutorial::OrbitCamera::get_frustum_corners(float aspect) const{
+	std::array<vec3, 8> corners;
+
+	vec3 eye = get_eye();
 	
 	// Camera basis vectors
 	vec3 forward = normalized(target - eye);
@@ -1965,5 +2184,28 @@ void Tutorial::AABB::get_box_corners(mat4 WORLD_FROM_LOCAL, std::array<vec3, 8> 
 	
 	for(uint32_t i = 0; i < 8; i++){
 		transform_corner(i);
+	}
+}
+
+void Tutorial::rgbe_to_radiance(std::vector<char> const &rgbe_vector, std::vector<float> &rad_vector, uint32_t size){
+	for(uint32_t i = 0; i < size * size * 6; i++){
+		uint8_t exponent = rgbe_vector[4*i+3];
+		if (exponent == 0) {
+			rad_vector[i*4 + 0] = 0.0f;
+			rad_vector[i*4 + 1] = 0.0f;
+			rad_vector[i*4 + 2] = 0.0f;
+			rad_vector[i*4 + 3] = 1.0f;
+			continue;
+		}
+		uint8_t r = rgbe_vector[4*i+0];
+		uint8_t g = rgbe_vector[4*i+1];
+		uint8_t b = rgbe_vector[4*i+2];
+
+		float r_rad = std::ldexp(1.0f, exponent - 128) * (r + 0.5f)/256;
+		float g_rad = std::ldexp(1.0f, exponent - 128) * (g + 0.5f)/256;
+		float b_rad = std::ldexp(1.0f, exponent - 128) * (b + 0.5f)/256;
+		rad_vector[i*4 + 0] = r_rad;
+		rad_vector[i*4 + 1] = g_rad;
+		rad_vector[i*4 + 2] = b_rad;
 	}
 }

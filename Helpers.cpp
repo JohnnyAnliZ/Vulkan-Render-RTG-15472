@@ -103,13 +103,16 @@ void Helpers::destroy_buffer(AllocatedBuffer &&buffer) {
 }
 
 
-Helpers::AllocatedImage Helpers::create_image(VkExtent2D const &extent, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, MapFlag map) {
+Helpers::AllocatedImage Helpers::create_image(VkExtent2D const &extent, VkFormat format, VkImageTiling tiling, 
+	VkImageUsageFlags usage, VkMemoryPropertyFlags properties, MapFlag map, bool is_cubemap) {
 	AllocatedImage image;
 	image.extent = extent;
 	image.format = format;
+	image.is_cubemap = is_cubemap;
 
 	VkImageCreateInfo create_info{
 		.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+		.flags = is_cubemap ? VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT : (VkImageCreateFlags)0,
 		.imageType = VK_IMAGE_TYPE_2D,
 		.format = format,
 		.extent{
@@ -118,7 +121,7 @@ Helpers::AllocatedImage Helpers::create_image(VkExtent2D const &extent, VkFormat
 			.depth = 1,
 		},
 		.mipLevels = 1,
-		.arrayLayers = 1,
+		.arrayLayers = is_cubemap ? 6u : 1u,
 		.samples = VK_SAMPLE_COUNT_1_BIT,
 		.tiling = tiling,
 		.usage = usage,
@@ -129,9 +132,9 @@ Helpers::AllocatedImage Helpers::create_image(VkExtent2D const &extent, VkFormat
 	VK(vkCreateImage(rtg.device, &create_info, nullptr, &image.handle));
 
 	VkMemoryRequirements req;
-	vkGetImageMemoryRequirements(rtg.device, image.handle, &req);
+	vkGetImageMemoryRequirements(rtg.device, image.handle, &req);//now req contains info about how much memory to allocate
 
-	image.allocation = allocate(req, properties, map);
+	image.allocation = allocate(req, properties, map);//allocate that much memory
 
 	VK(vkBindImageMemory(rtg.device, image.handle, image.allocation.handle, image.allocation.offset));
 	return image;
@@ -146,6 +149,9 @@ void Helpers::destroy_image(AllocatedImage &&image) {
 
 	this->free(std::move(image.allocation));
 }
+
+
+
 
 //----------------------------
 
@@ -181,15 +187,20 @@ void Helpers::transfer_to_buffer(void const *data, size_t size, AllocatedBuffer 
 	//don't leak buffer memory:
 }
 
-void Helpers::transfer_to_image(void const *data, size_t size, AllocatedImage &target) {
+void Helpers::transfer_to_image(void const *data, size_t size, AllocatedImage &target, bool is_cubemap) {
 	assert(target.handle != VK_NULL_HANDLE); //target image should be allocated already
 
 	//check data is the right size:
 	size_t bytes_per_block = vkuFormatTexelBlockSize(target.format);
 	size_t texels_per_block = vkuFormatTexelsPerBlock(target.format);
-	//std::cout<<"bytes per block: "<<bytes_per_block<<"texels_per_block: "<<texels_per_block<<std::endl;
-	//std::cout<<"size: "<<size<<" target size: "<<target.extent.width * target.extent.height * bytes_per_block / texels_per_block<<std::endl;
-	assert(size == target.extent.width * target.extent.height * bytes_per_block / texels_per_block);
+	
+	
+	uint32_t layer_count = is_cubemap ? 6u: 1u;
+	VkDeviceSize layer_size = target.extent.width * target.extent.height * bytes_per_block / texels_per_block;//number of bytes in one layer
+
+	std::cout<<"bytes per block: "<<bytes_per_block<<"texels_per_block: "<<texels_per_block<<std::endl;
+	std::cout<<"size: "<<size<<" target size: "<<layer_count * layer_size<<std::endl;
+	assert(size == layer_count * layer_size);
 	//create a host-coherent source buffer
 	AllocatedBuffer transfer_src = create_buffer(
 		size,
@@ -216,7 +227,7 @@ void Helpers::transfer_to_image(void const *data, size_t size, AllocatedImage &t
 		.baseMipLevel = 0,
 		.levelCount = 1,
 		.baseArrayLayer = 0,
-		.layerCount = 1,
+		.layerCount = layer_count,
 	};
 
 	{ //put the receiving image in destination-optimal layout
@@ -244,30 +255,35 @@ void Helpers::transfer_to_image(void const *data, size_t size, AllocatedImage &t
 	}
 
 	{ // copy the source buffer to the image
-		VkBufferImageCopy region{
-			.bufferOffset = 0,
-			.bufferRowLength = target.extent.width,
-			.bufferImageHeight = target.extent.height,
-			.imageSubresource{
-				.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-				.mipLevel = 0,
-				.baseArrayLayer = 0,
-				.layerCount = 1,
-			},
-			.imageOffset{ .x = 0, .y = 0, .z = 0 },
-			.imageExtent{
-				.width = target.extent.width,
-				.height = target.extent.height,
-				.depth = 1
-			},
-		};
+		std::vector<VkBufferImageCopy> regions(layer_count);
+		for(uint32_t i = 0; i < layer_count; i++){
+			VkBufferImageCopy region{
+				.bufferOffset = i * layer_size,
+				.bufferRowLength = target.extent.width,
+				.bufferImageHeight = target.extent.height,
+				.imageSubresource{
+					.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+					.mipLevel = 0,
+					.baseArrayLayer = i,
+					.layerCount = 1,
+				},
+				.imageOffset{ .x = 0, .y = 0, .z = 0 },
+				.imageExtent{
+					.width = target.extent.width,
+					.height = target.extent.height,
+					.depth = 1
+				},
+			};
+			regions[i] = region;
+		}
+		
 
 		vkCmdCopyBufferToImage(
 			transfer_command_buffer,
 			transfer_src.handle,
 			target.handle,
 			VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-			1, &region
+			(uint32_t)regions.size(), regions.data()
 		);
 
 		//NOTE: if image had mip levels, would need to copy as additional regions here.

@@ -67,7 +67,16 @@ struct Tutorial : RTG::Application {
 		void destroy(RTG &);
 	}lines_pipeline;
 
-	struct ObjectsPipeline{
+
+
+
+	struct Transform{
+		mat4 CLIP_FROM_LOCAL;
+		mat4 WORLD_FROM_LOCAL;
+		mat4 WORLD_FROM_LOCAL_NORMAL;
+	};
+
+	struct LambertianObjectsPipeline{
 		//descriptor set layouts
 		VkDescriptorSetLayout set0_World = VK_NULL_HANDLE;
 		VkDescriptorSetLayout set1_Transforms = VK_NULL_HANDLE;
@@ -82,11 +91,7 @@ struct Tutorial : RTG::Application {
 		};
 		static_assert(sizeof(World) == 4*4 + 4*4 + 4*4 + 4*4, "World is the expected size.");	
 
-        struct Transform{
-			mat4 CLIP_FROM_LOCAL;
-			mat4 WORLD_FROM_LOCAL;
-			mat4 WORLD_FROM_LOCAL_NORMAL;
-		};
+        
         static_assert(sizeof(Transform) == 16*4 + 16*4 + 16*4 , "Transform structure is packed");
 
 		//pipeline layout
@@ -95,7 +100,33 @@ struct Tutorial : RTG::Application {
 		VkPipeline handle = VK_NULL_HANDLE;
 		void create(RTG &,VkRenderPass render_pass, uint32_t subpass);
 		void destroy(RTG &);
-	}objects_pipeline;
+	}lambertian_objects_pipeline;
+
+	struct EnvMirrorObjectsPipeline{
+		//descriptor set layouts
+		VkDescriptorSetLayout set0_Eye= VK_NULL_HANDLE;
+		VkDescriptorSetLayout set1_Transforms = VK_NULL_HANDLE;
+		VkDescriptorSetLayout set2_TEXTURE = VK_NULL_HANDLE;
+
+		struct Push{
+			int32_t is_env = 1;
+		};
+
+        //types for descriptors
+		struct Eye {
+			vec3 EYE;
+		};
+		static_assert(sizeof(Eye) == 4*3, "Eye is the expected size.");	
+
+        static_assert(sizeof(Transform) == 16*4 + 16*4 + 16*4 , "Transform structure is packed");
+
+		//pipeline layout
+		VkPipelineLayout layout = VK_NULL_HANDLE;
+		using Vertex = PosNorTanTexVertex;
+		VkPipeline handle = VK_NULL_HANDLE;
+		void create(RTG &,VkRenderPass render_pass, uint32_t subpass);
+		void destroy(RTG &);
+	}env_mirror_objects_pipeline;
 
 	
 
@@ -115,6 +146,11 @@ struct Tutorial : RTG::Application {
 		Helpers::AllocatedBuffer Camera_src; //host coherent; mapped
 		Helpers::AllocatedBuffer Camera; //device-local
 		VkDescriptorSet Camera_descriptors; //references Camera
+
+		//location for LinesPipeline::Camera data: (streamed to GPU per-frame)
+		Helpers::AllocatedBuffer Eye_src; //host coherent; mapped
+		Helpers::AllocatedBuffer Eye; //device-local
+		VkDescriptorSet Eye_descriptors; //references Camera
 		
 		//location for ObjectsPipeline::World data: (streamed to GPU per-frame)
 		Helpers::AllocatedBuffer World_src; //host coherent; mapped
@@ -148,14 +184,37 @@ struct Tutorial : RTG::Application {
 		vec3 min = vec3{INFINITY,INFINITY,INFINITY};
 		void get_box_corners(mat4 WORLD_FROM_LOCAL, std::array<vec3, 8> &box_corners);
 	};
-	struct Mesh{//stats of a unique mesh asset
+
+	//Mesh contains stats of a unique mesh asset
+	struct Mesh{
 		ObjectVertices verts;
 		AABB bbox;
 	};
+
 	ObjectVertices fruit_vertices;//these vertices are hard coded 
 	std::map<std::string, Mesh> meshes;
 
-	std::unordered_map<std::string, uint32_t> texture_table;
+
+
+	//------Texture stuff------
+	struct Texture_Indices{
+		int normal_index = -1;
+		int albedo_index = -1;
+		int roughness_index = -1;
+		int metalness_index = -1;
+		int shadowMap_index = -1;
+		int environment_index = -1;	
+	};
+
+	//maps name of the loaded texture to indices into the textures array
+	std::unordered_map<std::string, Texture_Indices> material_textures_table;
+
+	//memorization so that materials that use the same texture again don't remake the same image
+	std::unordered_map<std::string, uint32_t> textures_name_to_index;
+
+	void rgbe_to_radiance(std::vector<char> const &rgbe_vector, std::vector<float> &rad_vector, uint32_t size);
+
+	//textures, texture_views, and texture_descriptors are all indexed the same
 	std::vector<Helpers::AllocatedImage> textures;
 	std::vector<VkImageView> texture_views;
 	VkSampler texture_sampler = VK_NULL_HANDLE;
@@ -239,6 +298,7 @@ struct Tutorial : RTG::Application {
 			) * orbit(target, azimuth, elevation, radius);
 		}
 
+		vec3 get_eye()const;
 		std::array<vec3, 8> get_frustum_corners(float aspect)const;
 		
 	} free_camera;
@@ -258,7 +318,8 @@ struct Tutorial : RTG::Application {
 	void add_debug_lines_bbox(AABB &bbox, mat4 WORLD_FROM_LOCAL);
 
 
-	mat4 CLIP_FROM_WORLD;
+	mat4 CLIP_FROM_WORLD;//The CLIP_FROM_WORLD matrix for the camera currently used 
+	vec3 EYE = vec3(0,0,0); 
 
 	//camera loaded in from s72 files
 	std::unordered_map<std::string, BasicCamera> loaded_cameras;
@@ -268,15 +329,26 @@ struct Tutorial : RTG::Application {
 	std::vector<LinesPipeline::Vertex> lines_vertices;
 
 	//world has two lights env and sun
-	ObjectsPipeline::World world;
+	LambertianObjectsPipeline::World world;
 	bool default_world_lights = true;//if this is true that means there hasn't been any lights loaded
 
-	struct ObjectInstance{
+
+	//----objects of different materials 
+	struct LambertianObjectInstance{
 		ObjectVertices vertices;
-		ObjectsPipeline::Transform transform;
-		uint32_t texture = 0;
+		Transform transform;
+		Texture_Indices texture{.albedo_index = 0};//default texture
 	};
-	std::vector<ObjectInstance> object_instances;
+	struct EnvMirrorObjectInstance{
+		ObjectVertices vertices;
+		Transform transform;
+		Texture_Indices texture{.albedo_index = 0};//default texture
+		int is_env = 1;//default to env
+	};
+	std::vector<LambertianObjectInstance> lambertian_object_instances;
+	std::vector<EnvMirrorObjectInstance> env_mirror_object_instances;
+
+
 
 	//stuff for tree generation
 	vec3 emplace_random_line(vec3 start, uint32_t iter);

@@ -227,8 +227,12 @@ struct S72 {
 		struct Lambertian {
 			std::variant< color, Texture * > albedo = color{1.0f, 1.0f, 1.0f};
 		};
-		struct Mirror { /* no parameters */ };
-		struct Environment { /* no parameters */ };
+		struct Mirror { 
+			std::string env_name;//name of the environment to sample from
+		};
+		struct Environment { 
+			std::string name;//name of the environment to sample from
+		};
 
 		std::variant< PBR, Lambertian, Mirror, Environment > brdf;
 	};
@@ -256,7 +260,7 @@ struct S72 {
 		bool loadTextureFile(const std::string& filename) {
 			int width,height,channels;
 			uint32_t desired_channels = 4;//rgba
-			stbi_set_flip_vertically_on_load(1);
+			stbi_set_flip_vertically_on_load(0);
 			unsigned char* loaded_data = stbi_load(filename.c_str(), &width, &height, &channels, desired_channels);
 			if (!loaded_data) {
 				std::cerr << "Error: Failed to load image." << std::endl;
@@ -274,9 +278,11 @@ struct S72 {
 			//Free the memory allocated by stb_image immediately after copying
 			stbi_image_free(loaded_data);
 
-			std::cout << "Image loaded successfully: " << std::endl;
+			std::cout << "Image "<<filename<<" loaded successfully: " << std::endl;
 			if(format == Format::linear) std::cout<<"format is linear"<<std::endl;
 			if(format == Format::srgb) std::cout<<"format is srgb"<<std::endl;
+			if(format == Format::rgbe) std::cout<<"format is rgbe"<<std::endl;
+
 
 			std::cout << "Width: " << width << ", Height: " << height << ", Channels: " << desired_channels << std::endl;
 			std::cout << "Data size in vector: " << data.size() << " bytes\n" << std::endl;

@@ -771,21 +771,19 @@ S72 S72::load(std::string const &scene_file) {
 				}
 				have_brdf = true;
 
-				std::map< std::string, sejp::value > obj;
-				try {
-					obj = b->second.as_object().value();
-				} catch (std::exception &) {
-					throw std::runtime_error("Material \"" + name + "\"'s mirror is not an object.");
-				}
-
 				Material::Mirror mirror;
 
-				//no properties!
+				//give it a name for it to reference into the unordered map of environments
+				std::string ref;
+				try {
+					ref = b->second.as_string().value();
+				} catch (std::exception &) {
+					throw std::runtime_error("Node \"" + name + "\"'s environment should be a string.");
+				}
+				mirror.env_name = ref;
 
 				material.brdf = mirror;
-
-				warn_on_unhandled(obj, "Material \"" + name + "\"'s mirror");
-
+				
 				object.erase(b);
 			}
 
@@ -795,20 +793,20 @@ S72 S72::load(std::string const &scene_file) {
 				}
 				have_brdf = true;
 
-				std::map< std::string, sejp::value > obj;
-				try {
-					obj = b->second.as_object().value();
-				} catch (std::exception &) {
-					throw std::runtime_error("Material \"" + name + "\"'s environment is not an object.");
-				}
-
 				Material::Environment environment;
 
-				//no properties!
+				//give it a name for it to reference into the unordered map of environments
+				std::string ref;
+				try {
+					ref = b->second.as_string().value();
+				} catch (std::exception &) {
+					throw std::runtime_error("Node \"" + name + "\"'s environment should be a string.");
+				}
+				std::cout<<"loading environment name: "<< environment.name <<"for material "<<name<<std::endl;
+				environment.name = ref;
+				
 
 				material.brdf = environment;
-
-				warn_on_unhandled(obj, "Material \"" + name + "\"'s environment");
 
 				object.erase(b);
 			}
@@ -976,6 +974,7 @@ S72 S72::load(std::string const &scene_file) {
 	for (auto &[key, value] : s72.textures) {
 		value.path = scene_folder + value.src;
 
+		//load the texture
 		value.loadTextureFile(value.path);
 	}
 

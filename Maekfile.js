@@ -26,6 +26,12 @@ custom_flags_and_rules();
 
 //maek.CPP(...) builds a c++ file:
 // it returns the path to the output object file
+const shared_objs = [
+    maek.CPP('image_helpers.cpp'),
+    maek.CPP('mat4.cpp'),
+    maek.CPP('stb_image.cpp'),
+];
+
 const main_objs = [
 	maek.CPP('Tutorial.cpp'),
 	maek.CPP('PosColVertex.cpp'),
@@ -33,11 +39,17 @@ const main_objs = [
 	maek.CPP('PosNorTexVertex.cpp'),
 	maek.CPP('PosNorTanTexVertex.cpp'),
 	maek.CPP('RTG.cpp'),
-	maek.CPP('Helpers.cpp'),
-	maek.CPP('mat4.cpp'),
 	maek.CPP('sejp.cpp'),
+	maek.CPP('Helpers.cpp'),
 	maek.CPP('S72.cpp'),
 	maek.CPP('main.cpp'),
+	maek.CPP('Tutorial_Scene.cpp'),
+	maek.CPP('Tutorial_Textures.cpp'),
+];
+
+const cube_objs = [
+	maek.CPP('cube_main.cpp'),
+	maek.CPP('stb_image_write.cpp'),
 ];
 
 //maek.GLSLC(...) builds a glsl source file:
@@ -67,12 +79,14 @@ main_objs.push( maek.CPP('LambertianObjectsPipeline.cpp', undefined, { depends:[
 main_objs.push( maek.CPP('EnvMirrorObjectsPipeline.cpp', undefined, { depends:[...objects_shaders] } ) );
 
 
-main_objs.push(maek.CPP('stb_image.cpp',undefined));
 
-const main_exe = maek.LINK([...main_objs], 'bin/main');
+const main_exe = maek.LINK([...main_objs, ...shared_objs], 'bin/main');
+
+const cube_exe = maek.LINK([...cube_objs, ...shared_objs] , 'bin/cube');
 
 //default targets:
-maek.TARGETS = [main_exe];
+maek.TARGETS = [main_exe, cube_exe];
+
 
 //- - - - - - - - - - - - - - - - - - - - -
 function custom_flags_and_rules() {

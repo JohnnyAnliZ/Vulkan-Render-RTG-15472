@@ -12,4 +12,6 @@ go to the nakluV directory
 cd C:\Users\zal17\Documents\RealTimeG\nakluV
 
 
-$ bin\main --scene scenes\examples\
+bin\main --scene scenes\examples\
+
+bin\cube scenes\examples\ox_bridge_morning.png --lambertian scenes\examples\ox_bridge_morning_lambertian.png

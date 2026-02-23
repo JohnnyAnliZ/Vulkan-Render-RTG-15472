@@ -967,15 +967,19 @@ S72 S72::load(std::string const &scene_file) {
 		value.src = key;
 		value.path = scene_folder + value.src;
 
-		value.loadBinaryFile(value.path);
+		loadBinaryFile(value.path, value.size, value.data);
 	}
 
 	//textures are already populated with src, type, format; just need to set path:
 	for (auto &[key, value] : s72.textures) {
 		value.path = scene_folder + value.src;
-
+		
 		//load the texture
-		value.loadTextureFile(value.path);
+		loadTextureFile(value.path, value.width, value.height, value.data);
+		std::cout << "Image "<<value.path<<" loaded successfully: " << std::endl;
+		if(value.format == Texture::Format::linear) std::cout<<"format is linear"<<std::endl;
+		if(value.format == Texture::Format::srgb) std::cout<<"format is srgb"<<std::endl;
+		if(value.format == Texture::Format::rgbe) std::cout<<"format is rgbe"<<std::endl;
 	}
 
 	return s72;

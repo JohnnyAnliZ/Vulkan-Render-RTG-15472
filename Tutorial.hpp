@@ -194,6 +194,8 @@ struct Tutorial : RTG::Application {
 	ObjectVertices fruit_vertices;//these vertices are hard coded 
 	std::map<std::string, Mesh> meshes;
 
+	void load_scene();
+	void update_scene(float dt);
 
 
 	//------Texture stuff------
@@ -212,6 +214,7 @@ struct Tutorial : RTG::Application {
 	//memorization so that materials that use the same texture again don't remake the same image
 	std::unordered_map<std::string, uint32_t> textures_name_to_index;
 
+	void load_textures();
 	void rgbe_to_radiance(std::vector<char> const &rgbe_vector, std::vector<float> &rad_vector, uint32_t size);
 
 	//textures, texture_views, and texture_descriptors are all indexed the same

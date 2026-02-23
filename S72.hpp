@@ -6,7 +6,7 @@
 
 #include "mat4.hpp"
 
-#include "stb_image.h"
+#include "image_helpers.hpp"
 
 #include <limits>
 #include <fstream>
@@ -136,34 +136,6 @@ struct S72 {
 
 		uint32_t size = 0;
 		std::vector<char> data;
-
-		bool loadBinaryFile(const std::string& filename) {
-			std::ifstream file(filename, std::ios::binary | std::ios::ate);
-			if (!file) {
-				std::cerr << "Error opening file: " << filename << '\n';
-				return false;
-			}
-
-			const std::streamsize fileSize = file.tellg();
-			if (fileSize < 0) {
-				std::cerr << "Invalid file size: " << filename << '\n';
-				return false;
-			}
-
-			file.seekg(0, std::ios::beg);
-
-			data.resize(static_cast<size_t>(fileSize));
-			if (!file.read(data.data(), fileSize)) {
-				std::cerr << "Error reading file, only read "
-						<< file.gcount() << " bytes\n";
-				data.clear();
-				size = 0;
-				return false;
-			}
-
-			size = static_cast<uint32_t>(fileSize);
-			return true;
-		}
 	};
 	//we organize the data files by "src" so that multiple attributes with the same src resolve to the same DataFile:
 	std::unordered_map< std::string, DataFile > data_files;
@@ -254,40 +226,12 @@ struct S72 {
 		//computed during loading:
 		std::string path; //path to data file, taking into account path to s72 file (relative to current working directory)
 
-		uint32_t size = 0;
+
+		uint32_t width = 0;
+		uint32_t height = 0;
+
 		std::vector<char> data;
 
-		bool loadTextureFile(const std::string& filename) {
-			int width,height,channels;
-			uint32_t desired_channels = 4;//rgba
-			stbi_set_flip_vertically_on_load(0);
-			unsigned char* loaded_data = stbi_load(filename.c_str(), &width, &height, &channels, desired_channels);
-			if (!loaded_data) {
-				std::cerr << "Error: Failed to load image." << std::endl;
-				std::cerr << "Reason: " << stbi_failure_reason() << std::endl; // Optional: print failure reason
-				return false;
-			}
-			
-			//Calculate the total size of the image data
-			size_t data_size = width * height * desired_channels;
-			size = (uint32_t)width;
-			//Copy the raw data into a the struct's data field
-			data.resize(data_size);
-			std::memcpy(data.data(), loaded_data, data_size);
-
-			//Free the memory allocated by stb_image immediately after copying
-			stbi_image_free(loaded_data);
-
-			std::cout << "Image "<<filename<<" loaded successfully: " << std::endl;
-			if(format == Format::linear) std::cout<<"format is linear"<<std::endl;
-			if(format == Format::srgb) std::cout<<"format is srgb"<<std::endl;
-			if(format == Format::rgbe) std::cout<<"format is rgbe"<<std::endl;
-
-
-			std::cout << "Width: " << width << ", Height: " << height << ", Channels: " << desired_channels << std::endl;
-			std::cout << "Data size in vector: " << data.size() << " bytes\n" << std::endl;
-			return true;
-		}
 	};
 	//we organize textures by src + type + format, so that two materials using to the same image *in the same way* end up referring to the same texture object:
 	std::unordered_map< std::string, Texture > textures;

@@ -340,7 +340,7 @@ uint32_t Helpers::find_memory_type(uint32_t type_filter, VkMemoryPropertyFlags f
 			return i;
 		}
 	}
-	throw std::runtime_error("No stuitable memory type found.");
+	throw std::runtime_error("No suitable memory type found.");
 }
 VkFormat Helpers::find_image_format(std::vector< VkFormat > const &candidates, VkImageTiling tiling, VkFormatFeatureFlags features) const {
 	for(VkFormat format : candidates){

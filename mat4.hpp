@@ -98,6 +98,24 @@ struct vec3{
 		};
 		float data[3] = {};
 	};
+	vec3& operator+=(const vec3 &other){
+		x += other.x;
+		y += other.y;
+		z += other.z;
+		return *this;
+	}
+	vec3& operator-=(const vec3 &other) {
+        x -= other.x;
+        y -= other.y;
+        z -= other.z;
+        return *this;
+    }
+    vec3& operator*=(float scalar) {
+        x *= scalar;
+        y *= scalar;
+        z *= scalar;
+        return *this;
+    }
 };
 static_assert(sizeof(vec3) == 3 * 4 );
 

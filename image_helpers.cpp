@@ -101,6 +101,32 @@ void rgba_float_to_radiance_values(std::vector<float> const &rgba_floats, std::v
     }
 }
 
+void rgbe_to_radiance_values(std::vector<char> const &rgbe_values, std::vector<vec3> &radiance_values, uint32_t width){
+    assert(rgbe_values.size() == 4 * width * width * 6);
+    assert(radiance_values.size() == width * width * 6);
+   
+	for(uint32_t i = 0; i < width * width * 6; i++){
+		uint8_t exponent = rgbe_values[4*i+3];
+		if (exponent == 0) {
+			radiance_values[i].x = 0.0f;
+			radiance_values[i].y = 0.0f;
+			radiance_values[i].z = 0.0f;
+			continue;
+		}
+		uint8_t r = rgbe_values[4*i+0];
+		uint8_t g = rgbe_values[4*i+1];
+		uint8_t b = rgbe_values[4*i+2];
+
+		float r_rad = std::ldexp(1.0f, exponent - 128) * (r + 0.5f)/256;
+		float g_rad = std::ldexp(1.0f, exponent - 128) * (g + 0.5f)/256;
+		float b_rad = std::ldexp(1.0f, exponent - 128) * (b + 0.5f)/256;
+		radiance_values[i].x = r_rad;
+		radiance_values[i].y = g_rad;
+		radiance_values[i].z = b_rad;
+	}
+
+}
+
 
 void radiance_values_to_rgbe(std::vector<vec3> const &radiance_values, std::vector<char> &rgbe_vector, uint32_t size){
     assert(radiance_values.size() == size);

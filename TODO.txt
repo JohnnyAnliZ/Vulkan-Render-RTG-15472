@@ -45,6 +45,19 @@ TODO:
 
     in the render loop, bind the pipeline for different bins and upload the resources each pipeline need
 
+    Done
+
 //diffuse 
     create the cubemap utility to, i guess, preconvolve the environment onto a sphere by sampling from the cubemap for every sphere cubemap 
     texel
+
+
+//pbr
+    create the integrate brdf lookuptable and store it as R16B16
+
+    create prefiltered env maps of 5 roughnesses
+
+    implement the 
+
+
+    

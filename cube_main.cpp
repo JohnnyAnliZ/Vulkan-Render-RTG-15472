@@ -1,64 +1,13 @@
-#include "image_helpers.hpp"
+#include "cube_utilities.hpp"
 #include "stb_image_write.h"
 
 #include "mat4.hpp"
 
 #include <iostream>
+#include <filesystem>
 #include <string>
 #include <assert.h>
-
-
-struct Sample {
-    vec3 direction;
-    float solid_angle;
-    vec3 radiance;
-};
-float cube_texel_solid_angle(uint32_t x, uint32_t y, uint32_t width){
-    float inv = 1.0f / width;
-
-    float u = (2.0f * (x + 0.5f) * inv) - 1.0f;
-    float v = (2.0f * (y + 0.5f) * inv) - 1.0f;
-
-    float texel_area = 4.0f * inv * inv;  // = 4 / width^2
-
-    float jacobian = 1.0f / pow(1.0f + u*u + v*v, 1.5f);
-
-    return texel_area * jacobian;
-}
-
-vec3 cube_texel_direction(uint32_t face, uint32_t x, uint32_t y, uint32_t width){
-    vec3 dir;
-    float u = (2.0f * (x + 0.5f) / width) - 1.0f;
-    float v = (2.0f * (y + 0.5f) / width) - 1.0f;
-    v = -v;//following assignments assume uv is bottom-left origin per cube map face
-    assert(face < 6);
-    switch(face){
-        case 0: // +X (right)
-            dir = normalized(vec3( 1.0f,  v, -u));
-            break;
-
-        case 1: // -X (left)
-            dir = normalized(vec3(-1.0f,  v,  u));
-            break;
-
-        case 2: // +Y (front)
-            dir = normalized(vec3( u, 1.0f, -v));
-            break;
-
-        case 3: // -Y (back)
-            dir = normalized(vec3( u, -1.0f,  v));
-            break;
-
-        case 4: // +Z (top)
-            dir = normalized(vec3( u,  v, 1.0f));
-            break;
-
-        case 5: // -Z (bottom)
-            dir = normalized(vec3( u, -v, -1.0f));
-            break;
-    }
-    return dir;
-}
+#include <array>
 
 int main(int argc, char **argv) {
     assert(argc == 4);
@@ -66,71 +15,59 @@ int main(int argc, char **argv) {
     std::string utility_type = argv[2];//for A2, it's either --lambertian or --ggx 
     std::string out_cube_path = argv[3];
 
-    //get all the input cube map
-    uint32_t width;
-    uint32_t _;//no need height cuz it's cubemap
-    std::vector<char> in_data;
-    loadTextureFile(in_cube_path, width, _, in_data);
+    
+    if(utility_type == "--lambertian"){
+        //get the input cube map
+        uint32_t width;
+        uint32_t _;//no need height cuz it's a cubemap
+        std::vector<char> in_data;
+        loadTextureFile(in_cube_path, width, _, in_data);
+        
+        //allocate space for out cube map
+        uint32_t out_width = 16;
+        std::vector<char> out_image;
+        out_image.resize(out_width * out_width * 6 * 4);
 
-    //convert to rgba floats
-    std::vector<float> in_cube_rgba_float_data;//r32g32b32a32 sfloat (a is unused)
-    in_cube_rgba_float_data.resize(6 * width * width * 4);
-    rgbe_to_rgba_float(in_data, in_cube_rgba_float_data, width);
+        convolve_cubemap_diffuse(width, in_data, out_width, out_image);
 
-    //convert to radiance values
-    std::vector<vec3> in_cube_radiance_values;
-    in_cube_radiance_values.resize(width * width * 6);
-    rgba_float_to_radiance_values(in_cube_rgba_float_data, in_cube_radiance_values, width * width * 6);
-
-    //integrate over whole input cubemap for each output texel
-
-    //precompute input texel directions
-    std::vector<Sample> input_samples;
-    input_samples.reserve(width * width * 6);
-
-    for(uint32_t face = 0; face < 6; face++){
-        for(uint32_t y = 0; y < width; y++){
-            for(uint32_t x = 0; x < width; x++){
-                vec3 dir = cube_texel_direction(face, x, y, width);
-                float solid_angle = cube_texel_solid_angle(x,y, width);
-                uint32_t index = face * width * width + y * width + x;
-                vec3 L = in_cube_radiance_values[index];
-                input_samples.emplace_back(Sample{.direction = dir, .solid_angle = solid_angle, .radiance = L});
-            }
-        }
+        stbi_write_png(out_cube_path.data(), out_width, out_width * 6, 4, out_image.data(), out_width * 4);
     }
 
-    //integrate over all the input samples for each out texel
-    uint32_t out_width = 16;
-    std::vector<vec3> out_radiance(6 * out_width * out_width);
-    for(uint32_t face = 0; face < 6; ++face){
-        for(uint32_t y = 0; y < out_width; ++y){
-            for(uint32_t x = 0; x < out_width; ++x){
+    else if(utility_type == "--ggx"){
+        //get the input cube map
+        uint32_t width;
+        uint32_t _;//no need height cuz it's a cubemap
+        std::vector<char> in_data;
+        loadTextureFile(in_cube_path, width, _, in_data);
 
-                vec3 n = cube_texel_direction(face, x, y, out_width);
 
-                vec3 irradiance(0.0f);
-                
-                for(const auto& s : input_samples){
+        //convert to radiance values
+        std::vector<vec3> in_rads(width * width * 6);
+        rgbe_to_radiance_values(in_data, in_rads, width);
 
-                    float cos_theta = dot(n, s.direction);
+        //decalre the mip images
+        const uint32_t mip_levels = 6;
+        std::array<std::vector<vec3>, mip_levels> mip_images;
+        for(uint32_t level = 1; level < mip_levels; level++){
+            float roughness = (float)level / (float)(mip_levels - 1);//roughness from zero (original image) to one, smallest mip map
+            uint32_t cur_width = width / (1<<level);//if input is 1024, then width goes 512, 256, 128, 64, 32
+            //allocate space
+            mip_images[level].resize(cur_width * cur_width * 6);
+            //convolve with ggx
+            convolve_cubemap_ggx(width, in_rads, cur_width, mip_images[level], roughness);
+            //convert back to rgbe
+            std::vector<char> out_image(4 * cur_width * cur_width * 6);
+            radiance_values_to_rgbe(mip_images[level], out_image, cur_width * cur_width * 6);
+            //store
+            std::filesystem::path p(out_cube_path);
+            // Construct new filename: parent_path / filename_without_ext + "." + level + ext
+            std::string mip_image_name = (p.parent_path() / (p.stem().string() + "." + std::to_string(level) + p.extension().string())).string();
 
-                    if(cos_theta > 0.0f){
-                        irradiance = irradiance + s.radiance * cos_theta * s.solid_angle / 3.14159265f;
-                    }
-                }
-                uint32_t index = face * out_width * out_width + y * out_width + x;
-                out_radiance[index] = irradiance;
-            }
+            std::cout << mip_image_name << std::endl;
+
+            std::cout<<"outputting: "<<mip_image_name<<std::endl;
+            stbi_write_png(mip_image_name.data(), cur_width, cur_width * 6, 4, out_image.data(), cur_width * 4);
         }
     }
-
-    //output the image
-    std::vector<char> out_image;
-    out_image.resize(out_width * out_width * 6 * 4);
-    radiance_values_to_rgbe(out_radiance, out_image, out_width * out_width * 6);
-
-    stbi_write_png(out_cube_path.data(), out_width, out_width * 6, 4, out_image.data(), out_width * 4);
-
 }
 

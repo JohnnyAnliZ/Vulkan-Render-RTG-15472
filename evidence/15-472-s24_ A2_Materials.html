@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>15-472-s24: A2 - Materials</title>
+<style>
+/* feel free to style your report in a fancier way! */
+
+@import url('https://fonts.googleapis.com/css2?family=Quicksand:wght@300;400;700&Anonymous+Pro&display=swap');
+
+html {
+	background:#505055;
+}
+
+body {
+	font-family: 'Quicksand', sans-serif;
+	color:#000;
+	background:#eeeee8;
+	font-size:15px;
+	margin: 1em auto 50vh auto;
+	padding: 1em 2em 1em 2em;
+	max-width:45em;
+	border-radius:4px;
+	box-shadow:0 0 10px #0008;
+}
+
+h1 { font-size: 20px; font-weight: 700; }
+h2 { font-size: 16px; font-weight: 700; }
+h3 { font-size: 16px; font-weight: 400; }
+h4 { font-size: 14px; font-weight: 400; }
+
+h1, h2, h3, h4 {
+	margin: 15px 0 0 -10px;
+}
+
+p {
+	margin: 5px 0 0 0;
+}
+
+.subtitle {
+	display:block;
+	font-size:16px;
+	font-weight:400;
+}
+
+.placeholder {
+	color:#800;
+	font-style:italic;
+}
+
+kbd {
+	display:inline-block;
+	background:#ccc;
+	color:#444;
+	font-style:normal;
+	font-weight:700;
+	border-radius:8px;
+	padding:1px 6px;
+	margin:1px;
+	border:1.5px solid #aaa;
+}
+
+code {
+	font-family: 'Anonymous Pro', monospace;
+	background: #222;
+	color:#fff;
+	border-radius:4px;
+	padding:2px 4px;
+	margin:1px;
+}
+
+code var {
+	color:#ef5;
+	font-style:italic;
+}
+
+.answer{
+	color:rgb(32, 136, 0);
+	font-style:oblique;
+}
+
+.atag {
+	font-family: 'Calistoga', serif;
+	font-size:90%;
+	color:#000;
+	background:#b00;
+
+	display:inline-block;
+	padding:1px 4px;
+	border-radius: 4px;
+	line-height:120%;
+}
+.atag:before {
+	content:'»';
+}
+.atag.extra {
+	background:#b08;
+}
+.atag.creative {
+	/* thanks, shout.horse! */
+	background:linear-gradient(0.4turn, #ffe680, #916f6f);
+}
+
+</style>
+</head>
+<body>
+<h1>A2: Materials
+<span class="subtitle">by <span class="placeholder">Johnny Zhang(anliz)</span></span>
+</h1>
+
+<p class="placeholder">
+Summarize, in about one paragraph, your approach to the materials assignment.
+How did you structure your code?
+What's cool about it? Are there parts you weren't able to complete? 
+</p>
+
+<h2>My Model <span class="atag creative">A2-create</span></h2>
+
+<p class="placeholder">
+Describe the model and texture you created and include a screen recording showing it running in real-time:
+</p>
+
+<video>
+</video>
+
+<p class="placeholder">
+Describe your creation process for the model and texture.
+</p>
+
+<h2>My Code</h2>
+
+<p class="placeholder">
+For each of the following sections, describe the overall structure of your code, and reference the specific files/functions/data structures that you used.
+For any parts that are incomplete, discuss what you were able to do and what you tried but couldn't get working.
+</p>
+
+<p class="placeholder">
+The purpose of this section is to get you to think critically about your code by explaining it to course staff; these thoughts may help you improve the code as you work on it in A3 and beyond.
+This section also forms a road map to your code that we can use while grading.
+</p>
+
+<h3>Loading lighting environments <span class="atag">A2-env</span></h3> 
+
+<p class="placeholder">
+Cover, at least:
+your changes for the new <code>"ENVIRONMENT"</code> type;
+your choice of coordinate systems for the environment map;
+your handling of the high dynamic range.
+</p>
+<p class="placeholder">
+Include a screenshot (or, ideally, recording) of your viewer drawing a scene with both the `environment` and `mirror` materials.
+</p>
+
+<h3>Tone mapping <span class="atag">A2-tone</span></h3>
+
+<p class="placeholder">
+Cover, at least:
+your choice of tone mapping operator,
+your viewer's output color space and format.
+</p>
+
+<p class="placeholder">
+Include a screenshot of your viewer drawing an example scene before and after implementing tone mapping.
+</p>
+
+<p class="placeholder">
+Include a graph of your tone mapping operator's curve.
+Consider including histograms of the output values to help illustrate how the curve is working.
+</p>
+
+<h3>Lambertian material <span class="atag">A2-diffuse</span></h3>
+
+<p class="placeholder">
+Cover, at least:
+your implementation of cube map handling;
+your implementation of the cube utility.
+</p>
+
+<p class="placeholder">
+Include the output image your viewer produces from drawing the unit cube with the <code>"lambertian"</code> materials.
+</p>
+
+<p class="placeholder">
+Include an example of a lighting environment and its precomputed lambertian lookup table.
+(You can use https://github.com/15-472/cube-viewer/ to show cube maps in our format; you might even consider embedding it in your report to show cubes live.)
+</p>
+
+<h3>Normal maps <span class="atag">A2-normal</span></h3>
+
+<p class="placeholder">
+Cover, at least:
+your choice of coordinate systems for the normal map.
+</p>
+<p class="placeholder">
+Include a screen recording or a sequence of screenshots showing normal maps working.
+(E.g., demonstrate how moving the light changes the shading; show the same object with and without its normal map to show that detail is, indeed, being added.)
+</p>
+
+<p class="placeholder">
+Include screen shots demonstrating that normal mapping is working with all material types.
+</p>
+
+<h3>PBR material <span class="atag">A2-pbr</span></h3>
+
+<p class="placeholder">
+Cover, at least:
+your implementation of a specular look-up mipmap;
+your implementation of the cube utility.
+</p>
+
+<p class="placeholder">
+Include the stack of look-up cubemaps your utility produces when run on an example lighting environment.
+</p>
+
+<p class="placeholder">
+Show screenshots or screen recordings of a variety of interesting material appearances demonstrating the parameter range of the <code>"pbr"</code> material.
+</p>
+
+
+<h3>Displacement map <span class="atag extra">A2x-displacement</span></h3>
+<p class="placeholder">
+Cover, at least:
+your choice of coordinate systems for the displacement map.
+</p>
+
+
+<p class="placeholder">
+Include a screen recording or sequence of screenshots demonstrating the parallax effect as the camera moves over a displace-mapped object.
+</p>
+
+<p class="placeholder">
+Include screen shots demonstrating that the displacement mapping is working properly with all material variations.
+</p>
+
+
+<h2>Performance Tests</h2>
+
+<p class="placeholder">
+This section demonstrates that you have tested your code, including finding its limits.
+</p>
+
+<p class="placeholder">
+Before getting into the tests, describe here the relevant information about your testing system(s).
+(CPU, GPU, Memory, driver versions, OS version, ...  -- anything you think might be relevant!)
+</p>
+
+
+<h3>Material Performance</h3>
+<p class="placeholder">
+Compare the relative performance of the various material types in this assignment.
+Illustrate the costs of adding normal (/displacement) maps.
+</p>
+
+<h3>Texture vs Vertex Detail</h3>
+<p class="placeholder">
+Compare the relative performance of a high-resolution mesh with a lambertian material to a low resolution mesh with a normal map and a lambertain material.
+(When) is texture detail really cheaper than vertex detail?
+</p>
+
+
+<h2>Feedback</h2>
+<p class="placeholder">
+This is the end of the structured report. Feel free to add feedback about A2 to this section.
+</p>
+
+</body>
+</html>

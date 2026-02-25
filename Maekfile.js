@@ -50,6 +50,7 @@ const main_objs = [
 const cube_objs = [
 	maek.CPP('cube_main.cpp'),
 	maek.CPP('stb_image_write.cpp'),
+	maek.CPP('cube_utillities.cpp'),
 ];
 
 //maek.GLSLC(...) builds a glsl source file:

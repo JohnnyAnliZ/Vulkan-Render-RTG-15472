@@ -327,6 +327,18 @@ inline vec3 normalized(vec3 const &a){
 
 //----end vec3 stuff----
 
+//----vec2 stuff----
+inline vec2 operator*(vec2 const &a, float const &c){
+	return vec2{a.x*c, a.y*c};
+}
+inline vec2 operator*(float const &c, vec2 const &a){
+	return vec2{a.x*c, a.y*c};
+}
+inline vec2 operator/(vec2 const &a, float const &c){
+	return vec2{a.x/c, a.y/c};
+}
+//----end vec2 stuff----
+
 //----view projection stuff----
 
 

@@ -15,6 +15,45 @@ int main(int argc, char **argv) {
     std::string utility_type = argv[2];//for A2, it's either --lambertian or --ggx 
     std::string out_cube_path = argv[3];
 
+    std::filesystem::path p(out_cube_path);
+    
+
+    {//do the brdf LUT
+        std::vector<vec3> outputs;
+        uint32_t const width = 512;
+        outputs.reserve(width * width);
+        for(uint32_t x = 0; x < width; x++){
+            for(uint32_t y = 0; y < width; y++){
+                float roughness = (float)y / (float)(width - 1);
+                float cos_theta = (float)x / (float)(width - 1);
+                vec2 out = integrate_brdf(roughness, cos_theta);
+                outputs.emplace_back(vec3(out.x, out.y, 0.0f));
+            }
+        }
+
+        std::vector<unsigned char> image(width * width * 3);
+
+        for (uint32_t i = 0; i < width * width; ++i) {
+            image[3*i + 0] = (unsigned char)(outputs[i].x * 255.0f);
+            image[3*i + 1] = (unsigned char)(outputs[i].y * 255.0f);
+            image[3*i + 2] = 0;
+        }
+
+        std::string lut_path = (p.parent_path() / "brtf_lut.png").string();
+
+        std::cout<<"writing: "<<lut_path<<std::endl;
+        stbi_flip_vertically_on_write(1);
+        int success = stbi_write_png(lut_path.data(), width, width, 3, image.data(), width * 3);
+        if (!success) {
+            fprintf(stderr, "Error: Failed to write image to brtf_lut.png\n");
+            // Handle the error (e.g., free memory, return error code)
+        } else {
+            printf("Image written successfully.\n");
+        }
+        
+    }
+    
+
     
     if(utility_type == "--lambertian"){
         //get the input cube map
@@ -33,6 +72,8 @@ int main(int argc, char **argv) {
         stbi_write_png(out_cube_path.data(), out_width, out_width * 6, 4, out_image.data(), out_width * 4);
     }
 
+
+    
     else if(utility_type == "--ggx"){
         //get the input cube map
         uint32_t width;
@@ -59,7 +100,7 @@ int main(int argc, char **argv) {
             std::vector<char> out_image(4 * cur_width * cur_width * 6);
             radiance_values_to_rgbe(mip_images[level], out_image, cur_width * cur_width * 6);
             //store
-            std::filesystem::path p(out_cube_path);
+
             // Construct new filename: parent_path / filename_without_ext + "." + level + ext
             std::string mip_image_name = (p.parent_path() / (p.stem().string() + "." + std::to_string(level) + p.extension().string())).string();
 
@@ -69,5 +110,7 @@ int main(int argc, char **argv) {
             stbi_write_png(mip_image_name.data(), cur_width, cur_width * 6, 4, out_image.data(), cur_width * 4);
         }
     }
+
+    
 }
 

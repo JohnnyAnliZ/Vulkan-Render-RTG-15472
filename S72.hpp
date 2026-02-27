@@ -8,6 +8,7 @@
 
 #include "image_helpers.hpp"
 
+#include <filesystem>
 #include <limits>
 #include <fstream>
 #include <iostream>
@@ -231,6 +232,7 @@ struct S72 {
 		uint32_t height = 0;
 
 		std::vector<char> data;
+		std::vector<std::vector<char>> mip_data;
 
 	};
 	//we organize textures by src + type + format, so that two materials using to the same image *in the same way* end up referring to the same texture object:

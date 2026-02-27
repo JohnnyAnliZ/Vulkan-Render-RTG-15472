@@ -56,8 +56,11 @@ TODO:
     create the integrate brdf lookuptable and store it as R16B16
 
     create prefiltered env maps of 5 roughnesses
+        TODO::
+            Fix face issue
+            use pdf hack
 
-    implement the 
+    implement the pbr shader taking in normal map, roughness map, albedo
 
 
     

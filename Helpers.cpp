@@ -104,10 +104,11 @@ void Helpers::destroy_buffer(AllocatedBuffer &&buffer) {
 
 
 Helpers::AllocatedImage Helpers::create_image(VkExtent2D const &extent, VkFormat format, VkImageTiling tiling, 
-	VkImageUsageFlags usage, VkMemoryPropertyFlags properties, MapFlag map, bool is_cubemap) {
+	VkImageUsageFlags usage, VkMemoryPropertyFlags properties, MapFlag map, bool is_cubemap, uint32_t mip_levels) {
 	AllocatedImage image;
 	image.extent = extent;
 	image.format = format;
+	image.mip_levels = mip_levels;
 	image.is_cubemap = is_cubemap;
 
 	VkImageCreateInfo create_info{
@@ -120,7 +121,7 @@ Helpers::AllocatedImage Helpers::create_image(VkExtent2D const &extent, VkFormat
 			.height = extent.height,
 			.depth = 1,
 		},
-		.mipLevels = 1,
+		.mipLevels = mip_levels,
 		.arrayLayers = is_cubemap ? 6u : 1u,
 		.samples = VK_SAMPLE_COUNT_1_BIT,
 		.tiling = tiling,
@@ -187,7 +188,9 @@ void Helpers::transfer_to_buffer(void const *data, size_t size, AllocatedBuffer 
 	//don't leak buffer memory:
 }
 
-void Helpers::transfer_to_image(void const *data, size_t size, AllocatedImage &target, bool is_cubemap) {
+
+//pure data version
+void Helpers::transfer_to_image(void const *data, size_t size, AllocatedImage &target){
 	assert(target.handle != VK_NULL_HANDLE); //target image should be allocated already
 
 	//check data is the right size:
@@ -195,7 +198,7 @@ void Helpers::transfer_to_image(void const *data, size_t size, AllocatedImage &t
 	size_t texels_per_block = vkuFormatTexelsPerBlock(target.format);
 	
 	
-	uint32_t layer_count = is_cubemap ? 6u: 1u;
+	uint32_t layer_count = target.is_cubemap ? 6u: 1u;
 	VkDeviceSize layer_size = target.extent.width * target.extent.height * bytes_per_block / texels_per_block;//number of bytes in one layer
 
 	std::cout<<"bytes per block: "<<bytes_per_block<<"texels_per_block: "<<texels_per_block<<std::endl;
@@ -225,7 +228,7 @@ void Helpers::transfer_to_image(void const *data, size_t size, AllocatedImage &t
 	VkImageSubresourceRange whole_image{
 		.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
 		.baseMipLevel = 0,
-		.levelCount = 1,
+		.levelCount = target.mip_levels,
 		.baseArrayLayer = 0,
 		.layerCount = layer_count,
 	};
@@ -276,6 +279,172 @@ void Helpers::transfer_to_image(void const *data, size_t size, AllocatedImage &t
 			};
 			regions[i] = region;
 		}
+		
+
+		vkCmdCopyBufferToImage(
+			transfer_command_buffer,
+			transfer_src.handle,
+			target.handle,
+			VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+			(uint32_t)regions.size(), regions.data()
+		);
+
+		//NOTE: if image had mip levels, would need to copy as additional regions here.
+	}
+
+	{ // transition the image memory to shader-read-only-optimal layout:
+		VkImageMemoryBarrier barrier{
+			.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+			.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
+			.dstAccessMask = VK_ACCESS_SHADER_READ_BIT,
+			.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+			.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+			.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+			.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+			.image = target.handle,
+			.subresourceRange = whole_image,
+		};
+
+		vkCmdPipelineBarrier(
+			transfer_command_buffer, //commandBuffer
+			VK_PIPELINE_STAGE_TRANSFER_BIT, //srcStageMask
+			VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, //dstStageMask
+			0, //dependencyFlags
+			0, nullptr, //memory barrier count, pointer
+			0, nullptr, //buffer memory barrier count, pointer
+			1, &barrier //image memory barrier count, pointer
+		);
+	}
+
+	//end and submit the command buffer
+	VK( vkEndCommandBuffer(transfer_command_buffer) );
+
+	VkSubmitInfo submit_info{
+		.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+		.commandBufferCount = 1,
+		.pCommandBuffers = &transfer_command_buffer
+	};
+
+	VK( vkQueueSubmit(rtg.graphics_queue, 1, &submit_info, VK_NULL_HANDLE) );
+
+	//wait for command buffer to finish executing
+	VK( vkQueueWaitIdle(rtg.graphics_queue) );
+
+	//destroy the source buffer
+	destroy_buffer(std::move(transfer_src));
+}
+
+//mip map version
+void Helpers::transfer_to_image(std::vector<std::vector<float>> const& mip_data, size_t size, AllocatedImage &target) {
+	assert(target.handle != VK_NULL_HANDLE); //target image should be allocated already
+
+	//check data is the right size:
+	size_t bytes_per_block = vkuFormatTexelBlockSize(target.format);
+	size_t texels_per_block = vkuFormatTexelsPerBlock(target.format);
+	
+	uint32_t layer_count = target.is_cubemap ? 6u: 1u;
+	VkDeviceSize layer_size = target.extent.width * target.extent.height * bytes_per_block / texels_per_block;//number of bytes in one layer
+
+	std::cout<<"bytes per block: "<<bytes_per_block<<"texels_per_block: "<<texels_per_block<<std::endl;
+	std::cout<<"size: "<<size<<" target size: "<<layer_count * layer_size<<std::endl;
+	assert(size == layer_count * layer_size);
+	//create a host-coherent source buffer
+	AllocatedBuffer transfer_src = create_buffer(
+		size,
+		VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+		Mapped
+	);
+  
+	//copy image data into the source buffer
+	size_t offset = 0;
+	assert(mip_data.size() == target.mip_levels);
+	uint8_t* dst = reinterpret_cast<uint8_t*>(transfer_src.allocation.data());
+	for(uint32_t level = 0; level < target.mip_levels; level++){
+		uint32_t current_mip_level_size = size / (1<< (level * 2));
+		assert(current_mip_level_size == mip_data[level].size() * 4);
+		std::memcpy(dst + offset, mip_data[level].data(), current_mip_level_size);
+		offset += current_mip_level_size;
+	}
+
+	//begin recording a command buffer
+	VK( vkResetCommandBuffer(transfer_command_buffer, 0) );
+
+	VkCommandBufferBeginInfo begin_info{
+		.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+		.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT, //will record again every submit
+	};
+
+	VK( vkBeginCommandBuffer(transfer_command_buffer, &begin_info) );
+
+	VkImageSubresourceRange whole_image{
+		.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+		.baseMipLevel = 0,
+		.levelCount = target.mip_levels,
+		.baseArrayLayer = 0,
+		.layerCount = layer_count,
+	};
+
+	{ //put the receiving image in destination-optimal layout
+		VkImageMemoryBarrier barrier{
+			.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+			.srcAccessMask = 0,
+			.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
+			.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED, //throw away old image
+			.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+			.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+			.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+			.image = target.handle,
+			.subresourceRange = whole_image,
+		};
+
+		vkCmdPipelineBarrier(
+			transfer_command_buffer, //commandBuffer
+			VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, //srcStageMask
+			VK_PIPELINE_STAGE_TRANSFER_BIT, //dstStageMask
+			0, //dependencyFlags
+			0, nullptr, //memory barrier count, pointer
+			0, nullptr, //buffer memory barrier count, pointer
+			1, &barrier //image memory barrier count, pointer
+		);
+	}
+
+	{ // copy the source buffer to the image
+		uint32_t regions_count = layer_count * target.mip_levels;
+		std::vector<VkBufferImageCopy> regions(regions_count);
+		size_t offset = 0;
+		for(uint32_t level = 0; level < target.mip_levels; level++){
+
+			uint32_t mip_width  = target.extent.width  >> level;
+			uint32_t mip_height = target.extent.height >> level;
+
+			size_t level_bytes = mip_data[level].size() * sizeof(float);
+
+			size_t face_bytes = level_bytes / layer_count;
+
+			for(uint32_t face = 0; face < layer_count; face++){
+				VkBufferImageCopy region{
+					.bufferOffset = offset + face * face_bytes,
+					.bufferRowLength = 0,
+					.bufferImageHeight = 0,//tightly packed according to imageExtent
+					.imageSubresource{
+						.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+						.mipLevel = level,
+						.baseArrayLayer = face,
+						.layerCount = 1,
+					},
+					.imageOffset{ .x = 0, .y = 0, .z = 0 },
+					.imageExtent{
+						.width = mip_width,
+						.height = mip_height,
+						.depth = 1
+					},
+				};
+				regions[level * layer_count + face] = region;
+			}
+			offset += level_bytes;
+		}
+		
 		
 
 		vkCmdCopyBufferToImage(

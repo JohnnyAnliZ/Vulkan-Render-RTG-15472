@@ -18,247 +18,272 @@
 #include <random>
 #include <chrono>
 
+void Tutorial::make_flat_image(S72::Texture const &texture){
+	assert(texture.type == S72::Texture::Type::flat);
+	//make a place for the texture to live on the GPU:
+	textures.emplace_back(rtg.helpers.create_image(
+		VkExtent2D{ .width = texture.width , .height = texture.height }, //size of image, we know this is not a cubemap, could be unsquare
+		texture.format == S72::Texture::Format::srgb ? VK_FORMAT_R8G8B8A8_SRGB: VK_FORMAT_R32G32B32A32_SFLOAT, //how to interpret image data 
+		VK_IMAGE_TILING_OPTIMAL,
+		VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, //will sample and upload
+		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, //should be device-local
+		Helpers::Unmapped, false
+	));
+	
+	//transfer data:
+	rtg.helpers.transfer_to_image(texture.data.data(), texture.data.size() * sizeof(float), textures.back());//here size is in bytes
+}
 
-void Tutorial::load_textures(){
-    { // make some textures 
-		//create a map from texture name to texture number
-		uint32_t reserve_size = 5;
-		material_textures_table.reserve(reserve_size);
-		textures.reserve(reserve_size);
-		uint32_t texture_index = 0;
-		{ //texture 0 will be a dark grey / light grey checkerboard with a red square at the origin.
-			//insert_into lookup table
-			material_textures_table["light_grey_checkerboard_with_red_square_origin"] = Tutorial::Texture_Indices{
-				.albedo_index = (int)texture_index,
-			};
-			texture_index++;//now texture index is the next texture to be loaded
-			//actually make the texture:
-			uint32_t size = 128;
-			std::vector< uint32_t > data;
-			data.reserve(size * size);
-			for (uint32_t y = 0; y < size; ++y) {
-				float fy = (y + 0.5f) / float(size);
-				for (uint32_t x = 0; x < size; ++x) {
-					float fx = (x + 0.5f) / float(size);
-					//highlight the origin:
-					if      (fx < 0.05f && fy < 0.05f) data.emplace_back(0xff0000ff); //red
-					else if ( (fx < 0.5f) == (fy < 0.5f)) data.emplace_back(0xff444444); //dark grey
-					else data.emplace_back(0xffbbbbbb); //light grey
-				}
-			}
-			assert(data.size() == size*size);
+void Tutorial::make_cube_image(S72::Texture const &texture){
+	assert(texture.type == S72::Texture::Type::cube);
+	//make a place for the texture to live on the GPU:
+	textures.emplace_back(rtg.helpers.create_image(
+		VkExtent2D{ .width = texture.width , .height = texture.width }, //size of image, cubemap should have it square
+		VK_FORMAT_R32G32B32A32_SFLOAT, //how to interpret image data (in this case, float rgba)
+		VK_IMAGE_TILING_OPTIMAL,
+		VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, //will sample and upload
+		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, //should be device-local
+		Helpers::Unmapped, true, texture.mip_data.size() + 1 // base level plus mip levels
+	));
+	//TODO: also get the mip map images chained to the same image
 
-			//make a place for the texture to live on the GPU
-			textures.emplace_back(rtg.helpers.create_image(
-				VkExtent2D{ .width = size , .height = size }, //size of image
-				VK_FORMAT_R8G8B8A8_UNORM, //how to interpret image data (in this case, linearly-encoded 8-bit RGBA)
-				VK_IMAGE_TILING_OPTIMAL,
-				VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, //will sample and upload
-				VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, //should be device-local
-				Helpers::Unmapped
-			));
-			//transfer data:
-			rtg.helpers.transfer_to_image(data.data(), sizeof(data[0]) * data.size(), textures.back());
+	//transfer data
+	//convert from rgbe to rgbafloat
+	std::vector<float> cubemap_rgba(texture.width * texture.width * 6 * 4);
+	rgbe_to_rgba_float(texture.data, cubemap_rgba, texture.width);
+
+	uint32_t const mip_levels = texture.mip_data.size() + 1;
+	std::vector<std::vector<float>> mip_rgbas(mip_levels);
+	for(uint32_t i = 0; i < mip_levels; i++){
+		if(i == 0){
+			mip_rgbas[i] = cubemap_rgba;
 		}
-		{ //texture 1 will be a classic 'xor' texture:
-			//insert into color lookup table
-			material_textures_table["classic_xor_texture"] = Tutorial::Texture_Indices{
-				.albedo_index = (int)texture_index,
-			};
-			texture_index++;//now texture index is the next texture to be loaded
-			//actually make the texture:
-			uint32_t size = 256;
-			std::vector< uint32_t > data;
-			data.reserve(size * size);
-			for (uint32_t y = 0; y < size; ++y) {
-				for (uint32_t x = 0; x < size; ++x) {
-					uint8_t r = uint8_t(x) ^ uint8_t(y);
-					uint8_t g = uint8_t(x + 128) ^ uint8_t(y);
-					uint8_t b = uint8_t(x) ^ uint8_t(y + 27);
-					uint8_t a = 0xff;
-					data.emplace_back( uint32_t(r) | (uint32_t(g) << 8) | (uint32_t(b) << 16) | (uint32_t(a) << 24) );
-				}
-			}
-			assert(data.size() == size*size);
-
-			//make a place for the texture to live on the GPU:
-			textures.emplace_back(rtg.helpers.create_image(
-				VkExtent2D{ .width = size , .height = size }, //size of image
-				VK_FORMAT_R8G8B8A8_SRGB, //how to interpret image data (in this case, SRGB-encoded 8-bit RGBA)
-				VK_IMAGE_TILING_OPTIMAL,
-				VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, //will sample and upload
-				VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, //should be device-local
-				Helpers::Unmapped
-			));
-			
-			//transfer data:
-			rtg.helpers.transfer_to_image(data.data(), sizeof(data[0]) * data.size(), textures.back());
-		}
-		//the rest of the textures are loaded into memory from image files
-		for(auto const &mat: scene72.materials){
-			assert(material_textures_table.find(mat.first) == material_textures_table.end());
-			std::cout<<"loading material "<<mat.first<<std::endl;
-			
-			//----actually load the texture
-			//resolve the brdf
-			std::variant<S72::Material::PBR, S72::Material::Lambertian, S72::Material::Mirror, S72::Material::Environment> const &v = mat.second.brdf;
-			if(std::holds_alternative<S72::Material::PBR>(v)){
-
-			}
-			else if(std::holds_alternative<S72::Material::Lambertian>(v)){
-				S72::Material::Lambertian const &lamb = get<S72::Material::Lambertian>(v);
-				//----insert into material_textures_table
-				assert(textures.size() == texture_index);//this index should be the newly inserted texture
-				material_textures_table[mat.first] = Tutorial::Texture_Indices{
-					.albedo_index = (int)texture_index,//albedo texture is the only texture descriptor it needs
-				};
-				// ^ here we assign it assuming textures at texture_index will be populated with a new texture, 
-				//but if the texture is already loaded, overwrite with index to it kept track of by textures_name_to_index
-
-				if(std::holds_alternative<S72::color>(lamb.albedo)){
-					//actually make the texture:
-					uint32_t size = 1;
-					std::vector< uint32_t > data;
-					data.reserve(size * size);
-
-					S72::color c = get<S72::color>(lamb.albedo);
-					uint8_t r = uint8_t(std::round(255 * S72::sRGB(c.x)));
-					uint8_t g = uint8_t(std::round(255 * S72::sRGB(c.y)));
-					uint8_t b = uint8_t(std::round(255 * S72::sRGB(c.z)));
-					uint8_t a = 0xff;
-					data.emplace_back( uint32_t(r) | (uint32_t(g) << 8) | (uint32_t(b) << 16) | (uint32_t(a) << 24) );
-					assert(data.size() == size*size);
-
-					std::cout<<"color of the lambertian material "<< std::setfill('0') << std::setw(8) << std::hex<<data.back()<<std::dec<<std::endl;
-					//make a place for the texture to live on the GPU:
-					textures.emplace_back(rtg.helpers.create_image(
-						VkExtent2D{ .width = size , .height = size }, //size of image
-						VK_FORMAT_R8G8B8A8_SRGB, //how to interpret image data (in this case, SRGB-encoded 8-bit RGBA)
-						VK_IMAGE_TILING_OPTIMAL,
-						VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, //will sample and upload
-						VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, //should be device-local
-						Helpers::Unmapped
-					));
-					texture_index++;//now texture_index is the next texture
-
-					//transfer data:
-					rtg.helpers.transfer_to_image(data.data(), sizeof(data[0]) * data.size(), textures.back());
-				}
-				else if(std::holds_alternative<S72::Texture*>(lamb.albedo)){
-					S72::Texture * tex_ptr = get<S72::Texture*>(lamb.albedo);
-
-					//check for multiple references of the same texture
-					std::string texture_unique_key = tex_ptr->src;
-					if(textures_name_to_index.find(texture_unique_key) == textures_name_to_index.end()){
-						//record this loaded texture
-						textures_name_to_index[texture_unique_key] = texture_index;
-						
-						// std::cout<<"texture name: "<<tex_ptr->path<<std::endl;
-						// std::cout<<"size of the loaded texture "<<size<<std::endl;
-
-                        assert(tex_ptr->type == S72::Texture::Type::flat);
-						//make a place for the texture to live on the GPU:
-						textures.emplace_back(rtg.helpers.create_image(
-							VkExtent2D{ .width = tex_ptr->width , .height = tex_ptr->height }, //size of image, we know this is not a cubemap, could be unsquare
-							tex_ptr->format == S72::Texture::Format::srgb ? VK_FORMAT_R8G8B8A8_SRGB: VK_FORMAT_R32G32B32A32_SFLOAT, //how to interpret image data (in this case, SRGB-encoded 8-bit RGBA)
-							VK_IMAGE_TILING_OPTIMAL,
-							VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, //will sample and upload
-							VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, //should be device-local
-							Helpers::Unmapped
-						));
-						texture_index++;//now texture_index is the next texture
-
-						//transfer data:
-						rtg.helpers.transfer_to_image(tex_ptr->data.data(), tex_ptr->data.size(), textures.back());//here size is in bytes
-					}
-					else{//the texture has already been emplaced into the texture vector
-						material_textures_table[mat.first] = Tutorial::Texture_Indices{
-							.albedo_index = (int)textures_name_to_index.at(texture_unique_key),
-						};
-						std::cout<<"Already emplaced into textures: "<<texture_unique_key<<std::endl;
-						//no need to emplace new texture nor increment texture_index
-					}			
-				}	
-			}
-			else if(std::holds_alternative<S72::Material::Mirror>(v)||std::holds_alternative<S72::Material::Environment>(v)){
-				std::string environment_name;
-				if(std::holds_alternative<S72::Material::Environment>(v)){
-					S72::Material::Environment const &env = get<S72::Material::Environment>(v);
-					environment_name = env.name;
-				}
-				else if (std::holds_alternative<S72::Material::Mirror>(v)){
-					S72::Material::Mirror const &mir = get<S72::Material::Mirror>(v);
-					environment_name = mir.env_name;
-				}
-				
-				if(textures_name_to_index.find(environment_name) == textures_name_to_index.end()){
-					textures_name_to_index[environment_name] = texture_index;
-					//----insert into material_textures_table
-					assert(textures.size() == texture_index);//this index should be the newly inserted texture
-					material_textures_table[mat.first] = Tutorial::Texture_Indices{
-						.environment_index = (int)texture_index,//only need environment texture
-					};
-					texture_index++;
-					
-					std::cout<<"accessimg scene72.environments at: "<<environment_name<<std::endl;
-					S72::Texture * tex_ptr = scene72.environments.at(environment_name).radiance;//this is supposed to be a rgbe cubemap
-					assert(tex_ptr->type == S72::Texture::Type::cube && tex_ptr->format == S72::Texture::Format::rgbe);
-
-					//decode rgbe to radiance value stored in r32g32b32a32 with a channel unused
-					uint32_t width = tex_ptr->width;//knowing it's a cube, take only it's width
-					std::vector<float> converted_data;
-					converted_data.resize(4 * width * width * 6);//4 float channels, 6 cube faces
-					rgbe_to_rgba_float(tex_ptr->data, converted_data, width);
-
-					std::cout<<"texture name: "<<tex_ptr->path<<std::endl;
-					std::cout<<"width of the loaded rgbe cubemap image "<<width<<std::endl;
-					//make a place for the texture to live on the GPU:
-					textures.emplace_back(rtg.helpers.create_image(
-						VkExtent2D{ .width = width , .height = width }, //size of image
-						VK_FORMAT_R32G32B32A32_SFLOAT, //Convert to RGB float, A is unused
-						VK_IMAGE_TILING_OPTIMAL,
-						VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, //will sample and upload
-						VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, //should be device-local
-						Helpers::Unmapped,
-						true
-					));
-
-					//transfer data:
-					assert(sizeof(converted_data[0]) == 4u);
-					rtg.helpers.transfer_to_image(converted_data.data(), converted_data.size() * sizeof(converted_data[0]), textures.back(), true);//here size is in bytes
-				}
-				else{
-					std::cout<<"already has "<<environment_name<<std::endl;
-					material_textures_table[mat.first] = Tutorial::Texture_Indices{
-						.environment_index = (int)textures_name_to_index.at(environment_name),//only need environment texture
-					};
-				}			
-			}
+		else{
+			uint32_t cur_width = texture.width >> i;
+			mip_rgbas[i].resize(cur_width * cur_width * 6 * 4);
+			rgbe_to_rgba_float(texture.mip_data[i], mip_rgbas[i], cur_width);
 		}
 	}
+
+
+	//get the prefiltered levels into the mip levels
+	rtg.helpers.transfer_to_image(mip_rgbas, mip_rgbas[0].size() * sizeof(float), textures.back());//here size is in bytes
+}
+
+void Tutorial::make_image_view(VkImageView &image_view, Helpers::AllocatedImage const & image){
+	VkImageViewCreateInfo create_info{
+		.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+		.flags = 0,
+		.image = image.handle,
+		.viewType = image.is_cubemap ? VK_IMAGE_VIEW_TYPE_CUBE : VK_IMAGE_VIEW_TYPE_2D,
+		.format = image.format,
+		// .components sets swizzling and is fine when zero-initialized
+		.subresourceRange{
+			.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+			.baseMipLevel = 0,
+			.levelCount = image.mip_levels,
+			.baseArrayLayer = 0,
+			.layerCount = image.is_cubemap ? 6u : 1u,
+		},
+	};
+	VK( vkCreateImageView(rtg.device, &create_info, nullptr, &image_view) );
+}
+
+void Tutorial::make_one_off_texture(TextureType t_type, std::variant<vec3, float> value){
+	{//actually make the one-off texture:
+		//make a place for the texture to live on the GPU:
+		auto create_and_emplace_image = [&](VkFormat format) {
+			textures.emplace_back(rtg.helpers.create_image(
+				VkExtent2D{ .width = 1 , .height = 1 }, //size of image
+				format, //how to interpret image data (in this case, SRGB-encoded 8-bit RGBA)
+				VK_IMAGE_TILING_OPTIMAL,
+				VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, //will sample and upload
+				VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, //should be device-local
+				Helpers::Unmapped
+			));
+		};
+		
+
+		if(t_type == TextureType::ALBEDO){
+			S72::color c = get<S72::color>(value);
+			uint8_t r = uint8_t(std::round(255 * S72::sRGB(c.x)));
+			uint8_t g = uint8_t(std::round(255 * S72::sRGB(c.y)));
+			uint8_t b = uint8_t(std::round(255 * S72::sRGB(c.z)));
+			uint8_t a = 0xff;
+			uint32_t data = uint32_t(r) | (uint32_t(g) << 8) | (uint32_t(b) << 16) | (uint32_t(a) << 24);
+
+			create_and_emplace_image(VK_FORMAT_R8G8B8A8_SRGB);
+			rtg.helpers.transfer_to_image(&data, sizeof(data), textures.back());//literally 4 bytes
+		}
+		else if(t_type == TextureType::ROUGHNESS || t_type == TextureType::METALNESS){
+			float v = get<float>(value);
+			create_and_emplace_image(VK_FORMAT_R32G32B32A32_SFLOAT);
+			rtg.helpers.transfer_to_image(&v, sizeof(v), textures.back());
+		}
+		else if(t_type == TextureType::NORMAL){
+			vec3 normal = get<vec3>(value);
+			create_and_emplace_image(VK_FORMAT_R32G32B32A32_SFLOAT);
+			rtg.helpers.transfer_to_image(&normal, sizeof(float) * 3, textures.back());
+		}
+	}
+
+	//also make image view for it
+	VkImageView image_view = VK_NULL_HANDLE;
+	make_image_view(image_view, textures.back());
+	texture_views.emplace_back(image_view);
+
+	assert(texture_views.size() == textures.size());
+
+}
+
+
+void Tutorial::load_textures(){
+
+	//create a map from texture name to texture number
+
+	textures.reserve(scene72.textures.size());
+	uint32_t texture_index = 0;
+	{ //texture 0 will be a dark grey / light grey checkerboard with a red square at the origin.
+
+		//actually make the texture:
+		uint32_t size = 128;
+		std::vector< uint32_t > data;
+		data.reserve(size * size);
+		for (uint32_t y = 0; y < size; ++y) {
+			float fy = (y + 0.5f) / float(size);
+			for (uint32_t x = 0; x < size; ++x) {
+				float fx = (x + 0.5f) / float(size);
+				//highlight the origin:
+				if      (fx < 0.05f && fy < 0.05f) data.emplace_back(0xff0000ff); //red
+				else if ( (fx < 0.5f) == (fy < 0.5f)) data.emplace_back(0xff444444); //dark grey
+				else data.emplace_back(0xffbbbbbb); //light grey
+			}
+		}
+		assert(data.size() == size*size);
+
+		//make a place for the texture to live on the GPU
+		textures.emplace_back(rtg.helpers.create_image(
+			VkExtent2D{ .width = size , .height = size }, //size of image
+			VK_FORMAT_R8G8B8A8_UNORM, //how to interpret image data (in this case, linearly-encoded 8-bit RGBA)
+			VK_IMAGE_TILING_OPTIMAL,
+			VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, //will sample and upload
+			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, //should be device-local
+			Helpers::Unmapped
+		));
+		//transfer data:
+		rtg.helpers.transfer_to_image(data.data(), sizeof(data[0]) * data.size(), textures.back());
+		texture_index++;
+	}
+	{ //texture 1 will be a classic 'xor' texture:
+
+		//actually make the texture:
+		uint32_t size = 256;
+		std::vector< uint32_t > data;
+		data.reserve(size * size);
+		for (uint32_t y = 0; y < size; ++y) {
+			for (uint32_t x = 0; x < size; ++x) {
+				uint8_t r = uint8_t(x) ^ uint8_t(y);
+				uint8_t g = uint8_t(x + 128) ^ uint8_t(y);
+				uint8_t b = uint8_t(x) ^ uint8_t(y + 27);
+				uint8_t a = 0xff;
+				data.emplace_back( uint32_t(r) | (uint32_t(g) << 8) | (uint32_t(b) << 16) | (uint32_t(a) << 24) );
+			}
+		}
+		assert(data.size() == size*size);
+
+		//make a place for the texture to live on the GPU:
+		textures.emplace_back(rtg.helpers.create_image(
+			VkExtent2D{ .width = size , .height = size }, //size of image
+			VK_FORMAT_R8G8B8A8_SRGB, //how to interpret image data (in this case, SRGB-encoded 8-bit RGBA)
+			VK_IMAGE_TILING_OPTIMAL,
+			VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, //will sample and upload
+			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, //should be device-local
+			Helpers::Unmapped
+		));
+		
+		//transfer data:
+		rtg.helpers.transfer_to_image(data.data(), sizeof(data[0]) * data.size(), textures.back());
+		texture_index++;
+	}
+	{//make some default textures for normal, displacement
+		//TODO
+	}
+	{//make texture for pre_computed LUTS
+		//get the path to the LUTs 
+		{//lambertian irradiance
+			//load		
+			std::filesystem::path p(scene72.textures.begin()->second.path);//random texture file
+			std::string filepath = (p.parent_path() / (p.stem().string() + "_mine.lambertian" + p.extension().string())).string();
+			std::string texture_unique_key = p.stem().string() + "_mine.lambertian" + p.extension().string();
+			if(textures_name_to_index.find(texture_unique_key) == textures_name_to_index.end()){
+				std::cerr<<"duplicate texture in the list of textures"<<std::endl;
+			}
+			std::cout<<"loading "<< filepath <<" ...";
+			S72::Texture lambertian_irradiance_cubemap{
+				.src = texture_unique_key, 
+				.type = S72::Texture::Type::cube, 
+				.format = S72::Texture::Format::rgbe,
+				.path = filepath,
+			};
+			loadTextureFile(filepath, lambertian_irradiance_cubemap.width, lambertian_irradiance_cubemap.height, lambertian_irradiance_cubemap.data);
+			std::cout<<"success: width "<< lambertian_irradiance_cubemap.width << "| height "<<lambertian_irradiance_cubemap.height<<std::endl;
+			//put into textures
+			assert(texture_index == textures.size());
+			textures_name_to_index[texture_unique_key] = texture_index;//record this loaded texture
+			assert(lambertian_irradiance_cubemap.mip_data.size() == 0);//no mip maps
+			make_cube_image(lambertian_irradiance_cubemap);//make texture and put into textures
+			texture_index++;//now texture_index is the next texture
+		}
+		{//brdf lut
+			//load		
+			std::filesystem::path p(scene72.textures.begin()->second.path);//random texture file
+			std::string filepath = (p.parent_path() / ("brdf_lut" + p.extension().string())).string();
+			std::string texture_unique_key = "brdf_lut" + p.extension().string();
+			if(textures_name_to_index.find(texture_unique_key) == textures_name_to_index.end()){
+				std::cerr<<"duplicate texture in the list of textures"<<std::endl;
+			}
+			std::cout<<"loading "<< filepath <<" ...";
+			S72::Texture brdf_lut{
+				.src = texture_unique_key, 
+				.type = S72::Texture::Type::flat, 
+				.format = S72::Texture::Format::linear,
+				.path = filepath,
+			};
+			loadTextureFile(filepath, brdf_lut.width, brdf_lut.height, brdf_lut.data);
+			std::cout<<"success: width "<< brdf_lut.width << "| height "<<brdf_lut.height<<std::endl;
+			//put into textures
+			assert(texture_index == textures.size());
+			textures_name_to_index[texture_unique_key] = texture_index;//record this loaded texture
+			make_flat_image(brdf_lut);//make texture and put into textures
+			texture_index++;//now texture_index is the next texture
+		}
+		
+	}
+
+	//go through the textures to get the loaded textures
+	for(auto const &tex: scene72.textures){
+		S72::Texture texture = tex.second;
+		std::cout<<"loading texture "<<texture.src<<std::endl;
+
+		//check for multiple references of the same texture
+		std::string texture_unique_key = texture.src;
+
+		if(textures_name_to_index.find(texture_unique_key) == textures_name_to_index.end()){
+			std::cerr<<"duplicate texture in the list of textures"<<std::endl;
+		}
+
+		assert(texture_index == textures.size());
+		textures_name_to_index[texture_unique_key] = texture_index;//record this loaded texture
+		texture.type == S72::Texture::Type::cube ? make_cube_image(texture): make_flat_image(texture);//make texture and put into textures
+		texture_index++;//now texture_index is the next texture
+	}
+	
 
 	{ //make image views for the textures
 		texture_views.reserve(textures.size());
 		for (Helpers::AllocatedImage const &image : textures) {
-			VkImageViewCreateInfo create_info{
-				.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-				.flags = 0,
-				.image = image.handle,
-				.viewType = image.is_cubemap ? VK_IMAGE_VIEW_TYPE_CUBE : VK_IMAGE_VIEW_TYPE_2D,
-				.format = image.format,
-				// .components sets swizzling and is fine when zero-initialized
-				.subresourceRange{
-					.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-					.baseMipLevel = 0,
-					.levelCount = 1,
-					.baseArrayLayer = 0,
-					.layerCount = image.is_cubemap ? 6u : 1u,
-				},
-			};
-
 			VkImageView image_view = VK_NULL_HANDLE;
-			VK( vkCreateImageView(rtg.device, &create_info, nullptr, &image_view) );
-
+			make_image_view(image_view, image);
 			texture_views.emplace_back(image_view);
 		}
 		assert(texture_views.size() == textures.size());
@@ -270,7 +295,7 @@ void Tutorial::load_textures(){
 			.flags = 0,
 			.magFilter = VK_FILTER_NEAREST,
 			.minFilter = VK_FILTER_NEAREST,
-			.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST,
+			.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR,
 			.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT,
 			.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT,
 			.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT,
@@ -280,13 +305,13 @@ void Tutorial::load_textures(){
 			.compareEnable = VK_FALSE,
 			.compareOp = VK_COMPARE_OP_ALWAYS, //doesn't matter if compare isn't enabled
 			.minLod = 0.0f,
-			.maxLod = 0.0f,
+			.maxLod = VK_LOD_CLAMP_NONE,
 			.borderColor = VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK,
 			.unnormalizedCoordinates = VK_FALSE,
 		};
 		VK( vkCreateSampler(rtg.device, &create_info, nullptr, &texture_sampler) );
 	}
-		
+
 	{ //create the texture descriptor pool
 		uint32_t per_texture = uint32_t(textures.size());
 		std::array< VkDescriptorPoolSize, 1> pool_sizes{
@@ -307,47 +332,256 @@ void Tutorial::load_textures(){
 		VK( vkCreateDescriptorPool(rtg.device, &create_info, nullptr, &texture_descriptor_pool) );	
 	}
 
-	{ //allocate and write the texture descriptor sets
-		//allocate the descriptors (using the same alloc_info):
-		VkDescriptorSetAllocateInfo alloc_info{
-			.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-			.descriptorPool = texture_descriptor_pool,
-			.descriptorSetCount = 1,
-			.pSetLayouts = &lambertian_objects_pipeline.set2_TEXTURE,
-		};
-		std::cout<<"allocating and writing "<<textures.size()<<" textures"<<std::endl;
+	//the rest of the textures are loaded into memory from image files
+	for(auto const &mat: scene72.materials){
 
-		texture_descriptors.assign(textures.size(), VK_NULL_HANDLE);
-		for (VkDescriptorSet &descriptor_set : texture_descriptors) {
-			VK( vkAllocateDescriptorSets(rtg.device, &alloc_info, &descriptor_set) );
-		}
+		std::cout<<"loading material "<<mat.first<<std::endl;
 		
-		//write descriptors for textures:
-		std::vector<VkDescriptorImageInfo> infos(textures.size());//presize so that the address doesn't change
-		std::vector<VkWriteDescriptorSet> writes(textures.size());
+		//----actually load the texture
+		//resolve the brdf
+		std::variant<S72::Material::PBR, S72::Material::Lambertian, S72::Material::Mirror, S72::Material::Environment> const &v = mat.second.brdf;
+		if(std::holds_alternative<S72::Material::PBR>(v)){
 
-		for (Helpers::AllocatedImage const &image : textures) {
-			size_t i = &image - &textures[0];
-			
-			infos[i] = VkDescriptorImageInfo{
-				.sampler = texture_sampler,
-				.imageView = texture_views[i],
-				.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-			};
-			writes[i] = VkWriteDescriptorSet{
-				.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-				.dstSet = texture_descriptors[i],//texture descriptors have the same index as textures
-				.dstBinding = 0,
-				.dstArrayElement = 0,
-				.descriptorCount = 1,
-				.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-				.pImageInfo = &infos[i],
-			};
 		}
-		vkUpdateDescriptorSets( rtg.device, uint32_t(writes.size()), writes.data(), 0, nullptr );
+		else if(std::holds_alternative<S72::Material::Lambertian>(v)){
+			S72::Material::Lambertian const &lamb = get<S72::Material::Lambertian>(v);
+			if(std::holds_alternative<S72::color>(lamb.albedo)){
+				//make a one off texture
+				make_one_off_texture(TextureType::ALBEDO, get<vec3>(lamb.albedo));
+				//put into descriptor_set
+				assert(texture_index == textures.size() - 1);
+				make_descriptor_set(mat.first, MaterialType::LAMBERTIAN, Texture_Indices{.albedo_index = (int)texture_index});
+				texture_index++;//now texture_index is the next texture		
+			}
+			else if(std::holds_alternative<S72::Texture*>(lamb.albedo)){
+				S72::Texture * tex_ptr = get<S72::Texture*>(lamb.albedo);
+
+				//check for multiple references of the same texture
+				std::string texture_unique_key = tex_ptr->src;
+				if(textures_name_to_index.find(texture_unique_key) != textures_name_to_index.end()){//the texture has already been emplaced into the texture vector
+					std::cout<<"making lambertian with loaded texture "<<texture_unique_key<<std::endl;
+					make_descriptor_set(mat.first, MaterialType::LAMBERTIAN, Texture_Indices{.albedo_index = (int)textures_name_to_index.at(texture_unique_key)});
+				}
+				else{
+					std::cerr<<"No texture ?"<<texture_unique_key<<std::endl;
+				}
+			}	
+		}
+		else if(std::holds_alternative<S72::Material::Mirror>(v)||std::holds_alternative<S72::Material::Environment>(v)){
+			std::string environment_name;//should be the same name as the name of the png
+			if(std::holds_alternative<S72::Material::Environment>(v)){
+				S72::Material::Environment const &env = get<S72::Material::Environment>(v);
+				environment_name = env.name;
+			}
+			else if (std::holds_alternative<S72::Material::Mirror>(v)){
+				S72::Material::Mirror const &mir = get<S72::Material::Mirror>(v);
+				environment_name = mir.env_name;
+			}
+			
+			if(textures_name_to_index.find(environment_name) != textures_name_to_index.end()){
+				std::cout<<"making envmirror with loaded texture "<<environment_name<<std::endl;
+				make_descriptor_set(mat.first, MaterialType::ENVMIRROR, Texture_Indices{.environment_index = (int)textures_name_to_index.at(environment_name)});
+			}
+			else{
+				std::cerr<<"can't find texture: "<<environment_name<<std::endl;
+			}			
+		}
+		else if(std::holds_alternative<S72::Material::PBR>(v)){
+			//TODO:
+			//for each texture to bind, either located using the texture-name-to-index table, or generate one
+			//then make descriptor_set mapping the name of the material (mat.first) to the index into the vector of descriptor sets
+			S72::Material::PBR pbr = get<S72::Material::PBR>(v);
+			int albedo_ind, roughness_ind, metalness_ind, brdf_lut_ind, diffuse_irradiance_ind, environment_ind;
+			
+			//albedo
+			if(std::holds_alternative<S72::color>(pbr.albedo)){
+				//make a one off texture
+				make_one_off_texture(TextureType::ALBEDO, get<vec3>(pbr.albedo));
+				//put into descriptor set
+				assert(texture_index == textures.size() - 1);
+				albedo_ind = (int)texture_index;//store index for albedo
+				texture_index++;//now texture_index is the next texture		
+			}
+			else if(std::holds_alternative<S72::Texture *>(pbr.albedo)){
+				S72::Texture * alb = get<S72::Texture *>(pbr.albedo);
+				std::string texture_unique_key = alb->src;
+				if(textures_name_to_index.find(texture_unique_key) != textures_name_to_index.end()){//the texture has already been emplaced into the texture vector
+					std::cout<<"making lambertian with loaded texture "<<texture_unique_key<<std::endl;
+					albedo_ind = (int)textures_name_to_index.at(texture_unique_key);//store index for albedo
+				}
+				else{
+					std::cerr<<"No texture ?"<<texture_unique_key<<std::endl;
+				}
+			}
+
+			//roughness
+			if(std::holds_alternative<S72::color>(pbr.roughness)){
+				//make a one off texture
+				make_one_off_texture(TextureType::ROUGHNESS, get<float>(pbr.roughness));
+				//put into descriptor set
+				assert(texture_index == textures.size() - 1);
+				roughness_ind = (int)texture_index;//store index for albedo
+				texture_index++;//now texture_index is the next texture		
+			}
+			else if(std::holds_alternative<S72::Texture *>(pbr.roughness)){
+				S72::Texture * rough = get<S72::Texture *>(pbr.roughness);
+				std::string texture_unique_key = rough->src;
+				if(textures_name_to_index.find(texture_unique_key) != textures_name_to_index.end()){//the texture has already been emplaced into the texture vector
+					std::cout<<"making lambertian with loaded texture "<<texture_unique_key<<std::endl;
+					roughness_ind = (int)textures_name_to_index.at(texture_unique_key);//store index for albedo
+				}
+				else{
+					std::cerr<<"No texture ?"<<texture_unique_key<<std::endl;
+				}
+			}
+
+			//metalness
+			if(std::holds_alternative<S72::color>(pbr.metalness)){
+				//make a one off texture
+				make_one_off_texture(TextureType::METALNESS, get<float>(pbr.metalness));
+				//put into descriptor set
+				assert(texture_index == textures.size() - 1);
+				metalness_ind = (int)texture_index;//store index for albedo
+				texture_index++;//now texture_index is the next texture		
+			}
+			else if(std::holds_alternative<S72::Texture *>(pbr.metalness)){
+				S72::Texture * metal = get<S72::Texture *>(pbr.metalness);
+				std::string texture_unique_key = metal->src;
+				if(textures_name_to_index.find(texture_unique_key) != textures_name_to_index.end()){//the texture has already been emplaced into the texture vector
+					std::cout<<"making lambertian with loaded texture "<<texture_unique_key<<std::endl;
+					metalness_ind = (int)textures_name_to_index.at(texture_unique_key);//store index for albedo
+				}
+				else{
+					std::cerr<<"No texture ?"<<texture_unique_key<<std::endl;
+				}
+			}
+			
+			//brdf_lut
+
+		}
 	}
+
+	
+		
+	
+
+	
 }
 
 
 
 
+void Tutorial::make_descriptor_set(std::string mat_name, MaterialType mat_type, Texture_Indices tex_inds){//allocate and write the texture descriptor sets
+	//allocate descriptor set differing in layout
+	VkDescriptorSetLayout *pDesSetLayout = nullptr;
+	if(mat_type == MaterialType::ENVMIRROR) pDesSetLayout = &env_mirror_objects_pipeline.set2_TEXTURE;
+	else if(mat_type == MaterialType::LAMBERTIAN) pDesSetLayout = &lambertian_objects_pipeline.set2_TEXTURE;
+	else if(mat_type == MaterialType::PBR) pDesSetLayout = &pbr_objects_pipeline.set2_TEXTURE;
+
+	VkDescriptorSetAllocateInfo alloc_info{
+		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+		.descriptorPool = texture_descriptor_pool,
+		.descriptorSetCount = 1,
+		.pSetLayouts = pDesSetLayout,
+	};
+	
+	uint32_t ind = texture_descriptor_sets.size();
+	texture_descriptor_sets.emplace_back(VK_NULL_HANDLE);
+	vkAllocateDescriptorSets(rtg.device, &alloc_info, &texture_descriptor_sets[ind]);
+	material_texture_descriptor_set_table[mat_name] = ind;
+
+	//write to the descriptor set based on the material type
+	
+	if(mat_type == MaterialType::LAMBERTIAN){
+		assert(tex_inds.albedo_index != -1);
+		std::array<VkDescriptorImageInfo, 1> infos{
+			VkDescriptorImageInfo{
+				.sampler = texture_sampler,
+				.imageView = texture_views[tex_inds.albedo_index],
+				.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+			},
+			//TODO, add normal map
+		};
+		
+		VkWriteDescriptorSet write{
+			.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+			.dstSet = texture_descriptor_sets[ind],//texture descriptors have the same index as textures
+			.dstBinding = 0,
+			.dstArrayElement = 0,
+			.descriptorCount = infos.size(),
+			.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+			.pImageInfo = &infos[0],
+		};
+		vkUpdateDescriptorSets( rtg.device, 1, &write, 0, nullptr );
+	}
+	else if(mat_type == MaterialType::ENVMIRROR){
+		assert(tex_inds.environment_index != -1);
+		std::array<VkDescriptorImageInfo, 1> infos{
+			VkDescriptorImageInfo{
+				.sampler = texture_sampler,
+				.imageView = texture_views[tex_inds.environment_index],
+				.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+			},
+		};
+		
+		VkWriteDescriptorSet write{
+			.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+			.dstSet = texture_descriptor_sets[ind],//texture descriptors have the same index as textures
+			.dstBinding = 0,
+			.dstArrayElement = 0,
+			.descriptorCount = infos.size(),
+			.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+			.pImageInfo = &infos[0],
+		};
+		vkUpdateDescriptorSets( rtg.device, 1, &write, 0, nullptr );
+	}
+	else if(mat_type == MaterialType::PBR){
+		assert(tex_inds.albedo_index != -1);
+		assert(tex_inds.roughness_index != -1);
+		assert(tex_inds.metalness_index != -1);
+		assert(tex_inds.brdf_lut_index != -1);
+		assert(tex_inds.diffuse_irradiance_index != -1);
+
+
+
+		std::array<VkDescriptorImageInfo, 5> infos{
+			VkDescriptorImageInfo{
+				.sampler = texture_sampler,
+				.imageView = texture_views[tex_inds.albedo_index],
+				.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+			},
+			VkDescriptorImageInfo{
+				.sampler = texture_sampler,
+				.imageView = texture_views[tex_inds.roughness_index],
+				.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+			},
+			VkDescriptorImageInfo{
+				.sampler = texture_sampler,
+				.imageView = texture_views[tex_inds.metalness_index],
+				.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+			},
+			VkDescriptorImageInfo{
+				.sampler = texture_sampler,
+				.imageView = texture_views[tex_inds.brdf_lut_index],
+				.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+			},
+			VkDescriptorImageInfo{
+				.sampler = texture_sampler,
+				.imageView = texture_views[tex_inds.diffuse_irradiance_index],
+				.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+			},
+		};
+		
+		VkWriteDescriptorSet write{
+			.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+			.dstSet = texture_descriptor_sets[ind],//texture descriptors have the same index as textures
+			.dstBinding = 0,
+			.dstArrayElement = 0,
+			.descriptorCount = infos.size(),
+			.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+			.pImageInfo = &infos[0],
+		};
+		vkUpdateDescriptorSets( rtg.device, 1, &write, 0, nullptr );
+	}
+	
+}

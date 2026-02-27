@@ -128,6 +128,29 @@ struct Tutorial : RTG::Application {
 		void destroy(RTG &);
 	}env_mirror_objects_pipeline;
 
+	struct PbrObjectsPipeline{
+		//descriptor set layouts
+		VkDescriptorSetLayout set0_Eye= VK_NULL_HANDLE;
+		VkDescriptorSetLayout set1_Transforms = VK_NULL_HANDLE;
+		VkDescriptorSetLayout set2_TEXTURE = VK_NULL_HANDLE;
+
+
+        //types for descriptors
+		struct Eye {
+			vec3 EYE;
+		};
+		static_assert(sizeof(Eye) == 4*3, "Eye is the expected size.");	
+
+        static_assert(sizeof(Transform) == 16*4 + 16*4 + 16*4 , "Transform structure is packed");
+
+		//pipeline layout
+		VkPipelineLayout layout = VK_NULL_HANDLE;
+		using Vertex = PosNorTanTexVertex;
+		VkPipeline handle = VK_NULL_HANDLE;
+		void create(RTG &,VkRenderPass render_pass, uint32_t subpass);
+		void destroy(RTG &);
+	}pbr_objects_pipeline;
+
 	
 
 	//pools from which per-workspace things are allocated:
@@ -201,28 +224,57 @@ struct Tutorial : RTG::Application {
 	//------Texture stuff------
 	struct Texture_Indices{
 		int normal_index = -1;
+		int displacement_index = -1;
 		int albedo_index = -1;
 		int roughness_index = -1;
 		int metalness_index = -1;
-		int shadowMap_index = -1;
 		int environment_index = -1;	
+		int brdf_lut_index = -1;
+		int diffuse_irradiance_index = -1;
 	};
 
-	//maps name of the loaded texture to indices into the textures array
-	std::unordered_map<std::string, Texture_Indices> material_textures_table;
+	//default texture indices 
+	int normal_default = -1;
+	int disp_default = -1;
+
+
+
+	//maps name of the loaded texture to indices into the texture_descriptor_sets array
+	std::unordered_map<std::string, uint32_t> material_texture_descriptor_set_table;
 
 	//memorization so that materials that use the same texture again don't remake the same image
 	std::unordered_map<std::string, uint32_t> textures_name_to_index;
 
 	void load_textures();
-	void rgbe_to_radiance(std::vector<char> const &rgbe_vector, std::vector<float> &rad_vector, uint32_t size);
+	//helpers 
+	void make_flat_image(S72::Texture const &texture);
+	void make_cube_image(S72::Texture const &texture);
+	void make_image_view(VkImageView &image_view, Helpers::AllocatedImage const & image);
+	enum class TextureType{
+		ALBEDO = 1,
+		ROUGHNESS = 2,
+		METALNESS = 3,
+		NORMAL = 4,
+	};
+	void make_one_off_texture(TextureType t_type, std::variant<vec3, float> value);
+
+
+
+	enum class MaterialType{
+		LAMBERTIAN = 1,
+		ENVMIRROR = 2,
+		PBR = 3,
+	};
+
+	void make_descriptor_set(std::string mat_name, MaterialType mat_type, Texture_Indices tex_inds);
+	
 
 	//textures, texture_views, and texture_descriptors are all indexed the same
 	std::vector<Helpers::AllocatedImage> textures;
 	std::vector<VkImageView> texture_views;
 	VkSampler texture_sampler = VK_NULL_HANDLE;
 	VkDescriptorPool texture_descriptor_pool = VK_NULL_HANDLE;
-	std::vector<VkDescriptorSet> texture_descriptors;//allocated from texture descriptor pool
+	std::vector<VkDescriptorSet> texture_descriptor_sets;//allocated from texture descriptor pool
 
 
 	//--------------------------------------------------------------------
@@ -340,16 +392,24 @@ struct Tutorial : RTG::Application {
 	struct LambertianObjectInstance{
 		ObjectVertices vertices;
 		Transform transform;
-		Texture_Indices texture{.albedo_index = 0};//default texture
+		uint32_t texture = 0;
 	};
 	struct EnvMirrorObjectInstance{
 		ObjectVertices vertices;
 		Transform transform;
-		Texture_Indices texture{.albedo_index = 0};//default texture
+		uint32_t texture = 0;
 		int is_env = 1;//default to env
 	};
+	struct PbrObjectInstance{
+		ObjectVertices vertices;
+		Transform transform;
+		uint32_t texture = 0;
+	};
+
 	std::vector<LambertianObjectInstance> lambertian_object_instances;
 	std::vector<EnvMirrorObjectInstance> env_mirror_object_instances;
+	std::vector<PbrObjectInstance> pbr_object_instances;
+
 
 
 

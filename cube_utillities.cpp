@@ -142,6 +142,7 @@ void convolve_cubemap_diffuse(uint32_t in_width, std::vector<char> const &in_cub
                         irradiance = irradiance + s.radiance * cos_theta * s.solid_angle / 3.14159265f;
                     }
                 }
+                
                 uint32_t index = face * out_width * out_width + y * out_width + x;
                 out_radiance[index] = irradiance;
             }
@@ -217,17 +218,17 @@ void convolve_cubemap_ggx(uint32_t in_width, std::vector<vec3> const &env, uint3
 
                 vec3 prefiltered(0.0f);//the color to be summed into
                 float totalWeight = 0.0f;
-                const uint32_t NumSamples = 256;
+                const uint32_t NumSamples = 32;
                 for(uint32_t i = 0; i < NumSamples; i++){
                     vec2 Xi = Hammersley(i, NumSamples);
                     vec3 H = importance_sample_ggx(Xi, N, roughness);
                     vec3 L = normalized(2.0f * dot(V,H) * H - V);
 
                     float NdotL = std::max(dot(N,L), 0.0f);//weighing by cos of the angle between N and L to (somehow) reduce approximation error
-
+                    
                     if (NdotL > 0.0f) {
                         uint32_t in_face, in_y, in_x;
-                        direction_to_cube_texel(L, in_width, in_face, in_y, in_x);
+                        direction_to_cube_texel(L, in_width, in_face, in_x, in_y);
                         uint32_t index = in_face * in_width * in_width + in_y * in_width + in_x;
                         vec3 radiance = env[index];
                         prefiltered += radiance * NdotL;
@@ -237,9 +238,59 @@ void convolve_cubemap_ggx(uint32_t in_width, std::vector<vec3> const &env, uint3
                 
                 //write the calculated radiance to the output map
                 uint32_t out_index = face * out_width * out_width + y * out_width + x;
-                output[out_index] = prefiltered / totalWeight;
+                output[out_index] = prefiltered/totalWeight;
             }
         }
     }
 }
 
+//for the 2d brdf LUT
+float GeometrySchlickGGX(float NdotV, float roughness)
+{
+    float a = roughness * roughness;;
+    float k = a / 2.0f;
+
+    float nom   = NdotV;
+    float denom = NdotV * (1.0f - k) + k;
+
+    return nom / denom;
+}
+
+float GeometrySmith(vec3 N, vec3 V, vec3 L, float roughness)
+{
+    float NdotV = std::max(dot(N, V), 0.0f);
+    float NdotL = std::max(dot(N, L), 0.0f);
+    float ggx2 = GeometrySchlickGGX(NdotV, roughness);
+    float ggx1 = GeometrySchlickGGX(NdotL, roughness);
+
+    return ggx1 * ggx2;
+} 
+
+vec2 integrate_brdf(float roughness, float NoV){
+    vec3 V;
+    V.x = sqrt( 1.0f - NoV * NoV ); // sin
+    V.y = 0;
+    V.z = NoV; // cos
+    float A = 0;
+    float B = 0;
+    const uint32_t NumSamples = 1024;
+    vec3 N =  vec3(0.0f, 0.0f, 1.0f);
+    for( uint32_t i = 0; i < NumSamples; i++ ){
+        vec2 Xi = Hammersley( i, NumSamples );
+        vec3 H = importance_sample_ggx( Xi, N, roughness );
+        vec3 L = 2 * dot( V, H ) * H - V;
+        float NoL = std::max(L.z, 0.0f);
+        float NoH = std::max(H.z, 0.0f);
+        float VoH = std::max(dot(V, H), 0.0f);
+        if( NoL > 0 ){
+            float G = GeometrySmith(N, V, L, roughness);
+            float safeNoV = std::max(NoV, 0.0001f);
+            float G_Vis = G * VoH / (NoH * safeNoV);
+            float Fc = std::powf( 1 - VoH, 5 );
+            A += (1 - Fc) * G_Vis;
+            B += Fc * G_Vis;
+        }
+    }
+    return vec2( A, B ) / NumSamples;
+
+}

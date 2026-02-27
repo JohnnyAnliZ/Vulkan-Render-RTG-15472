@@ -304,7 +304,7 @@ Tutorial::Tutorial(RTG &rtg_) : rtg(rtg_) {
 	//set up loaded cameras, put mesh data into the object_vertices buffer 
 	load_scene();
 
-	//load textures into texture_descriptors
+	//load textures into texture_descriptor_sets
 	load_textures();
 }
 
@@ -320,7 +320,7 @@ Tutorial::~Tutorial() {
 		vkDestroyDescriptorPool(rtg.device, texture_descriptor_pool, nullptr);
 		texture_descriptor_pool = nullptr;
 		//this also frees the descriptor sets allocated from the pool:
-		texture_descriptors.clear();
+		texture_descriptor_sets.clear();
 	}
 
 	if (texture_sampler) {
@@ -598,9 +598,9 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params) {
 
 
 	//upload object transforms
-	if(!lambertian_object_instances.empty() || !env_mirror_object_instances.empty()){
+	if(!lambertian_object_instances.empty() || !env_mirror_object_instances.empty() || !pbr_object_instances.empty()){
 		//allocate or reallocate transforms buffer as needed
-		size_t needed_bytes = (lambertian_object_instances.size() + env_mirror_object_instances.size()) * sizeof(Transform);
+		size_t needed_bytes = (lambertian_object_instances.size() + env_mirror_object_instances.size() + pbr_object_instances.size()) * sizeof(Transform);
 		if(workspace.Transforms_src.handle == VK_NULL_HANDLE || workspace.Transforms_src.size < needed_bytes){
 			//resize rounding up to 4k
 			size_t new_bytes = ((needed_bytes + 4096) / 4096) * 4096;
@@ -782,7 +782,7 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params) {
 						workspace.command_buffer,
 						VK_PIPELINE_BIND_POINT_GRAPHICS,
 						lambertian_objects_pipeline.layout,
-						2, 1, &texture_descriptors[inst.texture.albedo_index],
+						2, 1, &texture_descriptor_sets[inst.texture],
 						0,nullptr
 					);
 					vkCmdDraw(workspace.command_buffer, inst.vertices.count, 1, inst.vertices.first, index+index_offset);
@@ -811,7 +811,7 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params) {
 						workspace.command_buffer,
 						VK_PIPELINE_BIND_POINT_GRAPHICS,
 						lambertian_objects_pipeline.layout,
-						2, 1, &texture_descriptors[inst.texture.environment_index],
+						2, 1, &texture_descriptor_sets[inst.texture],
 						0,nullptr
 					);
 

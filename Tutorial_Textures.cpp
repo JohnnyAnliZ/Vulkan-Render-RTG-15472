@@ -285,10 +285,6 @@ void Tutorial::load_textures(){
 		}
 	}
 
-
-
-	
-
 	{ //make image views for the textures
 		texture_views.reserve(textures.size());
 		for (Helpers::AllocatedImage const &image : textures) {
@@ -491,7 +487,14 @@ void Tutorial::load_textures(){
 				std::string texture_unique_key = tex_ptr->src;
 				if(textures_name_to_index.find(texture_unique_key) != textures_name_to_index.end()){//the texture has already been emplaced into the texture vector
 					std::cout<<"making lambertian material with loaded texture "<<texture_unique_key<<std::endl;
-					make_descriptor_set(mat.first, MaterialType::LAMBERTIAN, Texture_Indices{.albedo_index = (int)textures_name_to_index.at(texture_unique_key)});
+					make_descriptor_set(
+						mat.first, 
+						MaterialType::LAMBERTIAN, 
+						Texture_Indices{
+							.albedo_index = (int)textures_name_to_index.at(texture_unique_key),
+							.diffuse_irradiance_index = (int)textures_name_to_index.at(lambertian_irradiance_lut_name),
+						}
+					);
 				}
 				else{
 					std::cerr<<"No texture ?"<<texture_unique_key<<std::endl;
@@ -536,25 +539,44 @@ void Tutorial::make_descriptor_set(std::string mat_name, MaterialType mat_type, 
 	
 	if(mat_type == MaterialType::LAMBERTIAN){
 		assert(tex_inds.albedo_index != -1);
-		std::array<VkDescriptorImageInfo, 1> infos{
+		
+		assert(textures[tex_inds.diffuse_irradiance_index].is_cubemap);
+		std::array<VkDescriptorImageInfo, 2> infos{
 			VkDescriptorImageInfo{
 				.sampler = texture_sampler,
 				.imageView = texture_views[tex_inds.albedo_index],
 				.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
 			},
+			VkDescriptorImageInfo{
+				.sampler = texture_sampler,
+				.imageView = texture_views[tex_inds.diffuse_irradiance_index],
+				.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+			},
 			//TODO, add normal map
 		};
 		
-		VkWriteDescriptorSet write{
-			.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-			.dstSet = texture_descriptor_sets[ind],//texture descriptors have the same index as textures
-			.dstBinding = 0,
-			.dstArrayElement = 0,
-			.descriptorCount = (uint32_t)infos.size(),
-			.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-			.pImageInfo = &infos[0],
+		std::array<VkWriteDescriptorSet, 2> writes{
+			VkWriteDescriptorSet{
+				.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+				.dstSet = texture_descriptor_sets[ind],//texture descriptors have the same index as textures
+				.dstBinding = 0,
+				.dstArrayElement = 0,
+				.descriptorCount = 1,
+				.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+				.pImageInfo = &infos[0],
+			},
+			VkWriteDescriptorSet{
+				.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+				.dstSet = texture_descriptor_sets[ind],//texture descriptors have the same index as textures
+				.dstBinding = 1,
+				.dstArrayElement = 0,
+				.descriptorCount = 1,
+				.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+				.pImageInfo = &infos[1],
+			}
 		};
-		vkUpdateDescriptorSets( rtg.device, 1, &write, 0, nullptr );
+		
+		vkUpdateDescriptorSets( rtg.device, 2, writes.data(), 0, nullptr );
 	}
 	else if(mat_type == MaterialType::ENVMIRROR){
 		assert(tex_inds.environment_index != -1);

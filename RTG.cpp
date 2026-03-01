@@ -58,6 +58,18 @@ void RTG::Configuration::parse(int argc, char **argv) {
 			argi += 1;
 			required_camera = argv[argi];
 		} 
+		else if(arg == "--exposure"){
+			if (argi + 1 >= argc) throw std::runtime_error("--exposure requires a exposure value.");
+			argi += 1;
+			exposure = std::stoul(argv[argi]);
+		}
+		else if(arg == "--tone-map"){
+			if (argi + 1 >= argc) throw std::runtime_error("--tone-map requires a type of tone-mapping operator.");
+			argi += 1;
+			if((std::string)argv[argi] == "LINEAR") tone_map_op = ToneMapOperator::LINEAR;
+			else if((std::string)argv[argi] == "REINHARD") tone_map_op = ToneMapOperator::REINHARD;
+			else throw std::runtime_error("unsupported tone mapping operator, we support LINEAR and REINHARD");
+		}
 		else {
 			throw std::runtime_error("Unrecognized argument '" + arg + "'.");
 		}

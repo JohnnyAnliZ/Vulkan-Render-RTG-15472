@@ -110,6 +110,8 @@ struct Tutorial : RTG::Application {
 
 		struct Push{
 			int32_t is_env = 1;
+			float exposure = 0;
+			int32_t tone_map_op = 0;
 		};
 
         //types for descriptors
@@ -133,6 +135,12 @@ struct Tutorial : RTG::Application {
 		VkDescriptorSetLayout set0_Eye= VK_NULL_HANDLE;
 		VkDescriptorSetLayout set1_Transforms = VK_NULL_HANDLE;
 		VkDescriptorSetLayout set2_TEXTURE = VK_NULL_HANDLE;
+
+		//push constants
+		struct Push{
+			float exposure = 0;
+			int32_t tone_map_op = 0;
+		};
 
         //types for descriptors
 		struct Eye {

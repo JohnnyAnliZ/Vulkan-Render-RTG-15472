@@ -184,7 +184,7 @@ function custom_flags_and_rules() {
 	//custom rule that runs glslc:
 	
 	maek.DEFAULT_OPTIONS.GLSLC = [`${VULKAN_SDK}/bin/glslc` + (maek.OS === 'windows' ? '.exe' : ''), '-Werror', '-g', '-mfmt=c', '--target-env=vulkan1.2'];
-	maek.DEFAULT_OPTIONS.GLSLCFlags = [];
+	maek.DEFAULT_OPTIONS.GLSLCFlags = ['-I.'];
 	maek.DEFAULT_OPTIONS.spirvSuffix = '.inl';
 	maek.DEFAULT_OPTIONS.spirvPrefix = 'spv/';
 

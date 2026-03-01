@@ -824,6 +824,8 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params) {
 					{//push constant to determine whether it's mirror or environment
 						EnvMirrorObjectsPipeline::Push push{
 							.is_env = inst.is_env,
+							.exposure = (float)rtg.configuration.exposure,
+							.tone_map_op = (int32_t)rtg.configuration.tone_map_op,
 						};
 						vkCmdPushConstants(workspace.command_buffer, env_mirror_objects_pipeline.layout, VK_SHADER_STAGE_FRAGMENT_BIT,
 						0, sizeof(push), &push);
@@ -854,6 +856,14 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params) {
 						2, 1, &texture_descriptor_sets[inst.texture],
 						0,nullptr
 					);
+					{//push constant to determine whether it's mirror or environment
+						PbrObjectsPipeline::Push push{
+							.exposure = (float)rtg.configuration.exposure,
+							.tone_map_op = (int32_t)rtg.configuration.tone_map_op,
+						};
+						vkCmdPushConstants(workspace.command_buffer, pbr_objects_pipeline.layout, VK_SHADER_STAGE_FRAGMENT_BIT,
+						0, sizeof(push), &push);
+					}
 					vkCmdDraw(workspace.command_buffer, inst.vertices.count, 1, inst.vertices.first, index + index_offset);
 				}
 			}

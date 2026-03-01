@@ -1,4 +1,11 @@
 #version 450
+#include "tone_map.glsl"
+
+
+layout(push_constant) uniform Push {
+    float exposure;
+    int toneMapMode;
+}pc;
 
 
 layout(set=0,binding=0,std140) uniform Eye {
@@ -9,7 +16,7 @@ layout(set=2,binding=0) uniform sampler2D ALBEDO;
 layout(set=2,binding=1) uniform sampler2D ROUGHNESS;
 layout(set=2,binding=2) uniform sampler2D METALNESS;
 layout(set=2,binding=3) uniform samplerCube ENVIRONMENT;    
-layout(set=2,binding=4) uniform sampler2D BRDF_LUT;         //R8G8B8A8_UNORM
+layout(set=2,binding=4) uniform sampler2D BRDF_LUT;
 layout(set=2,binding=5) uniform samplerCube DIFFUSE_IRRADIANCE;
 
 
@@ -50,5 +57,8 @@ void main(){
 
     vec3 color = diffuse + specular;
 
-    outColor = vec4(color, 1.0);
+    //tone mapping
+    vec3 radiance =  color * pow(2.0, pc.exposure);  // common exposure model
+    vec3 mapped = apply_tone_map(radiance, pc.toneMapMode);
+    outColor = vec4(mapped, 1.0);
 }

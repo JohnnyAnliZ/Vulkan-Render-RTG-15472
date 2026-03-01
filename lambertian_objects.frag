@@ -1,4 +1,5 @@
 #version 450
+#include "tone_map.glsl"
 
 layout(set=0,binding=0,std140) uniform World {
 	vec3 SKY_DIRECTION;
@@ -8,6 +9,7 @@ layout(set=0,binding=0,std140) uniform World {
 };
 
 layout(set=2,binding=0) uniform sampler2D TEXTURE;
+layout(set=2,binding=1) uniform samplerCube DIFFUSE_IRRADIANCE;
 
 layout(location = 0) in vec3 position;
 layout(location = 1) in vec3 normal;
@@ -21,10 +23,7 @@ void main(){
     vec3 n = normalize(normal);
     //direction that the light is from(this should point to -z)
     vec3 albedo = texture(TEXTURE, vec2(texCoord.y,-texCoord.x)).rgb;
-    vec3 l = vec3(0,0,1 );
-    //hemisphere sky + directional sun:
-    vec3 energy =
-          SKY_ENERGY * (dot(n, SKY_DIRECTION) * 0.5 + 0.5)
-        + SUN_ENERGY * max(dot(n, SUN_DIRECTION), 0.0);
-    outColor = vec4(albedo / 3.1415926 * energy, 1.0);
+    vec3 irradiance = texture(DIFFUSE_IRRADIANCE, n).rgb;
+    vec3 diffuse = (albedo * irradiance);
+    outColor = vec4(diffuse, 1.0);
 }

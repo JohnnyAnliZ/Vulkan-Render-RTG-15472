@@ -85,6 +85,16 @@ struct RTG {
 
 		//this is the camera that is passed in through command-line option(scene mode camera)
 		std::string required_camera = "";
+
+		//exposure value
+		int32_t exposure = 0;
+
+		//tone mapping function
+		enum class ToneMapOperator{
+			LINEAR = 0,	
+			REINHARD = 1,
+		}tone_map_op = ToneMapOperator::LINEAR;
+		
 		
 		//for configuration construction + management:
 		Configuration() = default;

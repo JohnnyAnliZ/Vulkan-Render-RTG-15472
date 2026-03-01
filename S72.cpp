@@ -981,7 +981,7 @@ S72 S72::load(std::string const &scene_file) {
 		if(value.type == Texture::Type::cube){
 			for(uint32_t l = 1; l < 6; l++){
 				std::filesystem::path p(value.path);
-				std::string filepath = (p.parent_path() / (p.stem().string() + "_mine." + std::to_string(l) + p.extension().string())).string();
+				std::string filepath = (p.parent_path() / (p.stem().string() + "." + std::to_string(l) + p.extension().string())).string();
 				std::cout<<"loading "<< filepath <<" ...";
 				uint32_t cur_width, cur_height;
 				loadTextureFile(filepath, cur_width, cur_height, value.mip_data[l-1]);

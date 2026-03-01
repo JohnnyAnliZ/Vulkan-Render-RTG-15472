@@ -85,6 +85,7 @@ void rgbe_to_rgba_float(std::vector<char> const &rgbe_vector, std::vector<float>
 		float r_rad = std::ldexp(1.0f, exponent - 128) * (r + 0.5f)/256;
 		float g_rad = std::ldexp(1.0f, exponent - 128) * (g + 0.5f)/256;
 		float b_rad = std::ldexp(1.0f, exponent - 128) * (b + 0.5f)/256;
+        //if(r_rad > 1.0f || g_rad > 1.0f || b_rad > 1.0f) std::cout<<"float bigger than 1"<<std::endl;
 		rgba_float_vector[i*4 + 0] = r_rad;
 		rgba_float_vector[i*4 + 1] = g_rad;
 		rgba_float_vector[i*4 + 2] = b_rad;

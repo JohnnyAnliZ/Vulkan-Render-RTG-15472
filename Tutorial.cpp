@@ -124,6 +124,8 @@ Tutorial::Tutorial(RTG &rtg_) : rtg(rtg_) {
 	lines_pipeline.create(rtg, render_pass, 0);
 	lambertian_objects_pipeline.create(rtg, render_pass,0);
 	env_mirror_objects_pipeline.create(rtg, render_pass,0);
+	pbr_objects_pipeline.create(rtg, render_pass,0);
+
 	{//create descriptor pool
 		uint32_t per_workspace = uint32_t(rtg.workspaces.size());
 
@@ -660,6 +662,10 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params) {
 				*out = inst.transform;
 				++out;
 			}
+			for (PbrObjectInstance const &inst : pbr_object_instances){
+				*out = inst.transform;
+				++out;
+			}
 		}
 		
 		//copy device memory to GPU memory
@@ -789,19 +795,19 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params) {
 				}
 			}
 			index_offset = (uint32_t)lambertian_object_instances.size();//update index_offset for the next batch of instances
+
+			
 			if(!env_mirror_object_instances.empty()){//draw the env_mirror object instances
 				vkCmdBindPipeline(workspace.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, env_mirror_objects_pipeline.handle);
-				
-				{////bind World and Transforms descriptor sets:
+				{////bind World and Transforms descriptor sets: (shared by env_mirror and pbr objects)
 					std::array<VkDescriptorSet, 2> descriptor_sets{
 						workspace.Eye_descriptors,//0, Eye
 						workspace.Transforms_descriptors,//1, Transforms
 					};
 
-					vkCmdBindDescriptorSets(workspace.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, lambertian_objects_pipeline.layout,
+					vkCmdBindDescriptorSets(workspace.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, env_mirror_objects_pipeline.layout,
 						0, uint32_t(descriptor_sets.size()),descriptor_sets.data(), 0, nullptr);
 				}
-	
 				//draw dat ting
 				for (EnvMirrorObjectInstance const &inst : env_mirror_object_instances) {
 					uint32_t index = uint32_t(&inst - &env_mirror_object_instances[0]);
@@ -810,7 +816,7 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params) {
 					vkCmdBindDescriptorSets(
 						workspace.command_buffer,
 						VK_PIPELINE_BIND_POINT_GRAPHICS,
-						lambertian_objects_pipeline.layout,
+						env_mirror_objects_pipeline.layout,
 						2, 1, &texture_descriptor_sets[inst.texture],
 						0,nullptr
 					);
@@ -825,6 +831,33 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params) {
 					vkCmdDraw(workspace.command_buffer, inst.vertices.count, 1, inst.vertices.first, index + index_offset);
 				}
 			}
+			index_offset += (uint32_t)env_mirror_object_instances.size();//update index_offset for the next batch of instances
+
+			if(!pbr_object_instances.empty()){//draw the env_mirror object instances
+				vkCmdBindPipeline(workspace.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pbr_objects_pipeline.handle);
+				{////bind World and Transforms descriptor sets: (shared by env_mirror and pbr objects)
+					std::array<VkDescriptorSet, 2> descriptor_sets{
+						workspace.Eye_descriptors,//0, Eye
+						workspace.Transforms_descriptors,//1, Transforms
+					};
+					vkCmdBindDescriptorSets(workspace.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pbr_objects_pipeline.layout,
+						0, uint32_t(descriptor_sets.size()),descriptor_sets.data(), 0, nullptr);
+				}
+				//draw dat ting
+				for (PbrObjectInstance const &inst : pbr_object_instances) {
+					uint32_t index = uint32_t(&inst - &pbr_object_instances[0]);
+					//bind texture descriptor set			
+					vkCmdBindDescriptorSets(
+						workspace.command_buffer,
+						VK_PIPELINE_BIND_POINT_GRAPHICS,
+						pbr_objects_pipeline.layout,
+						2, 1, &texture_descriptor_sets[inst.texture],
+						0,nullptr
+					);
+					vkCmdDraw(workspace.command_buffer, inst.vertices.count, 1, inst.vertices.first, index + index_offset);
+				}
+			}
+			index_offset += (uint32_t)pbr_object_instances.size();//update index_offset for the next batch of instances
 		}
 
 		vkCmdEndRenderPass(workspace.command_buffer);
@@ -879,7 +912,7 @@ void Tutorial::update(float dt) {
 	lines_vertices.clear(); 
 	lambertian_object_instances.clear();
 	env_mirror_object_instances.clear();
-
+	pbr_object_instances.clear();
 	// animation drivers, per-frame graph walk updating changes in transforms
 	update_scene(dt);
 

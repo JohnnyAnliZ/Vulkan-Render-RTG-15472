@@ -232,6 +232,7 @@ struct S72 {
 		uint32_t height = 0;
 
 		std::vector<char> data;
+		//careful indexing into it, mip level one is index 0
 		std::vector<std::vector<char>> mip_data;
 
 	};

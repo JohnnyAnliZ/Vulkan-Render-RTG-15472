@@ -345,27 +345,32 @@ void Helpers::transfer_to_image(std::vector<std::vector<float>> const& mip_data,
 	uint32_t layer_count = target.is_cubemap ? 6u: 1u;
 	VkDeviceSize layer_size = target.extent.width * target.extent.height * bytes_per_block / texels_per_block;//number of bytes in one layer
 
-	std::cout<<"bytes per block: "<<bytes_per_block<<"texels_per_block: "<<texels_per_block<<std::endl;
+	std::cout<<"mip version of transfer_to_image: bytes per block: "<<bytes_per_block<<"texels_per_block: "<<texels_per_block<<std::endl;
 	std::cout<<"size: "<<size<<" target size: "<<layer_count * layer_size<<std::endl;
 	assert(size == layer_count * layer_size);
+
+	size_t total_mip_size = 0;
+	for(uint32_t l = 0 ; l < mip_data.size(); l++) total_mip_size += mip_data[l].size() * 4;
 	//create a host-coherent source buffer
 	AllocatedBuffer transfer_src = create_buffer(
-		size,
+		total_mip_size,
 		VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
 		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
 		Mapped
 	);
-  
+
 	//copy image data into the source buffer
 	size_t offset = 0;
 	assert(mip_data.size() == target.mip_levels);
 	uint8_t* dst = reinterpret_cast<uint8_t*>(transfer_src.allocation.data());
-	for(uint32_t level = 0; level < target.mip_levels; level++){
-		uint32_t current_mip_level_size = size / (1<< (level * 2));
+	for(size_t level = 0; level < target.mip_levels; level++){
+		size_t current_mip_level_size = size >> (level * 2);
 		assert(current_mip_level_size == mip_data[level].size() * 4);
 		std::memcpy(dst + offset, mip_data[level].data(), current_mip_level_size);
 		offset += current_mip_level_size;
 	}
+	assert(offset == total_mip_size);
+	
 
 	//begin recording a command buffer
 	VK( vkResetCommandBuffer(transfer_command_buffer, 0) );
@@ -412,7 +417,7 @@ void Helpers::transfer_to_image(std::vector<std::vector<float>> const& mip_data,
 	{ // copy the source buffer to the image
 		uint32_t regions_count = layer_count * target.mip_levels;
 		std::vector<VkBufferImageCopy> regions(regions_count);
-		size_t offset = 0;
+		size_t buffer_offset = 0;
 		for(uint32_t level = 0; level < target.mip_levels; level++){
 
 			uint32_t mip_width  = target.extent.width  >> level;
@@ -424,7 +429,7 @@ void Helpers::transfer_to_image(std::vector<std::vector<float>> const& mip_data,
 
 			for(uint32_t face = 0; face < layer_count; face++){
 				VkBufferImageCopy region{
-					.bufferOffset = offset + face * face_bytes,
+					.bufferOffset = buffer_offset + face * face_bytes,
 					.bufferRowLength = 0,
 					.bufferImageHeight = 0,//tightly packed according to imageExtent
 					.imageSubresource{
@@ -442,7 +447,7 @@ void Helpers::transfer_to_image(std::vector<std::vector<float>> const& mip_data,
 				};
 				regions[level * layer_count + face] = region;
 			}
-			offset += level_bytes;
+			buffer_offset += level_bytes;
 		}
 		
 		

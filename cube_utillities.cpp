@@ -218,7 +218,7 @@ void convolve_cubemap_ggx(uint32_t in_width, std::vector<vec3> const &env, uint3
 
                 vec3 prefiltered(0.0f);//the color to be summed into
                 float totalWeight = 0.0f;
-                const uint32_t NumSamples = 32;
+                const uint32_t NumSamples = 512;
                 for(uint32_t i = 0; i < NumSamples; i++){
                     vec2 Xi = Hammersley(i, NumSamples);
                     vec3 H = importance_sample_ggx(Xi, N, roughness);

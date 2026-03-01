@@ -39,13 +39,13 @@ int main(int argc, char **argv) {
             image[3*i + 2] = 0;
         }
 
-        std::string lut_path = (p.parent_path() / "brtf_lut.png").string();
+        std::string lut_path = (p.parent_path() / "brdf_lut.png").string();
 
         std::cout<<"writing: "<<lut_path<<std::endl;
         stbi_flip_vertically_on_write(1);
         int success = stbi_write_png(lut_path.data(), width, width, 3, image.data(), width * 3);
         if (!success) {
-            fprintf(stderr, "Error: Failed to write image to brtf_lut.png\n");
+            fprintf(stderr, "Error: Failed to write image to brdf_lut.png\n");
             // Handle the error (e.g., free memory, return error code)
         } else {
             printf("Image written successfully.\n");
@@ -79,6 +79,8 @@ int main(int argc, char **argv) {
         uint32_t width;
         uint32_t _;//no need height cuz it's a cubemap
         std::vector<char> in_data;
+
+
         loadTextureFile(in_cube_path, width, _, in_data);
 
 
@@ -107,6 +109,7 @@ int main(int argc, char **argv) {
             std::cout << mip_image_name << std::endl;
 
             std::cout<<"outputting: "<<mip_image_name<<std::endl;
+            stbi_flip_vertically_on_write(0);
             stbi_write_png(mip_image_name.data(), cur_width, cur_width * 6, 4, out_image.data(), cur_width * 4);
         }
     }

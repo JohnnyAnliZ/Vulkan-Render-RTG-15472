@@ -23,7 +23,7 @@ void Tutorial::make_flat_image(S72::Texture const &texture){
 	//make a place for the texture to live on the GPU:
 	textures.emplace_back(rtg.helpers.create_image(
 		VkExtent2D{ .width = texture.width , .height = texture.height }, //size of image, we know this is not a cubemap, could be unsquare
-		texture.format == S72::Texture::Format::srgb ? VK_FORMAT_R8G8B8A8_SRGB: VK_FORMAT_R32G32B32A32_SFLOAT, //how to interpret image data 
+		texture.format == S72::Texture::Format::srgb ? VK_FORMAT_R8G8B8A8_SRGB: VK_FORMAT_R8G8B8A8_UNORM, //how to interpret image data 
 		VK_IMAGE_TILING_OPTIMAL,
 		VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, //will sample and upload
 		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, //should be device-local
@@ -31,7 +31,7 @@ void Tutorial::make_flat_image(S72::Texture const &texture){
 	));
 	
 	//transfer data:
-	rtg.helpers.transfer_to_image(texture.data.data(), texture.data.size() * sizeof(float), textures.back());//here size is in bytes
+	rtg.helpers.transfer_to_image(texture.data.data(), texture.data.size(), textures.back());//here size is in bytes
 }
 
 void Tutorial::make_cube_image(S72::Texture const &texture){
@@ -43,25 +43,25 @@ void Tutorial::make_cube_image(S72::Texture const &texture){
 		VK_IMAGE_TILING_OPTIMAL,
 		VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, //will sample and upload
 		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, //should be device-local
-		Helpers::Unmapped, true, texture.mip_data.size() + 1 // base level plus mip levels
+		Helpers::Unmapped, true, (uint32_t)texture.mip_data.size() + 1 // base level plus mip levels
 	));
 	//TODO: also get the mip map images chained to the same image
 
 	//transfer data
 	//convert from rgbe to rgbafloat
-	std::vector<float> cubemap_rgba(texture.width * texture.width * 6 * 4);
-	rgbe_to_rgba_float(texture.data, cubemap_rgba, texture.width);
+	std::vector<float> original_rgba(texture.width * texture.width * 6 * 4);
+	rgbe_to_rgba_float(texture.data, original_rgba, texture.width);
 
-	uint32_t const mip_levels = texture.mip_data.size() + 1;
+	uint32_t const mip_levels = (uint32_t)texture.mip_data.size() + 1;
 	std::vector<std::vector<float>> mip_rgbas(mip_levels);
 	for(uint32_t i = 0; i < mip_levels; i++){
 		if(i == 0){
-			mip_rgbas[i] = cubemap_rgba;
+			mip_rgbas[i] = original_rgba;
 		}
 		else{
 			uint32_t cur_width = texture.width >> i;
 			mip_rgbas[i].resize(cur_width * cur_width * 6 * 4);
-			rgbe_to_rgba_float(texture.mip_data[i], mip_rgbas[i], cur_width);
+			rgbe_to_rgba_float(texture.mip_data[i - 1], mip_rgbas[i], cur_width);
 		}
 	}
 
@@ -117,8 +117,9 @@ void Tutorial::make_one_off_texture(TextureType t_type, std::variant<vec3, float
 		}
 		else if(t_type == TextureType::ROUGHNESS || t_type == TextureType::METALNESS){
 			float v = get<float>(value);
+			float data[4] = {v, v, v, 1.0f};
 			create_and_emplace_image(VK_FORMAT_R32G32B32A32_SFLOAT);
-			rtg.helpers.transfer_to_image(&v, sizeof(v), textures.back());
+			rtg.helpers.transfer_to_image(&data, sizeof(float) * 4, textures.back());
 		}
 		else if(t_type == TextureType::NORMAL){
 			vec3 normal = get<vec3>(value);
@@ -205,46 +206,71 @@ void Tutorial::load_textures(){
 		rtg.helpers.transfer_to_image(data.data(), sizeof(data[0]) * data.size(), textures.back());
 		texture_index++;
 	}
+
 	{//make some default textures for normal, displacement
 		//TODO
 	}
+
+	{//go through the textures to get the loaded textures
+		for(auto const &tex: scene72.textures){
+			S72::Texture texture = tex.second;
+			std::cout<<"loading texture "<<texture.src<<std::endl;
+			//check for multiple references of the same texture
+			std::string texture_unique_key = texture.src;
+
+			if(textures_name_to_index.find(texture_unique_key) != textures_name_to_index.end()){
+				std::cerr<<"duplicate texture in the list of textures "<<texture_unique_key<<std::endl;
+			}
+
+			assert(texture_index == textures.size());
+			textures_name_to_index[texture_unique_key] = texture_index;//record this loaded texture
+			texture.type == S72::Texture::Type::cube ? make_cube_image(texture): make_flat_image(texture);//make texture and put into textures
+			texture_index++;//now texture_index is the next texture
+		}
+
+		assert(scene72.environments.size() == 1);
+		environment_name = scene72.environments.begin()->second.name;
+		assert(textures_name_to_index.find(environment_name) != textures_name_to_index.end());
+		std::cout<<"assigning environment to be "<< environment_name <<std::endl;
+	}
+
 	{//make texture for pre_computed LUTS
 		//get the path to the LUTs 
 		{//lambertian irradiance
 			//load		
-			std::filesystem::path p(scene72.textures.begin()->second.path);//random texture file
+			std::filesystem::path p(scene72.environments.begin()->second.radiance->path);//random texture file
 			std::string filepath = (p.parent_path() / (p.stem().string() + "_mine.lambertian" + p.extension().string())).string();
-			std::string texture_unique_key = p.stem().string() + "_mine.lambertian" + p.extension().string();
-			if(textures_name_to_index.find(texture_unique_key) == textures_name_to_index.end()){
-				std::cerr<<"duplicate texture in the list of textures"<<std::endl;
-			}
-			std::cout<<"loading "<< filepath <<" ...";
+			lambertian_irradiance_lut_name= p.stem().string() + "_mine.lambertian" + p.extension().string();
+
+			std::cout<<"loading "<< lambertian_irradiance_lut_name <<" ...";
 			S72::Texture lambertian_irradiance_cubemap{
-				.src = texture_unique_key, 
+				.src = lambertian_irradiance_lut_name, 
 				.type = S72::Texture::Type::cube, 
 				.format = S72::Texture::Format::rgbe,
 				.path = filepath,
 			};
+			
 			loadTextureFile(filepath, lambertian_irradiance_cubemap.width, lambertian_irradiance_cubemap.height, lambertian_irradiance_cubemap.data);
 			std::cout<<"success: width "<< lambertian_irradiance_cubemap.width << "| height "<<lambertian_irradiance_cubemap.height<<std::endl;
 			//put into textures
 			assert(texture_index == textures.size());
-			textures_name_to_index[texture_unique_key] = texture_index;//record this loaded texture
+			textures_name_to_index[lambertian_irradiance_lut_name] = texture_index;//record this loaded texture
 			assert(lambertian_irradiance_cubemap.mip_data.size() == 0);//no mip maps
 			make_cube_image(lambertian_irradiance_cubemap);//make texture and put into textures
 			texture_index++;//now texture_index is the next texture
 		}
+
 		{//brdf lut
 			//load		
 			std::filesystem::path p(scene72.textures.begin()->second.path);//random texture file
 			std::string filepath = (p.parent_path() / ("brdf_lut" + p.extension().string())).string();
-			std::string texture_unique_key = "brdf_lut" + p.extension().string();
-			if(textures_name_to_index.find(texture_unique_key) == textures_name_to_index.end()){
-				std::cerr<<"duplicate texture in the list of textures"<<std::endl;
+			brdf_lut_name = "brdf_lut" + p.extension().string();
+			if(textures_name_to_index.find(brdf_lut_name) == textures_name_to_index.end()){
+				std::cerr<<"can't find "<<brdf_lut_name<<std::endl;
 			}
 			std::cout<<"loading "<< filepath <<" ...";
 			S72::Texture brdf_lut{
-				.src = texture_unique_key, 
+				.src = brdf_lut_name, 
 				.type = S72::Texture::Type::flat, 
 				.format = S72::Texture::Format::linear,
 				.path = filepath,
@@ -253,30 +279,14 @@ void Tutorial::load_textures(){
 			std::cout<<"success: width "<< brdf_lut.width << "| height "<<brdf_lut.height<<std::endl;
 			//put into textures
 			assert(texture_index == textures.size());
-			textures_name_to_index[texture_unique_key] = texture_index;//record this loaded texture
+			textures_name_to_index[brdf_lut_name] = texture_index;//record this loaded texture
 			make_flat_image(brdf_lut);//make texture and put into textures
 			texture_index++;//now texture_index is the next texture
 		}
-		
 	}
 
-	//go through the textures to get the loaded textures
-	for(auto const &tex: scene72.textures){
-		S72::Texture texture = tex.second;
-		std::cout<<"loading texture "<<texture.src<<std::endl;
 
-		//check for multiple references of the same texture
-		std::string texture_unique_key = texture.src;
 
-		if(textures_name_to_index.find(texture_unique_key) == textures_name_to_index.end()){
-			std::cerr<<"duplicate texture in the list of textures"<<std::endl;
-		}
-
-		assert(texture_index == textures.size());
-		textures_name_to_index[texture_unique_key] = texture_index;//record this loaded texture
-		texture.type == S72::Texture::Type::cube ? make_cube_image(texture): make_flat_image(texture);//make texture and put into textures
-		texture_index++;//now texture_index is the next texture
-	}
 	
 
 	{ //make image views for the textures
@@ -313,18 +323,30 @@ void Tutorial::load_textures(){
 	}
 
 	{ //create the texture descriptor pool
-		uint32_t per_texture = uint32_t(textures.size());
+		uint32_t num_lambertian = 0;
+		uint32_t num_envmirror= 0;
+		uint32_t num_pbr = 0;
+		for(auto const& mat : scene72.materials) {
+			auto const& v = mat.second.brdf;
+			if(std::holds_alternative<S72::Material::Lambertian>(v))
+				num_lambertian++;
+			else if(std::holds_alternative<S72::Material::Mirror>(v) ||
+					std::holds_alternative<S72::Material::Environment>(v))
+				num_envmirror++;
+			else if(std::holds_alternative<S72::Material::PBR>(v))
+				num_pbr++;
+		}
 		std::array< VkDescriptorPoolSize, 1> pool_sizes{
 			VkDescriptorPoolSize{
 				.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-				.descriptorCount = 1 * 1 * per_texture, //one descriptor per set, one set per texture
+				.descriptorCount = num_lambertian + num_envmirror + num_pbr * 6, //one descriptor per set, one set per texture
 			},
 		};
 		
 		VkDescriptorPoolCreateInfo create_info{
 			.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
 			.flags = 0, //because CREATE_FREE_DESCRIPTOR_SET_BIT isn't included, *can't* free individual descriptors allocated from this pool
-			.maxSets = 1 * per_texture, //one set per texture
+			.maxSets = num_lambertian + num_envmirror + num_pbr, //one set per texture
 			.poolSizeCount = uint32_t(pool_sizes.size()),
 			.pPoolSizes = pool_sizes.data(),
 		};
@@ -341,7 +363,116 @@ void Tutorial::load_textures(){
 		//resolve the brdf
 		std::variant<S72::Material::PBR, S72::Material::Lambertian, S72::Material::Mirror, S72::Material::Environment> const &v = mat.second.brdf;
 		if(std::holds_alternative<S72::Material::PBR>(v)){
+			//TODO:
+			//for each texture to bind, either located using the texture-name-to-index table, or generate one
+			//then make descriptor_set mapping the name of the material (mat.first) to the index into the vector of descriptor sets
+			S72::Material::PBR pbr = get<S72::Material::PBR>(v);
+			int albedo_ind = -1;
+			int roughness_ind = -1;
+			int metalness_ind = -1;
+			int brdf_lut_ind = -1;
+			int diffuse_irradiance_ind = -1;
+			int environment_ind = -1;
+			
+			//albedo
+			if(std::holds_alternative<S72::color>(pbr.albedo)){
+				//make a one off texture
+				make_one_off_texture(TextureType::ALBEDO, get<vec3>(pbr.albedo));
+				//put into descriptor set
+				assert(texture_index == textures.size() - 1);
+				albedo_ind = (int)texture_index;//store index for albedo
+				texture_index++;//now texture_index is the next texture		
+			}
+			else if(std::holds_alternative<S72::Texture *>(pbr.albedo)){
+				S72::Texture * alb = get<S72::Texture *>(pbr.albedo);
+				std::string texture_unique_key = alb->src;
+				if(textures_name_to_index.find(texture_unique_key) != textures_name_to_index.end()){//the texture has already been emplaced into the texture vector
+					std::cout<<"making pbr material with loaded texture "<<texture_unique_key<<std::endl;
+					albedo_ind = (int)textures_name_to_index.at(texture_unique_key);//store index for albedo
+				}
+				else{
+					std::cerr<<"No texture ?"<<texture_unique_key<<std::endl;
+				}
+			}
 
+			//roughness
+			if(std::holds_alternative<float>(pbr.roughness)){
+				//make a one off texture
+				make_one_off_texture(TextureType::ROUGHNESS, get<float>(pbr.roughness));
+				//put into descriptor set
+				assert(texture_index == textures.size() - 1);
+				roughness_ind = (int)texture_index;//store index for albedo
+				texture_index++;//now texture_index is the next texture		
+			}
+			else if(std::holds_alternative<S72::Texture *>(pbr.roughness)){
+				S72::Texture * rough = get<S72::Texture *>(pbr.roughness);
+				std::string texture_unique_key = rough->src;
+				if(textures_name_to_index.find(texture_unique_key) != textures_name_to_index.end()){//the texture has already been emplaced into the texture vector
+					std::cout<<"making pbr material with loaded texture "<<texture_unique_key<<std::endl;
+					roughness_ind = (int)textures_name_to_index.at(texture_unique_key);//store index for albedo
+				}
+				else{
+					std::cerr<<"No texture ?"<<texture_unique_key<<std::endl;
+				}
+			}
+
+			//metalness
+			if(std::holds_alternative<float>(pbr.metalness)){
+				//make a one off texture
+				make_one_off_texture(TextureType::METALNESS, get<float>(pbr.metalness));
+				//put into descriptor set
+				assert(texture_index == textures.size() - 1);
+				metalness_ind = (int)texture_index;//store index for albedo
+				texture_index++;//now texture_index is the next texture		
+			}
+			else if(std::holds_alternative<S72::Texture *>(pbr.metalness)){
+				S72::Texture * metal = get<S72::Texture *>(pbr.metalness);
+				std::string texture_unique_key = metal->src;
+				if(textures_name_to_index.find(texture_unique_key) != textures_name_to_index.end()){//the texture has already been emplaced into the texture vector
+					std::cout<<"making pbr material with loaded texture "<<texture_unique_key<<std::endl;
+					metalness_ind = (int)textures_name_to_index.at(texture_unique_key);//store index for albedo
+				}
+				else{
+					std::cerr<<"No texture ?"<<texture_unique_key<<std::endl;
+				}
+			}
+			
+			//brdf_lut
+			if(textures_name_to_index.find(brdf_lut_name) != textures_name_to_index.end()){//the texture has already been emplaced into the texture vector
+				std::cout<<"making pbr material with loaded texture "<<brdf_lut_name<<std::endl;
+				brdf_lut_ind = (int)textures_name_to_index.at(brdf_lut_name);//store index for albedo
+			}
+			else{
+				std::cerr<<"No texture ?"<<brdf_lut_name<<std::endl;
+			}
+
+			//lambertian irradiance 
+			if(textures_name_to_index.find(lambertian_irradiance_lut_name) != textures_name_to_index.end()){//the texture has already been emplaced into the texture vector
+				std::cout<<"making pbr material with loaded texture "<<lambertian_irradiance_lut_name<<std::endl;
+				diffuse_irradiance_ind = (int)textures_name_to_index.at(lambertian_irradiance_lut_name);//store index for albedo
+			}
+			else{
+				std::cerr<<"No texture ?"<<lambertian_irradiance_lut_name<<std::endl;
+			}
+
+			//environment with it's mip levels
+			if(textures_name_to_index.find(environment_name) != textures_name_to_index.end()){//the texture has already been emplaced into the texture vector
+				std::cout<<"making pbr material with loaded texture "<<environment_name<<std::endl;
+				environment_ind = (int)textures_name_to_index.at(environment_name);//store index for albedo
+			}
+			else{
+				std::cerr<<"No texture ?"<<environment_name<<std::endl;
+			}
+
+			//make the descriptor set with all the texture indices
+			make_descriptor_set(mat.first, MaterialType::PBR, Texture_Indices{
+				.albedo_index = albedo_ind,
+				.roughness_index = roughness_ind,
+				.metalness_index = metalness_ind,
+				.environment_index = environment_ind,
+				.brdf_lut_index = brdf_lut_ind,
+				.diffuse_irradiance_index = diffuse_irradiance_ind,
+			});
 		}
 		else if(std::holds_alternative<S72::Material::Lambertian>(v)){
 			S72::Material::Lambertian const &lamb = get<S72::Material::Lambertian>(v);
@@ -359,7 +490,7 @@ void Tutorial::load_textures(){
 				//check for multiple references of the same texture
 				std::string texture_unique_key = tex_ptr->src;
 				if(textures_name_to_index.find(texture_unique_key) != textures_name_to_index.end()){//the texture has already been emplaced into the texture vector
-					std::cout<<"making lambertian with loaded texture "<<texture_unique_key<<std::endl;
+					std::cout<<"making lambertian material with loaded texture "<<texture_unique_key<<std::endl;
 					make_descriptor_set(mat.first, MaterialType::LAMBERTIAN, Texture_Indices{.albedo_index = (int)textures_name_to_index.at(texture_unique_key)});
 				}
 				else{
@@ -367,105 +498,16 @@ void Tutorial::load_textures(){
 				}
 			}	
 		}
-		else if(std::holds_alternative<S72::Material::Mirror>(v)||std::holds_alternative<S72::Material::Environment>(v)){
-			std::string environment_name;//should be the same name as the name of the png
-			if(std::holds_alternative<S72::Material::Environment>(v)){
-				S72::Material::Environment const &env = get<S72::Material::Environment>(v);
-				environment_name = env.name;
-			}
-			else if (std::holds_alternative<S72::Material::Mirror>(v)){
-				S72::Material::Mirror const &mir = get<S72::Material::Mirror>(v);
-				environment_name = mir.env_name;
-			}
-			
+		else if(std::holds_alternative<S72::Material::Mirror>(v)||std::holds_alternative<S72::Material::Environment>(v)){			
 			if(textures_name_to_index.find(environment_name) != textures_name_to_index.end()){
-				std::cout<<"making envmirror with loaded texture "<<environment_name<<std::endl;
+				std::cout<<"making envmirror material with loaded texture "<<environment_name<<std::endl;
 				make_descriptor_set(mat.first, MaterialType::ENVMIRROR, Texture_Indices{.environment_index = (int)textures_name_to_index.at(environment_name)});
 			}
 			else{
 				std::cerr<<"can't find texture: "<<environment_name<<std::endl;
 			}			
 		}
-		else if(std::holds_alternative<S72::Material::PBR>(v)){
-			//TODO:
-			//for each texture to bind, either located using the texture-name-to-index table, or generate one
-			//then make descriptor_set mapping the name of the material (mat.first) to the index into the vector of descriptor sets
-			S72::Material::PBR pbr = get<S72::Material::PBR>(v);
-			int albedo_ind, roughness_ind, metalness_ind, brdf_lut_ind, diffuse_irradiance_ind, environment_ind;
-			
-			//albedo
-			if(std::holds_alternative<S72::color>(pbr.albedo)){
-				//make a one off texture
-				make_one_off_texture(TextureType::ALBEDO, get<vec3>(pbr.albedo));
-				//put into descriptor set
-				assert(texture_index == textures.size() - 1);
-				albedo_ind = (int)texture_index;//store index for albedo
-				texture_index++;//now texture_index is the next texture		
-			}
-			else if(std::holds_alternative<S72::Texture *>(pbr.albedo)){
-				S72::Texture * alb = get<S72::Texture *>(pbr.albedo);
-				std::string texture_unique_key = alb->src;
-				if(textures_name_to_index.find(texture_unique_key) != textures_name_to_index.end()){//the texture has already been emplaced into the texture vector
-					std::cout<<"making lambertian with loaded texture "<<texture_unique_key<<std::endl;
-					albedo_ind = (int)textures_name_to_index.at(texture_unique_key);//store index for albedo
-				}
-				else{
-					std::cerr<<"No texture ?"<<texture_unique_key<<std::endl;
-				}
-			}
-
-			//roughness
-			if(std::holds_alternative<S72::color>(pbr.roughness)){
-				//make a one off texture
-				make_one_off_texture(TextureType::ROUGHNESS, get<float>(pbr.roughness));
-				//put into descriptor set
-				assert(texture_index == textures.size() - 1);
-				roughness_ind = (int)texture_index;//store index for albedo
-				texture_index++;//now texture_index is the next texture		
-			}
-			else if(std::holds_alternative<S72::Texture *>(pbr.roughness)){
-				S72::Texture * rough = get<S72::Texture *>(pbr.roughness);
-				std::string texture_unique_key = rough->src;
-				if(textures_name_to_index.find(texture_unique_key) != textures_name_to_index.end()){//the texture has already been emplaced into the texture vector
-					std::cout<<"making lambertian with loaded texture "<<texture_unique_key<<std::endl;
-					roughness_ind = (int)textures_name_to_index.at(texture_unique_key);//store index for albedo
-				}
-				else{
-					std::cerr<<"No texture ?"<<texture_unique_key<<std::endl;
-				}
-			}
-
-			//metalness
-			if(std::holds_alternative<S72::color>(pbr.metalness)){
-				//make a one off texture
-				make_one_off_texture(TextureType::METALNESS, get<float>(pbr.metalness));
-				//put into descriptor set
-				assert(texture_index == textures.size() - 1);
-				metalness_ind = (int)texture_index;//store index for albedo
-				texture_index++;//now texture_index is the next texture		
-			}
-			else if(std::holds_alternative<S72::Texture *>(pbr.metalness)){
-				S72::Texture * metal = get<S72::Texture *>(pbr.metalness);
-				std::string texture_unique_key = metal->src;
-				if(textures_name_to_index.find(texture_unique_key) != textures_name_to_index.end()){//the texture has already been emplaced into the texture vector
-					std::cout<<"making lambertian with loaded texture "<<texture_unique_key<<std::endl;
-					metalness_ind = (int)textures_name_to_index.at(texture_unique_key);//store index for albedo
-				}
-				else{
-					std::cerr<<"No texture ?"<<texture_unique_key<<std::endl;
-				}
-			}
-			
-			//brdf_lut
-
-		}
-	}
-
-	
-		
-	
-
-	
+	}	
 }
 
 
@@ -485,7 +527,7 @@ void Tutorial::make_descriptor_set(std::string mat_name, MaterialType mat_type, 
 		.pSetLayouts = pDesSetLayout,
 	};
 	
-	uint32_t ind = texture_descriptor_sets.size();
+	uint32_t ind = (uint32_t)texture_descriptor_sets.size();
 	texture_descriptor_sets.emplace_back(VK_NULL_HANDLE);
 	vkAllocateDescriptorSets(rtg.device, &alloc_info, &texture_descriptor_sets[ind]);
 	material_texture_descriptor_set_table[mat_name] = ind;
@@ -508,7 +550,7 @@ void Tutorial::make_descriptor_set(std::string mat_name, MaterialType mat_type, 
 			.dstSet = texture_descriptor_sets[ind],//texture descriptors have the same index as textures
 			.dstBinding = 0,
 			.dstArrayElement = 0,
-			.descriptorCount = infos.size(),
+			.descriptorCount = (uint32_t)infos.size(),
 			.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
 			.pImageInfo = &infos[0],
 		};
@@ -529,7 +571,7 @@ void Tutorial::make_descriptor_set(std::string mat_name, MaterialType mat_type, 
 			.dstSet = texture_descriptor_sets[ind],//texture descriptors have the same index as textures
 			.dstBinding = 0,
 			.dstArrayElement = 0,
-			.descriptorCount = infos.size(),
+			.descriptorCount = (uint32_t)infos.size(),
 			.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
 			.pImageInfo = &infos[0],
 		};
@@ -542,9 +584,9 @@ void Tutorial::make_descriptor_set(std::string mat_name, MaterialType mat_type, 
 		assert(tex_inds.brdf_lut_index != -1);
 		assert(tex_inds.diffuse_irradiance_index != -1);
 
+		uint32_t const num_of_textures = 6;
 
-
-		std::array<VkDescriptorImageInfo, 5> infos{
+		std::array<VkDescriptorImageInfo, num_of_textures> infos{
 			VkDescriptorImageInfo{
 				.sampler = texture_sampler,
 				.imageView = texture_views[tex_inds.albedo_index],
@@ -562,6 +604,11 @@ void Tutorial::make_descriptor_set(std::string mat_name, MaterialType mat_type, 
 			},
 			VkDescriptorImageInfo{
 				.sampler = texture_sampler,
+				.imageView = texture_views[tex_inds.environment_index],
+				.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+			},
+			VkDescriptorImageInfo{
+				.sampler = texture_sampler,
 				.imageView = texture_views[tex_inds.brdf_lut_index],
 				.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
 			},
@@ -572,16 +619,19 @@ void Tutorial::make_descriptor_set(std::string mat_name, MaterialType mat_type, 
 			},
 		};
 		
-		VkWriteDescriptorSet write{
-			.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-			.dstSet = texture_descriptor_sets[ind],//texture descriptors have the same index as textures
-			.dstBinding = 0,
-			.dstArrayElement = 0,
-			.descriptorCount = infos.size(),
-			.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-			.pImageInfo = &infos[0],
-		};
-		vkUpdateDescriptorSets( rtg.device, 1, &write, 0, nullptr );
+		std::array<VkWriteDescriptorSet, num_of_textures>writes; 
+		for(uint32_t i = 0; i < num_of_textures; i++){
+			writes[i] = VkWriteDescriptorSet{
+				.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+				.dstSet = texture_descriptor_sets[ind],//texture descriptors have the same index as textures
+				.dstBinding = i,
+				.dstArrayElement = 0,
+				.descriptorCount = 1,
+				.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+				.pImageInfo = &infos[i],
+			};
+		}
+		vkUpdateDescriptorSets( rtg.device, num_of_textures, writes.data(), 0, nullptr );
 	}
 	
 }

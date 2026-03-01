@@ -286,7 +286,7 @@ void Tutorial::update_scene(float dt) {
 									.WORLD_FROM_LOCAL_NORMAL = world_from_local,//not correct, TODO	
 								},
 								//if the scenefile doesn't specify material just use the 0 debug material
-								.texture = (node->mesh->material == nullptr) ? Texture_Indices{.albedo_index=0} : material_textures_table.at(node->mesh->material->name),
+								.texture = (node->mesh->material == nullptr) ? 0 : material_texture_descriptor_set_table.at(node->mesh->material->name),
 							}
 						);
 					}
@@ -301,8 +301,21 @@ void Tutorial::update_scene(float dt) {
 									.WORLD_FROM_LOCAL_NORMAL = world_from_local,//not correct, TODO	
 								},
 								//if the scenefile doesn't specify material just use the 0 debug material
-								.texture = (node->mesh->material == nullptr) ? Texture_Indices{.albedo_index=0} : material_textures_table.at(node->mesh->material->name),
+								.texture = (node->mesh->material == nullptr) ? 0 : material_texture_descriptor_set_table.at(node->mesh->material->name),
 								.is_env = _is_env ? 1 : 0,
+							}
+						);
+					}
+					else if(std::holds_alternative<S72::Material::PBR>(v)){
+						pbr_object_instances.emplace_back(
+							PbrObjectInstance{
+								.vertices = meshes[node->mesh->name].verts,
+								.transform{
+									.CLIP_FROM_LOCAL = CLIP_FROM_WORLD * world_from_local,
+									.WORLD_FROM_LOCAL = world_from_local,
+									.WORLD_FROM_LOCAL_NORMAL = world_from_local,//not correct, TODO	
+								},
+								.texture = (node->mesh->material == nullptr) ? 0 : material_texture_descriptor_set_table.at(node->mesh->material->name),
 							}
 						);
 					}

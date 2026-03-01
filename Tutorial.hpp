@@ -134,7 +134,6 @@ struct Tutorial : RTG::Application {
 		VkDescriptorSetLayout set1_Transforms = VK_NULL_HANDLE;
 		VkDescriptorSetLayout set2_TEXTURE = VK_NULL_HANDLE;
 
-
         //types for descriptors
 		struct Eye {
 			vec3 EYE;
@@ -237,7 +236,10 @@ struct Tutorial : RTG::Application {
 	int normal_default = -1;
 	int disp_default = -1;
 
-
+	//name for luts
+	std::string brdf_lut_name;
+	std::string lambertian_irradiance_lut_name;
+	std::string environment_name;
 
 	//maps name of the loaded texture to indices into the texture_descriptor_sets array
 	std::unordered_map<std::string, uint32_t> material_texture_descriptor_set_table;

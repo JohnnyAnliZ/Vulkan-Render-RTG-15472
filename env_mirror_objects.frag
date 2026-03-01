@@ -22,12 +22,12 @@ layout(location = 0) out vec4 outColor;
 void main(){
     vec3 n = normalize(normal);
     if(is_env){
-        outColor = texture(TEXTURE, n);
+        outColor = textureLod(TEXTURE, n, 0.0);
     }
     else{     
         vec3 i = position - EYE; //incident vector pointing toward the surface, per glsl reflect()'s requirement
        
         vec3 reflection = reflect(i, n); //get the reflection vector
-        outColor = texture(TEXTURE, reflection);
+        outColor = textureLod(TEXTURE, reflection, 0.0);
     }
 }

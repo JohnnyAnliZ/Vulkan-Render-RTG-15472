@@ -9,7 +9,6 @@
 bool loadTextureFile(const std::string& filename, uint32_t &_width, uint32_t &_height, std::vector<char> &data) {
     int width,height,channels;
     uint32_t desired_channels = 4;//rgba
-    stbi_set_flip_vertically_on_load(0);
     unsigned char* loaded_data = stbi_load(filename.c_str(), &width, &height, &channels, desired_channels);
     if (!loaded_data) {
         std::cerr << "Error: Failed to load image." << std::endl;
@@ -66,6 +65,7 @@ bool loadBinaryFile(const std::string& filename, uint32_t &size, std::vector<cha
 
 //expects a cubemap with pre-resized rgba_float_vector
 void rgbe_to_rgba_float(std::vector<char> const &rgbe_vector, std::vector<float> &rgba_float_vector, uint32_t width){
+    std::cout<<"rgbe size: "<<rgbe_vector.size()<<" | supposed size: "<<4 * width * width * 6<<std::endl;
     assert(rgbe_vector.size() == 4 * width * width * 6);
     assert(rgba_float_vector.size() == 4 * width * width * 6);
    

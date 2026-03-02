@@ -53,8 +53,9 @@ void Tutorial::PbrObjectsPipeline::create(RTG &rtg, VkRenderPass render_pass, ui
     }
 
     {//the set2_TEXTURE layout has a single descriptor for a sample2D used in the fragment shader
-        std::array<VkDescriptorSetLayoutBinding, 6> bindings;
-        for(uint32_t i = 0; i < 6; i++){
+        uint32_t const num_textures = 7;
+        std::array<VkDescriptorSetLayoutBinding, num_textures> bindings;
+        for(uint32_t i = 0; i < num_textures; i++){
             bindings[i] = VkDescriptorSetLayoutBinding{
                 .binding = i,
                 .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
@@ -71,6 +72,11 @@ void Tutorial::PbrObjectsPipeline::create(RTG &rtg, VkRenderPass render_pass, ui
     }    
 
     {//create pipeline layout
+        VkPushConstantRange range{
+            .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+            .offset = 0,
+            .size = sizeof(Push),
+        };
 
         std::array< VkDescriptorSetLayout, 3 > layouts{
 			set0_Eye,
@@ -82,8 +88,8 @@ void Tutorial::PbrObjectsPipeline::create(RTG &rtg, VkRenderPass render_pass, ui
             .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
             .setLayoutCount = uint32_t(layouts.size()),
             .pSetLayouts = layouts.data(),
-            .pushConstantRangeCount = 0,
-            .pPushConstantRanges = VK_NULL_HANDLE,
+            .pushConstantRangeCount = 1,
+            .pPushConstantRanges = &range,
         };
 
         VK(vkCreatePipelineLayout(rtg.device, &create_info, nullptr, &layout));

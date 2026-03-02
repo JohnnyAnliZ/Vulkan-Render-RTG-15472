@@ -53,21 +53,16 @@ void Tutorial::LambertianObjectsPipeline::create(RTG &rtg, VkRenderPass render_p
     }
 
     {//the set2_TEXTURE layout has a single descriptor for a sample2D used in the fragment shader
-        std::array<VkDescriptorSetLayoutBinding, 2> bindings{
-            VkDescriptorSetLayoutBinding{
-                .binding = 0,
+        uint32_t const num_textures = 3;
+        std::array<VkDescriptorSetLayoutBinding, num_textures> bindings;
+        for(uint32_t i = 0; i < num_textures; i++){
+            bindings[i] = VkDescriptorSetLayoutBinding{
+                .binding = i,
                 .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
                 .descriptorCount = 1,
                 .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
-            },
-            VkDescriptorSetLayoutBinding{
-                .binding = 1,
-                .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-                .descriptorCount = 1,
-                .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
-            }
-        };
-
+            };
+        }
         VkDescriptorSetLayoutCreateInfo create_info{
             .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
             .bindingCount = uint32_t(bindings.size()),
@@ -77,6 +72,8 @@ void Tutorial::LambertianObjectsPipeline::create(RTG &rtg, VkRenderPass render_p
     }    
 
     {//create pipeline layout
+   
+
         std::array< VkDescriptorSetLayout, 3 > layouts{
 			set0_World,
             set1_Transforms,

@@ -782,7 +782,7 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params) {
 				//draw dat ting
 				for (LambertianObjectInstance const &inst : lambertian_object_instances) {
 					uint32_t index = uint32_t(&inst - &lambertian_object_instances[0]);
-
+					
 					//bind texture descriptor set		
 					vkCmdBindDescriptorSets(
 						workspace.command_buffer,

@@ -5,7 +5,11 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <assert.h>
 
+
+struct mat4;
+struct mat3;
 
 
 struct quat {
@@ -175,6 +179,12 @@ static_assert(sizeof(vec2) == 2 * 4 );
 struct mat4 {
     std::array<float, 16> data;
 
+	mat4(std::initializer_list<float> list) {
+		assert(list.size() == 16);
+		std::copy(list.begin(), list.end(), data.begin());
+	}
+
+	
     static mat4 identity() {
         return mat4{{
             1,0,0,0,
@@ -184,6 +194,17 @@ struct mat4 {
         }};
     }
 
+	mat4(){
+		data = {{
+            1,0,0,0,
+            0,1,0,0,
+            0,0,1,0,
+            0,0,0,1
+        }};
+	}
+
+	mat4(mat3 const &m);
+
     float& operator[](size_t i)       { return data[i]; }
     float  operator[](size_t i) const { return data[i]; }
 
@@ -191,7 +212,7 @@ struct mat4 {
 		return vec3(data[12], data[13], data[14]);
 	}
 
-	
+
 	
 	static inline mat4 translate(vec3 const& t) {
 		return mat4{
@@ -253,13 +274,61 @@ static_assert(sizeof(mat4) == 16 * 4 );
 
 
 
+struct mat3 {
+    std::array<float, 9> data;
+
+	mat3(std::initializer_list<float> list) {
+		assert(list.size() == 9);
+		std::copy(list.begin(), list.end(), data.begin());
+	}
+
+	
+    static mat3 identity() {
+        return mat3{{
+            1,0,0,
+            0,1,0,
+            0,0,1,
+        }};
+    }
+	
+	float& operator[](size_t i)       { return data[i]; }
+    float  operator[](size_t i) const { return data[i]; }
+
+	mat3(mat4 const& m) {
+		data = {{
+			m.data[0],  m.data[1],  m.data[2],
+			m.data[4],  m.data[5],  m.data[6],
+			m.data[8],  m.data[9],  m.data[10]
+		}};
+	}
+
+	mat3 transpose() const {
+		return mat3{{
+			data[0], data[3], data[6],
+			data[1], data[4], data[7],
+			data[2], data[5], data[8]
+		}};
+	}
+
+	mat3 inverse();
+
+};
+static_assert(sizeof(mat3) == 9 * 4 );
+
+
+inline mat4::mat4(mat3 const &m){
+	data = {{
+		m.data[0], m.data[1], m.data[2], 0,
+		m.data[3], m.data[4], m.data[5], 0,
+		m.data[6], m.data[7], m.data[8], 0,
+		0, 0, 0, 1	
+	}};
+}
+
 
 inline float dot(vec4 const &a,vec4 const &b){
     return a.x*b.x+ a.y*b.y+ a.z*b.z+ a.w*b.w;
 }
-
-
-
 
 
 inline vec4 operator*(mat4 const &A, vec4 const &b){

@@ -12,12 +12,13 @@ layout(set=0,binding=0,std140) uniform Eye {
 	vec3 EYE;
 };
 
-layout(set=2,binding=0) uniform sampler2D ALBEDO;
-layout(set=2,binding=1) uniform sampler2D ROUGHNESS;
-layout(set=2,binding=2) uniform sampler2D METALNESS;
-layout(set=2,binding=3) uniform samplerCube ENVIRONMENT;    
-layout(set=2,binding=4) uniform sampler2D BRDF_LUT;
-layout(set=2,binding=5) uniform samplerCube DIFFUSE_IRRADIANCE;
+layout(set=2,binding=0) uniform sampler2D NORMAL;
+layout(set=2,binding=1) uniform sampler2D ALBEDO;
+layout(set=2,binding=2) uniform sampler2D ROUGHNESS;
+layout(set=2,binding=3) uniform sampler2D METALNESS;
+layout(set=2,binding=4) uniform samplerCube ENVIRONMENT;    
+layout(set=2,binding=5) uniform sampler2D BRDF_LUT;
+layout(set=2,binding=6) uniform samplerCube DIFFUSE_IRRADIANCE;
 
 
 

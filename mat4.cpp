@@ -176,6 +176,43 @@ mat4 mat4::inverse()
 }
 
 
+
+mat3 mat3::inverse() {
+    float a = data[0];
+    float b = data[1];
+    float c = data[2];
+    float d = data[3];
+    float e = data[4];
+    float f = data[5];
+    float g = data[6];
+    float h = data[7];
+    float i = data[8];
+
+    float det =
+        a * (e*i - f*h) -
+        b * (d*i - f*g) +
+        c * (d*h - e*g);
+
+    assert(det != 0.0f);
+
+    float invDet = 1.0f / det;
+
+    return mat3{{
+        (e*i - f*h) * invDet,
+        (c*h - b*i) * invDet,
+        (b*f - c*e) * invDet,
+
+        (f*g - d*i) * invDet,
+        (a*i - c*g) * invDet,
+        (c*d - a*f) * invDet,
+
+        (d*h - e*g) * invDet,
+        (b*g - a*h) * invDet,
+        (a*e - b*d) * invDet
+    }};
+}
+
+
 //taken and modified from http://number-none.com/product/Understanding%20Slerp,%20Then%20Not%20Using%20It/
 quat quat::slerp(quat const &v0, quat const &v1, float t){
     // v0 and v1 should be unit length or else

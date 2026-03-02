@@ -12,7 +12,8 @@ layout(set=0,binding=0,std140) uniform Eye {
 	vec3 EYE;
 };
 
-layout(set=2,binding=0) uniform samplerCube TEXTURE;
+layout(set=2,binding=0) uniform sampler2D NORMAL;
+layout(set=2,binding=1) uniform samplerCube TEXTURE;
 
 layout(location = 0) in vec3 position;
 layout(location = 1) in vec3 normal;

@@ -274,16 +274,18 @@ void Tutorial::update_scene(float dt) {
 
 				if(!rtg.configuration.cull || !do_cull(frustrum_corners, bbox_corners)){
 					auto v = node->mesh->material->brdf;
-					
+					mat3 linear(world_from_local);
+					mat3 normal_matrix = linear.inverse().transpose();
 			
 					if(std::holds_alternative<S72::Material::Lambertian>(v)){
+						
 						lambertian_object_instances.emplace_back(
 							LambertianObjectInstance{
 								.vertices = meshes[node->mesh->name].verts,
 								.transform{
 									.CLIP_FROM_LOCAL = CLIP_FROM_WORLD * world_from_local,
 									.WORLD_FROM_LOCAL = world_from_local,
-									.WORLD_FROM_LOCAL_NORMAL = world_from_local,//not correct, TODO	
+									.WORLD_FROM_LOCAL_NORMAL = mat4(normal_matrix),//normal matrix
 								},
 								//if the scenefile doesn't specify material just use the 0 debug material
 								.texture = (node->mesh->material == nullptr) ? 0 : material_texture_descriptor_set_table.at(node->mesh->material->name),
@@ -298,7 +300,7 @@ void Tutorial::update_scene(float dt) {
 								.transform{
 									.CLIP_FROM_LOCAL = CLIP_FROM_WORLD * world_from_local,
 									.WORLD_FROM_LOCAL = world_from_local,
-									.WORLD_FROM_LOCAL_NORMAL = world_from_local,//not correct, TODO	
+									.WORLD_FROM_LOCAL_NORMAL = mat4(normal_matrix),//normal matrix
 								},
 								//if the scenefile doesn't specify material just use the 0 debug material
 								.texture = (node->mesh->material == nullptr) ? 0 : material_texture_descriptor_set_table.at(node->mesh->material->name),
@@ -313,7 +315,7 @@ void Tutorial::update_scene(float dt) {
 								.transform{
 									.CLIP_FROM_LOCAL = CLIP_FROM_WORLD * world_from_local,
 									.WORLD_FROM_LOCAL = world_from_local,
-									.WORLD_FROM_LOCAL_NORMAL = world_from_local,//not correct, TODO	
+									.WORLD_FROM_LOCAL_NORMAL = mat4(normal_matrix),//normal matrix	
 								},
 								.texture = (node->mesh->material == nullptr) ? 0 : material_texture_descriptor_set_table.at(node->mesh->material->name),
 							}

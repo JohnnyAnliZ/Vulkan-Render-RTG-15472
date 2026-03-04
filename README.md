@@ -14,7 +14,7 @@ cd C:\Users\zal17\Documents\RealTimeG\nakluV
 
 bin\main --scene scenes\examples\
 
-bin\main --scene scenes\examples\materials.s72 --exposure 0 --tone-map REINHARD
+bin\main --scene scenes\examples\materials.s72 --exposure 1 --tone-map REINHARD
 
 bin\cube scenes\examples\ox_bridge_morning.png --lambertian scenes\examples\ox_bridge_morning_mine.png
 

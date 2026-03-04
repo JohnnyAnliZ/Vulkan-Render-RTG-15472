@@ -23,7 +23,15 @@ layout(location = 3) in vec2 texCoord;
 layout(location = 0) out vec4 outColor;
 
 void main(){
-    vec3 n = normalize(normal);
+
+    vec3 B = cross(normal, tangent.xyz) * tangent.w;
+    mat3 TBN = mat3(tangent.xyz, B, normal);
+
+    //sample normal map to get normal in tangent space
+    vec3 n_tangent = texture(NORMAL, texCoord).rgb * 2.0 - 1.0;
+
+    vec3 n = normalize(TBN * n_tangent);
+
 
     vec3 radiance = vec3(0.0);
     if(pc.is_env){

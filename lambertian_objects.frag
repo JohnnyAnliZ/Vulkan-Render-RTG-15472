@@ -21,7 +21,16 @@ layout(location = 3) in vec2 texCoord;
 layout(location = 0) out vec4 outColor;
 
 void main(){
-    vec3 n = normalize(normal);
+    vec3 B = cross(normal, tangent.xyz) * tangent.w;
+    mat3 TBN = mat3(tangent.xyz, B, normal);
+
+
+
+    //sample normal map to get normal in tangent space
+    vec3 n_tangent = texture(NORMAL, vec2(texCoord.y,-texCoord.x)).rgb * 2.0 - 1.0;
+    vec3 n = normalize(TBN * n_tangent);
+
+
     //direction that the light is from(this should point to -z)
     vec3 albedo = texture(TEXTURE, vec2(texCoord.y,-texCoord.x)).rgb;
     vec3 irradiance = texture(DIFFUSE_IRRADIANCE, n).rgb;

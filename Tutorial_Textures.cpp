@@ -360,7 +360,7 @@ void Tutorial::load_textures(){
 		int normal_ind = -1;
 		{//get index to the material's normal map
 			if(mat.second.normal_map == nullptr){
-				make_one_off_texture(TextureType::NORMAL, vec3(0.0f,0.0f,1.0f));
+				make_one_off_texture(TextureType::NORMAL, vec3(0.5f,0.5f,1.0f));
 				assert(texture_index == textures.size() - 1);
 				normal_ind = (int)texture_index;//store index for albedo
 				texture_index++;//now texture_index is the next texture		

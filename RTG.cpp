@@ -497,7 +497,6 @@ RTG::~RTG() {
 		vkDestroyInstance(instance, nullptr);
 		instance = VK_NULL_HANDLE;
 	}
-
 }
 
 

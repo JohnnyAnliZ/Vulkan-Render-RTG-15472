@@ -102,7 +102,7 @@ struct RTG {
 		static void usage(std::function< void(const char *, const char *) > const &callback); //reports command line usage by passing flag and description to callback.
 	};
 
-	Configuration configuration; //configuration, as used (might have extra extensions, layers, or flags added)
+	Configuration configuration; //configuration, as used (might have extra extensions, layers, or flags added) 
 
 	//------------------------------------------------
 	//Helper functions, split off into their own little package:
@@ -116,6 +116,10 @@ struct RTG {
 	VkDebugUtilsMessengerEXT debug_messenger = VK_NULL_HANDLE;
 	VkPhysicalDevice physical_device = VK_NULL_HANDLE;
 	VkDevice device = VK_NULL_HANDLE;
+	
+	
+	
+	
 
 	//queue for graphics and transfer operations:
 	std::optional< uint32_t > graphics_queue_family;

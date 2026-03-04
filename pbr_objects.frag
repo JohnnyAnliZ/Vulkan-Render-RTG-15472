@@ -33,7 +33,17 @@ layout(location = 0) out vec4 outColor;
 
 
 void main(){
-    vec3 N = normalize(normal);
+    vec3 B = cross(normal, tangent.xyz) * tangent.w;
+    mat3 TBN = mat3(tangent.xyz, B, normal);
+
+    //sample normal map to get normal in tangent space
+    vec3 n_tangent = texture(NORMAL, vec2(texCoord.x,-texCoord.y)).rgb * 2.0 - 1.0;
+    //vec3 n_tangent = vec3(0.0,0.0,1.0);
+
+
+    vec3 N = normalize(TBN * n_tangent);
+
+
     vec3 V = normalize(EYE - position);
 
     vec3 albedo = texture(ALBEDO, texCoord).rgb;

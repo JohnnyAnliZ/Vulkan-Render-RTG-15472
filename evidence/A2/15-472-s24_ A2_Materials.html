@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>15-472-s24: A2 - Materials</title>
+<style>
+/* feel free to style your report in a fancier way! */
+
+@import url('https://fonts.googleapis.com/css2?family=Quicksand:wght@300;400;700&Anonymous+Pro&display=swap');
+
+html {
+	background:#505055;
+}   
+
+body {
+	font-family: 'Quicksand', sans-serif;
+	color:#000;
+	background:#eeeee8;
+	font-size:15px;
+	margin: 1em auto 50vh auto;
+	padding: 1em 2em 1em 2em;
+	max-width:45em;
+	border-radius:4px;
+	box-shadow:0 0 10px #0008;
+}
+
+h1 { font-size: 20px; font-weight: 700; }
+h2 { font-size: 16px; font-weight: 700; }
+h3 { font-size: 16px; font-weight: 400; }
+h4 { font-size: 14px; font-weight: 400; }
+
+h1, h2, h3, h4 {
+	margin: 15px 0 0 -10px;
+}
+
+p {
+	margin: 5px 0 0 0;
+}
+
+.subtitle {
+	display:block;
+	font-size:16px;
+	font-weight:400;
+}
+
+.placeholder {
+	color:#800;
+	font-style:italic;
+}
+
+kbd {
+	display:inline-block;
+	background:#ccc;
+	color:#444;
+	font-style:normal;
+	font-weight:700;
+	border-radius:8px;
+	padding:1px 6px;
+	margin:1px;
+	border:1.5px solid #aaa;
+}
+
+code {
+	font-family: 'Anonymous Pro', monospace;
+	background: #222;
+	color:#fff;
+	border-radius:4px;
+	padding:2px 4px;
+	margin:1px;
+}
+
+code var {
+	color:#ef5;
+	font-style:italic;
+}
+
+.answer{
+	color:rgb(32, 136, 0);
+	font-style:oblique;
+}
+
+.atag {
+	font-family: 'Calistoga', serif;
+	font-size:90%;
+	color:#000;
+	background:#b00;
+
+	display:inline-block;
+	padding:1px 4px;
+	border-radius: 4px;
+	line-height:120%;
+}
+.atag:before {
+	content:'»';
+}
+.atag.extra {
+	background:#b08;
+}
+.atag.creative {
+	/* thanks, shout.horse! */
+	background:linear-gradient(0.4turn, #ffe680, #916f6f);
+}
+
+</style>
+</head>
+<body>
+<h1>A2: Materials
+<span class="subtitle">by <span class="placeholder">Johnny Zhang(anliz)</span></span>
+</h1>
+
+<p class="placeholder">
+Summarize, in about one paragraph, your approach to the materials assignment.
+How did you structure your code?
+What's cool about it? Are there parts you weren't able to complete? 
+</p>
+
+<p class ="answer">
+I retrofitted the texture loading code to make texture descriptors per material. At midnight today(3/1/2026), I still have normal mapping and the creative model to finish.
+Update: now, on 3/3/2026, I have finished normal mapping and create. 
+</p>
+
+<h2>My Model <span class="atag creative">A2-create</span></h2>
+
+<p class="placeholder">
+Describe the model and texture you created and include a screen recording showing it running in real-time:
+</p>
+
+<video width="500" height="333" controls>
+<source src="Model.mp4" type="video/mp4" />  
+</video>
+
+<p class="placeholder">
+Describe your creation process for the model and texture.
+</p>
+
+<p class ="answer">
+I made a low-poly model in blender and duplicated it to make a high-poly version. Then I sculpted the high poly version to resemble a tree's surface.
+Then I used blender's baking functionality to bake the surface variations relative to the low poly version onto the low-poly model's normal map.
+</p>
+
+
+<h2>My Code</h2>
+
+<p class="placeholder">
+For each of the following sections, describe the overall structure of your code, and reference the specific files/functions/data structures that you used.
+For any parts that are incomplete, discuss what you were able to do and what you tried but couldn't get working.
+</p>
+
+<p class="placeholder">
+The purpose of this section is to get you to think critically about your code by explaining it to course staff; these thoughts may help you improve the code as you work on it in A3 and beyond.
+This section also forms a road map to your code that we can use while grading.
+</p>
+
+<h3>Loading lighting environments <span class="atag">A2-env</span></h3> 
+
+<p class="placeholder">
+Cover, at least:
+your changes for the new <code>"ENVIRONMENT"</code> type;
+your choice of coordinate systems for the environment map;
+your handling of the high dynamic range.
+</p>
+<p class="placeholder">
+Include a screenshot (or, ideally, recording) of your viewer drawing a scene with both the `environment` and `mirror` materials.
+</p>
+
+<p class ="answer">
+I made another pipeline with a push constant to for the shader to decide whether to sample the environment map using the normal vector or the reflection vector.
+The lighting is done in world space by passing in eye and calculating the view vector using the fragment position and the eye position.
+High dynamic range is handled through the reinhard curve, keeping it below 1.
+</p>
+
+<video width="500" height="333" controls>
+<source src="envmirror.mp4" type="video/mp4" />
+</video>
+
+<h3>Tone mapping <span class="atag">A2-tone</span></h3>
+
+<p class="placeholder">
+Cover, at least:
+your choice of tone mapping operator,
+your viewer's output color space and format.
+</p>
+
+<p class ="answer">
+The tone mapping operator is the reinhard operator: L/L+1.
+Viewer's output color space is VK_COLOR_SPACE_SRGB_NONLINEAR_KHR with format VK_FORMAT_B8G8R8A8_SRGB. 
+</p>
+
+
+<p class="placeholder">
+Include a screenshot of your viewer drawing an example scene before and after implementing tone mapping.
+</p>
+
+<img src="Tone_map_before.PNG" width="500" height="333">
+<figcaption>Before tone mapping, the sun's too bright that it's full white (clamped at 1) for a large radius(i think)</figcaption>
+
+<img src="Tone_map.PNG" width="500" height="333">
+<figcaption>The sun is still white but everything else is darker with E = -2 and reinhard tone mapping curve</figcaption>
+
+<p class="placeholder">
+Include a graph of your tone mapping operator's curve.
+Consider including histograms of the output values to help illustrate how the curve is working.
+</p>
+<img src="Tone_map_curve.PNG" width="500" height="333">
+
+<h3>Lambertian material <span class="atag">A2-diffuse</span></h3>
+
+<p class="placeholder">
+Cover, at least:
+your implementation of cube map handling;
+your implementation of the cube utility.
+</p>
+
+<p class = "answer">
+The cubemap is loaded into textures using the function make_cube_image(), which makes a Vk_Image with all the configurations to make a cube type image. Then, it's image view could
+be made adaptively since I added a is_cube_map bool field to the AllocatedImage struct. 
+The cube utility is just another main cpp file that loads the cubemap, reserve a output cubemap, and integrate over the whole original cubemap for every texel on the output cubemap.
+</p>
+
+<p class="placeholder">
+Include the output image your viewer produces from drawing the unit cube with the <code>"lambertian"</code> materials.
+</p>
+
+<img src="diffuse.PNG" width = "500" height = "333">
+
+<p class="placeholder">
+Include an example of a lighting environment and its precomputed lambertian lookup table.
+(You can use https://github.com/15-472/cube-viewer/ to show cube maps in our format; you might even consider embedding it in your report to show cubes live.)
+</p>
+<img src="ox_bridge_morning.png"  width = "50" height = "300">
+<img src="ox_bridge_morning_mine.lambertian.png" width = "50" height = "300">
+
+
+<h3>Normal maps <span class="atag">A2-normal</span></h3>
+
+<p class="placeholder">
+Cover, at least:
+your choice of coordinate systems for the normal map.
+</p>
+
+<p class = "answer">
+The normal mapping is done in tangent space. The local normal and tangents are passed into the vertex shader and transformed to world space using the inverse transpose
+of th world from local matrix. In the fragment shader, the normal is sampled from the normal map and normalized xyz from [0, 1] to [-1, 1].   
+</p>
+
+<p class="placeholder">
+Include a screen recording or a sequence of screenshots showing normal maps working.
+(E.g., demonstrate how moving the light changes the shading; show the same object with and without its normal map to show that detail is, indeed, being added.)
+</p>
+
+<video width="500" height="333" controls>
+<source src="NormalMapChange.mp4" type="video/mp4" />
+</video>
+
+<img src = "NoNormapMapping.PNG" width = "600" height = "450">
+<figcaption>Before normal mapping</figcaption>
+
+<img src = "NormapMapping.PNG" width = "600" height = "450">
+<figcaption>After normal mapping</figcaption>
+
+
+
+<p class="placeholder">
+Include screen shots demonstrating that normal mapping is working with all material types.
+</p>
+
+<img src = "NormalAllMaterials.PNG" width = "600" height = "450">
+<figcaption>Normal mapping works for all materials</figcaption>
+
+<h3>PBR material <span class="atag">A2-pbr</span></h3>
+
+<p class="placeholder">
+Cover, at least:
+your implementation of a specular look-up mipmap;
+your implementation of the cube utility.
+</p>
+
+<p class = "answer">
+The ggx cube mipmaps are generated using the importance sampling code from Karis' notes, and also https://learnopengl.com/PBR/IBL/Specular-IBL for the application example of
+Epic's method. 
+</p>
+
+<p class="placeholder">
+Include the stack of look-up cubemaps your utility produces when run on an example lighting environment.
+</p>
+<img src="ox_bridge_morning_mine.1.png"  width = "50" height = "300">
+<img src="ox_bridge_morning_mine.2.png"  width = "50" height = "300">
+<img src="ox_bridge_morning_mine.3.png"  width = "50" height = "300">
+<img src="ox_bridge_morning_mine.4.png"  width = "50" height = "300">
+<img src="ox_bridge_morning_mine.5.png"  width = "50" height = "300">
+
+<p class="placeholder">
+Show screenshots or screen recordings of a variety of interesting material appearances demonstrating the parameter range of the <code>"pbr"</code> material.
+</p>
+
+<img src="pbr(reference mip maps).PNG"  width = "500" height = "300">
+<figcaption>Here I'm using the reference mip maps because mine are noisy from monte carlo artifacts</figcaption>
+
+
+<h3>Displacement map <span class="atag extra">A2x-displacement</span></h3>
+<p class="placeholder">
+Cover, at least:
+your choice of coordinate systems for the displacement map.
+</p>
+
+
+<p class="placeholder">
+Include a screen recording or sequence of screenshots demonstrating the parallax effect as the camera moves over a displace-mapped object.
+</p>
+
+<p class="placeholder">
+Include screen shots demonstrating that the displacement mapping is working properly with all material variations.
+</p>
+
+
+<h2>Performance Tests</h2>
+
+<p class="placeholder">
+This section demonstrates that you have tested your code, including finding its limits.
+</p>
+
+<p class="placeholder">
+Before getting into the tests, describe here the relevant information about your testing system(s).
+(CPU, GPU, Memory, driver versions, OS version, ...  -- anything you think might be relevant!)
+</p>
+
+<p class="answer">
+The CPU is AMD Ryzen 7 7700X 8-Core, GPU is NVIDIA GeForce RTX3060, I have 64 GB of RAM and I use windows 10
+</p>
+
+
+<h3>Material Performance</h3>
+<p class="placeholder">
+Compare the relative performance of the various material types in this assignment.
+Illustrate the costs of adding normal (/displacement) maps.
+</p>
+
+<p class="answer">
+The cost of adding normal / displacement maps is one, that the normal map has to be streamed to the GPU and sampled, and two, the rebinding
+of normal maps for different object instances.
+</p>
+
+<h3>Texture vs Vertex Detail</h3>
+<p class="placeholder">
+Compare the relative performance of a high-resolution mesh with a lambertian material to a low resolution mesh with a normal map and a lambertain material.
+(When) is texture detail really cheaper than vertex detail?
+</p>
+<p class="answer">
+Texture detail is cheaper than vertex detail when there's a substantial number of vertices. Although there is the added cost of sampling and binding a normal map,
+the cost is negligible compared to the cost of representing surface detail using actual vertices.
+</p>
+
+
+<h2>Feedback</h2>
+<p class="placeholder">
+This is the end of the structured report. Feel free to add feedback about A2 to this section.
+</p>
+
+</body>
+</html>

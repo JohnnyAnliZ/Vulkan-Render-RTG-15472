@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>15-472-s24: A1 - Scene Graph</title>
+<style>
+/* feel free to style your report in a fancier way! */
+
+@import url('https://fonts.googleapis.com/css2?family=Quicksand:wght@300;400;700&Anonymous+Pro&display=swap');
+
+html {
+	background:#505055;
+}
+
+body {
+	font-family: 'Quicksand', sans-serif;
+	color:#000;
+	background:#eeeee8;
+	font-size:15px;
+	margin: 1em auto 50vh auto;
+	padding: 1em 2em 1em 2em;
+	max-width:45em;
+	border-radius:4px;
+	box-shadow:0 0 10px #0008;
+}
+
+h1 { font-size: 20px; font-weight: 700; }
+h2 { font-size: 16px; font-weight: 700; }
+h3 { font-size: 16px; font-weight: 400; }
+h4 { font-size: 14px; font-weight: 400; }
+
+h1, h2, h3, h4 {
+	margin: 15px 0 0 -10px;
+}
+
+p {
+	margin: 5px 0 0 0;
+}
+
+figure {
+	margin: 10px -2em;
+	padding: 10px 2em;
+	width:100%;
+	background:#e8e8e8;
+}
+
+figcaption {
+	font-size:14px;
+	font-style:italic;
+}
+
+.subtitle {
+	display:block;
+	font-size:16px;
+	font-weight:400;
+}
+
+.placeholder {
+	color:#800;
+	font-style:italic;
+}
+
+.answer{
+	color:rgb(32, 136, 0);
+	font-style:oblique;
+}
+
+kbd {
+	display:inline-block;
+	background:#ccc;
+	color:#444;
+	font-style:normal;
+	font-weight:700;
+	border-radius:8px;
+	padding:1px 6px;
+	margin:1px;
+	border:1.5px solid #aaa;
+}
+
+code {
+	font-family: 'Anonymous Pro', monospace;
+	background: #222;
+	color:#fff;
+	border-radius:4px;
+	padding:2px 4px;
+	margin:1px;
+}
+
+code var {
+	color:#ef5;
+	font-style:italic;
+}
+
+.atag {
+	font-family: 'Calistoga', serif;
+	font-size:90%;
+	color:#000;
+	background:#e17dcd;
+
+	display:inline-block;
+	padding:1px 4px;
+	border-radius: 4px;
+	line-height:120%;
+}
+.atag:before {
+	content:'»';
+}
+.atag.extra {
+	background:#c6aff8;
+}
+.atag.creative {
+	background:linear-gradient(0.35turn, #fcacff, #f9ab93, #76a1e4, #20953d);
+}
+
+</style>
+<!-- Load Chart.js for creating charts (documentation https://www.chartjs.org/docs/latest/ ) -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+<h1>A1: Scene Viewer
+<span class="subtitle">by <span class="placeholder">Johnny Zhang (anliz)</span></span>
+</h1>
+
+<!-- of course, delete these class="placeholder" notes in your report: -->
+
+<p class="placeholder">
+Summarize, in about one paragraph, your approach to the scene graph assignment.
+How did you structure your code?
+What's cool about it? Are there parts you weren't able to complete?
+<p class="answer">
+I try to separate precompute operations and update loop operations to the scene graph, so that it would be 
+easy to traverse the scene graph as little as possible. I made it so that when there's no animation happening,
+the update loop doesn't have to traverse the scene graph.
+</p>
+
+</p>
+
+<h2>My Animation <span class="atag creative">A1-create</span></h2>
+
+<p class="placeholder">
+Describe your animation and include a screen recording showing it running in real-time:
+</p>
+
+<video width="500" height="333" controls>
+<source src="animation.mp4" type="video/mp4"/>
+</video>
+
+<p class="placeholder">
+Describe how you created your animation.
+</p>
+
+<p class = "answer">I used blender</p>
+
+<h2>Using the Scene Viewer</h2>
+
+<p class="placeholder">Provide a short overview of how to use your viewer.</p>
+
+<h3>Command-line Arguments</h3>
+
+
+<p class="placeholder">
+Document the command-line arguments that can be used to control your viewer.
+Include both the command-line arguments required by the assignment statement and any additional arguments you decided to add.
+</p>
+
+<ul>
+<li class="placeholder"><code>--scene <var>scene.s72</var></code> -- required -- load scene from <code><var>scene.s72</var></code></li>
+<li class="placeholder"><code>--nocull </code> -- optional -- disable culling</li>
+<li class="placeholder"><code>--camera <var>CAMERA_NAME</var></code> -- optional -- select camera named <code><var>CAMERA_NAME</var></code></li>
+<li class="placeholder"><code>--drawing-size <var>width</var> <var>height</var></code> -- optional -- specify window size </li>
+<li class="placeholder"><code>--headless </code> -- optional -- run in headless mode </li>
+</ul>
+
+<h3>Controls</h3>
+
+<p class="placeholder">
+Document the keyboard and mouse controls used to control your viewer when run interactively.
+Note that the controls below are placeholders not requirements.
+</p>
+
+<ul>
+<li class="placeholder"><kbd>LMB+Drag</kbd> orbit the camera.</li>
+<li class="placeholder"><kbd>TAB</kbd> go from using scene cameras or free camera.</li>
+<li class="placeholder"><kbd>S</kbd> go through scene cameras.</li>
+<li class="placeholder"><kbd>D</kbd> go to debug camera.</li>
+
+<li class="placeholder">...</li>
+</ul>
+
+
+<h2>Evidence</h2>
+
+<p class="placeholder">
+The purpose of this section is to get you to think critically about your code by providing evidence sufficient to demonstrate to course staff that it works.
+These thoughts may also help you improve the code as you work on it in A2 and beyond.
+</p>
+
+
+<h3>Scene Loading <span class="atag">A1-load</span></h3>
+
+<p class="placeholder">
+Describe, in a few sentences, how your loading code works.
+Reference function and structure names for us to examine.
+</p>
+
+<p class="placeholder">
+(If you have <span class="atag">A1-show</span> working, you don't need to provide further evidence here. If you do not, provide some sort of print-outs or other scene statistics to prove that your code can load s72 scenes.)
+</p>
+
+<h3>Scene Display <span class="atag">A1-show</span></h3>
+<p class="placeholder">
+Describe, in a few sentences, how your display code goes from your internal scene graph representation to triangles being drawn by the GPU.
+Provide function and structure names for us to examine.
+<p class="answer">
+I assume that the scene graphs' nodes could move but the topology should stay consistent. I took the approach where in the precompute pass,
+I traverse the scene graph to load the scene cameras into a map and assign current_camera, the camera to immediately use depending on whether
+there is one assigned in the command line. I also load the meshes into a object_vertices to index from a map that maps mesh name to 
+object_vertices indices and precomputed local AABBs. 
+</p>
+<p class="answer">
+I the update loop, I could make it so that I only traverse the scene graph if 
+there is animation moving a node. In each update pass where I do traverse the scene graph, I repopulate the vector object_instances,
+which gets passed to vkCmdDraw.
+</p>
+</p>
+
+
+<p class="placeholder">
+Provide evidence that your code can display s72 scenes.
+Good evidence: screen shots or movies showing that example scene files load correctly.
+Choose or generate example scene files sufficient to demonstrate all required features (note that the simplifying assumptions in the assignment mean you do not need to completely implement s72).
+</p>
+<p class="answer">
+<img src="Bbox.PNG" width="500" height="333">
+</p>
+<p class="placeholder">
+Spend some time thinking about corner cases that the provided examples may not test.
+If you develop a test case for these, include the s72 and b72 files with your report as well.
+</p>
+<p class="answer">
+There could be scenes where there are multiple instances of the same camera, and that should cause the code to throw. Also circular parents,
+which I haven't implemented how to check for.
+</p>
+
+<h3>Scene Display &mdash; Interaction <span class="atag">A1-show</span></h3>
+
+<p class="placeholder">
+Describe how your code handles camera handling and switching.
+</p>
+<p class = "answer">
+Debug camera is a separate camera from scene camera and user's free camera, showing the frustrum of the previous camera before going 
+to debug mode, culling with that frustrum as well. Free camera and Debug camera are orbit cameras, press shift with mouse to shift.
+</p>
+
+
+<p class="placeholder">
+Provide evidence that these interactions work.
+Possible evidence: a screen recording showing debug, user, and scene camera switching and interactive movement of the debug and user cameras.
+</p>
+<p class = "answer">
+<img src="Camera_State_Machine_Diagram.webp" width="400" height="333">
+<video width="500" height="333" controls>
+<source src="Camera_Interactions.mp4" type="video/mp4" />
+</video>
+</p>
+
+
+<h3>Frustum culling <span class="atag">A1-cull</span></h3>
+
+<p class="placeholder">
+Describe, in a few sentences,
+where your culling test is implemented;
+how you computed bounding boxes and the camera frustum;
+and the approach you used in your box-frustum test (draw and include a picture if it makes your explanation easier).
+Include references to specific functions and structures in your code for us to examine further.
+</p>
+<p class="answer">
+I did tested separating axes of the following: three unique axes of the bbox's faces, five unique axes of the frustrum's faces, cross product of 
+any of the three unique edges and any of the 6 unique edges of the frustrum. Here, by unique I mean linearly independent;
+</p>
+<p class="placeholder">
+Include, as evidence, a screenshot or video showing that culling is working (e.g., by using a debug camera to show that meshes outside the user camera's view aren't being drawn).
+</p>
+
+<h2>pov</h2>
+<img src="culling_pov.PNG" width="500" height="333">
+<h2>what's being culled</h2>
+<img src="culling_debug.PNG" width="500" height="333">
+
+<p class="placeholder">
+Also include evidence that your culling works on any particularly difficult cases you may have thought up (include .s72 / .b72 files as appropriate).
+</p>
+<h2>edge case discussed in class cull_edge.s72</h2>
+<img src="edge_case_culled.PNG" width="500" height="333">
+
+<p class="placeholder">
+Demonstrate a scene and camera angle where your culling code improves performance; and demonstrate one where it does not improve performance.
+Include screen shots and make a chart or graph of median frame times as evidence for the performance impact.
+</p>
+<p class="answer">
+I didn't have time to figure out how to get frame time data from headless mode. But I used renderdoc to test the two cases where 
+culling increase or decreases frame time. The frame time for the camera angle where basically all the sphereflakes are visible is 
+slower with culling because the culling tests are done but not much actually gets culled.
+</p>
+
+<h2>sphereflake no cull</h2>
+<img src="sphereflake_before_cull.PNG" width="500" height="333">
+<figcaption>frametime:644ms</figcaption>
+
+<h2>sphereflake with cull(faster)</h2>
+<img src="sphereflake_after_cull.PNG" width="500" height="333">
+<figcaption>frametime:120ms</figcaption>
+
+<h2>sphereflake no cull</h2>
+<img src="nocull_faster1.PNG" width="500" height="333">
+<figcaption>frametime:607ms</figcaption>
+
+<h2>sphereflake with cull(slower)</h2>
+<img src="nocull_faster2.PNG" width="500" height="333">
+<figcaption>frametime:696ms</figcaption>
+
+<figure>
+<!-- Feel free to use and duplicate the below example graph to plot data
+ 	 Edit labels and variables in script below the canvas -->
+<canvas id="A1-cull-ex" style="display:block; width:100%; max-width:600px; margin:0 auto; background:#fff;"></canvas>
+<figcaption>
+0 represents when the camera captures all the sphereflakes, 1 represent when most of them are culled
+Frame times collected using renderdoc on the computer described above with display size set to 3840x2035.
+</figcaption>
+<script>
+//adding an event listener so that this chart gets made *after* the document loads:
+window.addEventListener('load', () => {
+	//in a real workload these arrays would be a lot longer:
+	const frameNumbers    = [0,1];
+	const noCullingTimes  = [607,644];
+	const boxFrustumTimes = [696,120];
+	// Chart.js supports many types of charts and configuration options.
+	//   See: https://www.chartjs.org/docs/latest/
+	// NOTE: make sure to keep things labelled clearly.
+	// NOTE2: if you want to compare numbers use bar charts, not pie charts (people are bad at comparing angles and good at comparing lengths).
+	// NOTE3: scatter and line charts will probably be the most interesting the sorts of data you are visualizing.
+	//     Histograms also useful but you will need to pre-process your data into bins and use the bar chart type.
+	new Chart("A1-cull-ex", {
+		type: "line",
+		data: {
+			labels: frameNumbers,
+			datasets: [
+				{ label: "no culling", data: noCullingTimes },
+				{ label: "box/frustum", data: boxFrustumTimes },
+			]
+		},
+		options: {
+			plugins: {
+				title: { display: true, text: "Impact of Frustum Culling" }, //show a chart title
+				legend: { display: true, onClick:()=>{} }, //show legend but don't allow interacting
+			},
+			scales: {
+				y:{
+					min:0, //having y-axis start at zero provides better relative view of data
+					title: { display:true, text:"frame time (ms)" },
+				},
+				x:{
+					title: { display:true, text:"frame number" },
+				},
+			},
+			animation:false, //don't animate in the data sets
+		}
+	});
+});
+</script>
+</figure>
+
+
+<h3>Animating the scene <span class="atag">A1-move</span></h3>
+
+<p class="placeholder">
+Describe, in a few sentences:
+how your viewer stores keyframes;
+and where/how your code handles updated transformations due to animations.
+Include code and structure references.
+</p>
+
+<p class = "answer">
+The viewer just use std::upper_bound to get the last frame used(actually there should be a better way) and interpolate.
+</p>
+
+<p class="placeholder">
+Provide evidence that your viewer can play back s72 animation.
+Make sure to demonstrate that both camera and object animation work, and that animation of scene graph hierarchies work.
+</p>
+
+<video width="500" height="333" controls>
+<source src="move.mp4" type="video/mp4" />
+</video>
+
+
+<h3>Bottleneck Hunting <span class="atag">A1-test</span></h3>
+
+<p class="placeholder">
+Describe for your CPU- and GPU-bottlenecked scenes what your approach was to moving the critical part of the workload to the CPU or GPU, respectively.
+Include a screenshot of the scenes as well as s72 and b72 files as needed.
+</p>
+
+<p class = "answer">
+The gpu bottleneck is a scene with tons of instances of overlapping planes. The camera moves farther away from the plane, making the fragment shader
+do less work. The cpu still instance the same planes and no culling is happening, so the CPU should be doing the same amount of work.
+</p>
+<p class = "answer">
+The cpu bottleneck is a scene where there's nothing and a scene where the sphereflake is outside of the frustrum. Since
+culling is happening, both GPUs get basically no work, but CPU has to do culling for the scene where there are many instances
+offscreen.
+</p>
+
+<p class="placeholder">
+Describe how you generated the scenes.
+</p>
+<p class = "answer">
+I used blender and then exported it using the exporter
+</p>
+<p class="placeholder">
+Describe how you tested the scenes -- including any relevant hardware information about the computer(s) you tested on.
+</p>
+<p class = "answer">
+I tested using renderdoc for the gpu bottleneck, and I used headless mode to print out frame time for the cpu bottleneck.
+</p>
+<p class="placeholder">
+Provide evidence that in each scene the CPU- or GPU-part of the workload is, indeed, a bottleneck.
+Use charts and graphs as appropriate to make your argument.
+</p>
+
+<h2>GPU bottleneck</h2>
+<video width="500" height="333" controls>
+<source src="gpu_bottleneck.mp4" type="video/mp4" />
+</video>
+<figcaption>the frame rate increases as the the plane takes up less screen space and less fragment shading GPU work is done</figcaption>
+
+<h2>CPU bottleneck</h2>
+<img src="nothing_offscreen.PNG" width="500" height="333">
+<figcaption>^This is headless mode rendering a scene with nothing out of the frustrum</figcaption>
+<img src="sphereflake_offscreen.PNG" width="500" height="333">
+<figcaption>^This is headless mode rendering a scene with sphereflake out of the frustrum</figcaption>
+
+<h3>Performance improvements <span class="atag extra">A1x-fast</span></h3>
+<p class="placeholder">
+Write a subsection (&lt;h4&gt;) of this section for every attempted performance improvement.
+If you attempted no further performance improvements leave this section blank.
+</p>
+
+<p class="placeholder">
+In each subsection, include a description of what you tried (including references to your code) and evidence of where (and if) the optimization actually did improve performance.
+Report -- at a minimum -- frame times for the same scene collected in headless mode with the optimization on and off.
+Ideally, develop a scene for which the optimization does improve performance and another scene for which it does not.
+</p>
+
+<h2>Feedback</h2>
+<p class="placeholder">
+This is the end of the structured report. Feel free to add feedback about A1 to this section.
+</p>
+
+</body>
+</html>

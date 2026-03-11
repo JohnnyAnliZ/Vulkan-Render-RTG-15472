@@ -252,8 +252,7 @@ struct S72 {
 		std::string name;
 
 		color tint = color{1.0f,1.0f,1.0f };
-
-		
+	
 		uint32_t shadow = 0; //optional, if not set will be '0'
 
 		//light has exactly one of these sources:

@@ -25,12 +25,11 @@ void main(){
     mat3 TBN = mat3(tangent.xyz, B, normal);
 
 
-
     //sample normal map to get normal in tangent space
     vec3 n_tangent = texture(NORMAL, vec2(texCoord.y,-texCoord.x)).rgb * 2.0 - 1.0;
     vec3 n = normalize(TBN * n_tangent);
 
-
+sss
     //direction that the light is from(this should point to -z)
     vec3 albedo = texture(TEXTURE, vec2(texCoord.y,-texCoord.x)).rgb;
     vec3 irradiance = texture(DIFFUSE_IRRADIANCE, n).rgb;

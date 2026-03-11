@@ -71,6 +71,25 @@ void Tutorial::PbrObjectsPipeline::create(RTG &rtg, VkRenderPass render_pass, ui
         VK(vkCreateDescriptorSetLayout(rtg.device, &create_info, nullptr, &set2_TEXTURE));
     }    
 
+    { //the set3_Lights layout holds lights info in a storage buffer used in the fragment shader:
+		std::array< VkDescriptorSetLayoutBinding, 1 > bindings{
+			VkDescriptorSetLayoutBinding{
+				.binding = 0,
+				.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+				.descriptorCount = 1,
+				.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT
+			},
+		};
+		
+		VkDescriptorSetLayoutCreateInfo create_info{
+			.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+			.bindingCount = uint32_t(bindings.size()),
+			.pBindings = bindings.data(),
+		};
+
+		VK( vkCreateDescriptorSetLayout(rtg.device, &create_info, nullptr, &set3_Lights) );
+	}
+
     {//create pipeline layout
         VkPushConstantRange range{
             .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
@@ -78,10 +97,11 @@ void Tutorial::PbrObjectsPipeline::create(RTG &rtg, VkRenderPass render_pass, ui
             .size = sizeof(Push),
         };
 
-        std::array< VkDescriptorSetLayout, 3 > layouts{
+        std::array< VkDescriptorSetLayout, 4 > layouts{
 			set0_Eye,
             set1_Transforms,
             set2_TEXTURE,
+            set3_Lights
 		};
 
         VkPipelineLayoutCreateInfo create_info{
@@ -218,5 +238,8 @@ void Tutorial::PbrObjectsPipeline::destroy(RTG &rtg){
 		vkDestroyDescriptorSetLayout(rtg.device, set2_TEXTURE, nullptr);
 		set2_TEXTURE = VK_NULL_HANDLE;
 	}
-
+    if (set3_Lights != VK_NULL_HANDLE) {
+		vkDestroyDescriptorSetLayout(rtg.device, set3_Lights, nullptr);
+		set3_Lights = VK_NULL_HANDLE;
+	}
 }

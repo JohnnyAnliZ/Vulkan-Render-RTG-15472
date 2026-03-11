@@ -15,11 +15,11 @@ void Tutorial::LambertianObjectsPipeline::create(RTG &rtg, VkRenderPass render_p
     VkShaderModule vert_module = rtg.helpers.create_shader_module(vert_code);
     VkShaderModule frag_module = rtg.helpers.create_shader_module(frag_code);
 
-    { //the set0_World layout holds world info in a uniform buffer used in the fragment shader:
+    { //the set0_Lights layout holds lights info in a storage buffer used in the fragment shader:
 		std::array< VkDescriptorSetLayoutBinding, 1 > bindings{
 			VkDescriptorSetLayoutBinding{
 				.binding = 0,
-				.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+				.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
 				.descriptorCount = 1,
 				.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT
 			},
@@ -31,7 +31,7 @@ void Tutorial::LambertianObjectsPipeline::create(RTG &rtg, VkRenderPass render_p
 			.pBindings = bindings.data(),
 		};
 
-		VK( vkCreateDescriptorSetLayout(rtg.device, &create_info, nullptr, &set0_World) );
+		VK( vkCreateDescriptorSetLayout(rtg.device, &create_info, nullptr, &set0_Lights) );
 	}
 
     {//the set1_Transform layout holds an array of Transform structures in a storage buffer used in the vertex shader:
@@ -75,7 +75,7 @@ void Tutorial::LambertianObjectsPipeline::create(RTG &rtg, VkRenderPass render_p
    
 
         std::array< VkDescriptorSetLayout, 3 > layouts{
-			set0_World,
+			set0_Lights,
             set1_Transforms,
             set2_TEXTURE,
 		};
@@ -202,9 +202,9 @@ void Tutorial::LambertianObjectsPipeline::destroy(RTG &rtg){
         vkDestroyPipelineLayout(rtg.device, layout, nullptr);
         layout = VK_NULL_HANDLE;
     }
-    if (set0_World != VK_NULL_HANDLE) {
-		vkDestroyDescriptorSetLayout(rtg.device, set0_World, nullptr);
-		set0_World = VK_NULL_HANDLE;
+    if (set0_Lights != VK_NULL_HANDLE) {
+		vkDestroyDescriptorSetLayout(rtg.device, set0_Lights, nullptr);
+		set0_Lights = VK_NULL_HANDLE;
 	}
     if (set1_Transforms != VK_NULL_HANDLE) {
 		vkDestroyDescriptorSetLayout(rtg.device, set1_Transforms, nullptr);

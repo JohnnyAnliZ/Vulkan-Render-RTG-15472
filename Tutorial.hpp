@@ -75,24 +75,32 @@ struct Tutorial : RTG::Application {
 		mat4 WORLD_FROM_LOCAL;
 		mat4 WORLD_FROM_LOCAL_NORMAL;
 	};
+	static_assert(sizeof(Transform) == 16*4 + 16*4 + 16*4 , "Transform structure is packed");
+
+	struct Light {
+		vec4 color;
+		vec4 position;
+		vec4 direction;
+		int type;//0 - sun ; 1 - sphere ; 2 - spot
+		float limit;
+		//sphere 
+		float radius;
+		float power;
+		//sun
+		float angle;
+		float strength;
+		//spot light only
+		float fov;
+		float blend;
+	};
+	static_assert(sizeof(Light) == 3*4*4 + 8*4  , "Light structure is packed");    
+    
 
 	struct LambertianObjectsPipeline{
 		//descriptor set layouts
-		VkDescriptorSetLayout set0_World = VK_NULL_HANDLE;
+		VkDescriptorSetLayout set0_Lights = VK_NULL_HANDLE;
 		VkDescriptorSetLayout set1_Transforms = VK_NULL_HANDLE;
 		VkDescriptorSetLayout set2_TEXTURE = VK_NULL_HANDLE;
-
-        //types for descriptors
-		struct World {
-			struct { float x, y, z, padding_; } SKY_DIRECTION;
-			struct { float r, g, b, padding_; } SKY_ENERGY;
-			struct { float x, y, z, padding_; } SUN_DIRECTION;
-			struct { float r, g, b, padding_; } SUN_ENERGY;
-		};
-		static_assert(sizeof(World) == 4*4 + 4*4 + 4*4 + 4*4, "World is the expected size.");	
-
-        
-        static_assert(sizeof(Transform) == 16*4 + 16*4 + 16*4 , "Transform structure is packed");
 
 		//pipeline layout
 		VkPipelineLayout layout = VK_NULL_HANDLE;
@@ -114,14 +122,6 @@ struct Tutorial : RTG::Application {
 			int32_t tone_map_op = 0;
 		};
 
-        //types for descriptors
-		struct Eye {
-			vec3 EYE;
-		};
-		static_assert(sizeof(Eye) == 4*3, "Eye is the expected size.");	
-
-        static_assert(sizeof(Transform) == 16*4 + 16*4 + 16*4 , "Transform structure is packed");
-
 		//pipeline layout
 		VkPipelineLayout layout = VK_NULL_HANDLE;
 		using Vertex = PosNorTanTexVertex;
@@ -135,6 +135,7 @@ struct Tutorial : RTG::Application {
 		VkDescriptorSetLayout set0_Eye= VK_NULL_HANDLE;
 		VkDescriptorSetLayout set1_Transforms = VK_NULL_HANDLE;
 		VkDescriptorSetLayout set2_TEXTURE = VK_NULL_HANDLE;
+		VkDescriptorSetLayout set3_Lights = VK_NULL_HANDLE;
 
 		//push constants
 		struct Push{
@@ -142,13 +143,6 @@ struct Tutorial : RTG::Application {
 			int32_t tone_map_op = 0;
 		};
 
-        //types for descriptors
-		struct Eye {
-			vec3 EYE;
-		};
-		static_assert(sizeof(Eye) == 4*3, "Eye is the expected size.");	
-
-        static_assert(sizeof(Transform) == 16*4 + 16*4 + 16*4 , "Transform structure is packed");
 
 		//pipeline layout
 		VkPipelineLayout layout = VK_NULL_HANDLE;
@@ -177,17 +171,17 @@ struct Tutorial : RTG::Application {
 		Helpers::AllocatedBuffer Camera; //device-local
 		VkDescriptorSet Camera_descriptors; //references Camera
 
-		//location for LinesPipeline::Camera data: (streamed to GPU per-frame)
+		//location for Eye data: (streamed to GPU per-frame)
 		Helpers::AllocatedBuffer Eye_src; //host coherent; mapped
 		Helpers::AllocatedBuffer Eye; //device-local
 		VkDescriptorSet Eye_descriptors; //references Camera
 		
-		//location for ObjectsPipeline::World data: (streamed to GPU per-frame)
-		Helpers::AllocatedBuffer World_src; //host coherent; mapped
-		Helpers::AllocatedBuffer World; //device-local
-		VkDescriptorSet World_descriptors; //references World
+		//location for Lights data: (streamed to GPU per-frame)
+		Helpers::AllocatedBuffer Lights_src; //host coherent; mapped
+		Helpers::AllocatedBuffer Lights; //device-local
+		VkDescriptorSet Lights_descriptors; //references World
 
-		//location for ObjectPipeline::Transform data: (streamed to GPU per-frame)
+		//location for Transform data: (streamed to GPU per-frame)
 		Helpers::AllocatedBuffer Transforms_src;
 		Helpers::AllocatedBuffer Transforms;
 		VkDescriptorSet Transforms_descriptors;
@@ -382,7 +376,6 @@ struct Tutorial : RTG::Application {
 	void add_debug_lines_frustrum();
 	void add_debug_lines_bbox(AABB &bbox, mat4 WORLD_FROM_LOCAL);
 
-
 	mat4 CLIP_FROM_WORLD;//The CLIP_FROM_WORLD matrix for the camera currently used 
 	vec3 EYE = vec3(0,0,0); 
 
@@ -394,7 +387,7 @@ struct Tutorial : RTG::Application {
 	std::vector<LinesPipeline::Vertex> lines_vertices;
 
 	//world has two lights env and sun
-	LambertianObjectsPipeline::World world;
+	std::vector<Light> lights;
 	bool default_world_lights = true;//if this is true that means there hasn't been any lights loaded
 
 

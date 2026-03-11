@@ -132,11 +132,11 @@ Tutorial::Tutorial(RTG &rtg_) : rtg(rtg_) {
 		std::array<VkDescriptorPoolSize, 2> pool_sizes{
 			VkDescriptorPoolSize{
 				.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-				.descriptorCount = 3 * per_workspace,//three descriptor per set, one set per workspace(Camera, World and Eye)
+				.descriptorCount = 2 * per_workspace,//three descriptor per set, one set per workspace(Camera and Eye)
 			},
 			VkDescriptorPoolSize{
 				.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-				.descriptorCount = 1 * per_workspace,//one descriptor per set, one set per workspace
+				.descriptorCount = 2 * per_workspace,//one descriptor per set, one set per workspace(Transform, Lights)
 			},
 		};
 		VkDescriptorPoolCreateInfo create_info{
@@ -187,13 +187,13 @@ Tutorial::Tutorial(RTG &rtg_) : rtg(rtg_) {
 
 		//buffers for eye descriptors
 		workspace.Eye_src = rtg.helpers.create_buffer(
-			sizeof(EnvMirrorObjectsPipeline::Eye),
+			sizeof(vec3),
 			VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
 			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT|VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
 			Helpers::Mapped
 		);
 		workspace.Eye = rtg.helpers.create_buffer(
-			sizeof(EnvMirrorObjectsPipeline::Eye),
+			sizeof(vec3),
 			VK_BUFFER_USAGE_TRANSFER_DST_BIT|VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
 			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
 			Helpers::Unmapped
@@ -209,28 +209,28 @@ Tutorial::Tutorial(RTG &rtg_) : rtg(rtg_) {
 			VK(vkAllocateDescriptorSets(rtg.device, &alloc_info, &workspace.Eye_descriptors));
 		}
 
-		//buffers for World descriptors
-		workspace.World_src = rtg.helpers.create_buffer(
-			sizeof(LambertianObjectsPipeline::World),
+		//buffers for Lights descriptors
+		workspace.Lights_src = rtg.helpers.create_buffer(
+			sizeof(Light),
 			VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
 			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
 			Helpers::Mapped
 		);
-		workspace.World = rtg.helpers.create_buffer(
-			sizeof(LambertianObjectsPipeline::World),
-			VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+		workspace.Lights = rtg.helpers.create_buffer(
+			sizeof(Light),
+			VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
 			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
 			Helpers::Unmapped
 		);
 
-		{ //allocate descriptor set for World descriptor
+		{ //allocate descriptor set for Light descriptor
 			VkDescriptorSetAllocateInfo alloc_info{
 				.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
 				.descriptorPool = descriptor_pool,
 				.descriptorSetCount = 1,
-				.pSetLayouts = &lambertian_objects_pipeline.set0_World,
+				.pSetLayouts = &lambertian_objects_pipeline.set0_Lights,
 			};
-			VK( vkAllocateDescriptorSets(rtg.device, &alloc_info, &workspace.World_descriptors) );
+			VK( vkAllocateDescriptorSets(rtg.device, &alloc_info, &workspace.Lights_descriptors) );
 			//NOTE: will actually fill in this descriptor set just a bit lower
 		}
 
@@ -245,17 +245,17 @@ Tutorial::Tutorial(RTG &rtg_) : rtg(rtg_) {
 			//NOTE: will fill in this descriptor set in render when buffers are [re-]allocated
 		}
 		
-		{//Write the descriptor sets for camera, world, and eye
+		{//Write the descriptor sets for camera, lights, and eye
 			VkDescriptorBufferInfo Camera_info{
 				.buffer = workspace.Camera.handle,
 				.offset = 0,
 				.range = workspace.Camera.size,
 			};
 
-			VkDescriptorBufferInfo World_info{
-				.buffer = workspace.World.handle,
+			VkDescriptorBufferInfo Lights_info{
+				.buffer = workspace.Lights.handle,
 				.offset = 0,
-				.range = workspace.World.size,
+				.range = workspace.Lights.size,
 			};
 			VkDescriptorBufferInfo Eye_info{
 				.buffer = workspace.Eye.handle,
@@ -275,12 +275,12 @@ Tutorial::Tutorial(RTG &rtg_) : rtg(rtg_) {
 				},
 				VkWriteDescriptorSet{
 					.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-					.dstSet = workspace.World_descriptors,
+					.dstSet = workspace.Lights_descriptors,
 					.dstBinding = 0,
 					.dstArrayElement = 0,
 					.descriptorCount = 1,
 					.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-					.pBufferInfo = &World_info,
+					.pBufferInfo = &Lights_info,
 				},
 				VkWriteDescriptorSet{
 					.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
@@ -373,13 +373,13 @@ Tutorial::~Tutorial() {
 			rtg.helpers.destroy_buffer(std::move(workspace.Eye));
 		}
 		//Camera_descriptors freed when pool is destroyed.
-		if (workspace.World_src.handle != VK_NULL_HANDLE) {
-			rtg.helpers.destroy_buffer(std::move(workspace.World_src));
+		if (workspace.Lights_src.handle != VK_NULL_HANDLE) {
+			rtg.helpers.destroy_buffer(std::move(workspace.Lights_src));
 		}
-		if (workspace.World.handle != VK_NULL_HANDLE) {
-			rtg.helpers.destroy_buffer(std::move(workspace.World));
+		if (workspace.Lights.handle != VK_NULL_HANDLE) {
+			rtg.helpers.destroy_buffer(std::move(workspace.Lights));
 		}
-		//World_descriptors freed when pool is destroyed.
+		//Lights_descriptors freed when pool is destroyed.
 		if (workspace.Transforms_src.handle != VK_NULL_HANDLE) {
 			rtg.helpers.destroy_buffer(std::move(workspace.Transforms_src));
 		}
@@ -563,32 +563,28 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params) {
 		vkCmdCopyBuffer(workspace.command_buffer, workspace.Camera_src.handle, workspace.Camera.handle,1, &copy_region);
 	}
 
-	{ //upload world info:
-		assert(workspace.World_src.size == sizeof(world));
+	{ //upload lights info:
+		assert(workspace.Lights_src.size == lights.size() * sizeof(Light));
 
-		//host-side copy into World_src:
-		memcpy(workspace.World_src.allocation.data(), &world, sizeof(world));
+		//host-side copy into Lights_src:
+		memcpy(workspace.Lights_src.allocation.data(), &lights, lights.size() * sizeof(Light));
 
-		//add device-side copy from World_src -> World:
-		assert(workspace.World_src.size == workspace.World.size);
+		//add device-side copy from Lights_src -> Lights:
+		assert(workspace.Lights_src.size == workspace.Lights.size);
 		VkBufferCopy copy_region{
 			.srcOffset = 0,
 			.dstOffset = 0,
-			.size = workspace.World_src.size,
+			.size = workspace.Lights_src.size,
 		};
-		vkCmdCopyBuffer(workspace.command_buffer, workspace.World_src.handle, workspace.World.handle, 1, &copy_region);
+		vkCmdCopyBuffer(workspace.command_buffer, workspace.Lights_src.handle, workspace.Lights.handle, 1, &copy_region);
 	}
 
 	{ //upload eye info:
-		EnvMirrorObjectsPipeline::Eye i{
-			.EYE = EYE,
-		};
-		assert(workspace.Eye_src.size == sizeof(i));
 
-		//host-side copy into World_src:
-		memcpy(workspace.Eye_src.allocation.data(), &i, sizeof(i));
+		//host-side copy into Lights_src:
+		memcpy(workspace.Eye_src.allocation.data(), &EYE, sizeof(EYE));
 
-		//add device-side copy from World_src -> World:
+		//add device-side copy from Lights_src -> Lights:
 		assert(workspace.Eye_src.size == workspace.Eye.size);
 		VkBufferCopy copy_region{
 			.srcOffset = 0,
@@ -770,9 +766,9 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params) {
 			if(!lambertian_object_instances.empty()){//draw the lambertian object instances
 				vkCmdBindPipeline(workspace.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, lambertian_objects_pipeline.handle);
 				
-				{////bind World and Transforms descriptor sets:
+				{////bind Lights and Transforms descriptor sets:
 					std::array<VkDescriptorSet, 2> descriptor_sets{
-						workspace.World_descriptors,//0, World
+						workspace.Lights_descriptors,//0, Lights
 						workspace.Transforms_descriptors,//1, Transforms
 					};
 					vkCmdBindDescriptorSets(workspace.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, lambertian_objects_pipeline.layout,
@@ -799,7 +795,7 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params) {
 			
 			if(!env_mirror_object_instances.empty()){//draw the env_mirror object instances
 				vkCmdBindPipeline(workspace.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, env_mirror_objects_pipeline.handle);
-				{////bind World and Transforms descriptor sets: (shared by env_mirror and pbr objects)
+				{////bind Lights and Transforms descriptor sets: (shared by env_mirror and pbr objects)
 					std::array<VkDescriptorSet, 2> descriptor_sets{
 						workspace.Eye_descriptors,//0, Eye
 						workspace.Transforms_descriptors,//1, Transforms
@@ -837,7 +833,7 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params) {
 
 			if(!pbr_object_instances.empty()){//draw the env_mirror object instances
 				vkCmdBindPipeline(workspace.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pbr_objects_pipeline.handle);
-				{////bind World and Transforms descriptor sets: (shared by env_mirror and pbr objects)
+				{////bind Lights and Transforms descriptor sets: (shared by env_mirror and pbr objects)
 					std::array<VkDescriptorSet, 2> descriptor_sets{
 						workspace.Eye_descriptors,//0, Eye
 						workspace.Transforms_descriptors,//1, Transforms
@@ -963,21 +959,42 @@ void Tutorial::update(float dt) {
 	
 	if(default_world_lights){ //moving sun and sky:
 		float cycle = (sin(6.28f * time / 5.0f) + 0.8f) / 1.8f;
-		world.SKY_DIRECTION.x = 0.0f;
-		world.SKY_DIRECTION.y = 0.0f;
-		world.SKY_DIRECTION.z = sin(6.28f * time / 5.0f)-0.3f;
+		vec4 dir;
+		dir.x = 0.0f;
+		dir.y = 0.0f;
+		dir.z = sin(6.28f * time / 5.0f)-0.3f;
+		dir.w = 0.0f;
+		
+		vec3 color;
+		color.x = sin(6.28f * time / 5.0f)-0.3f;
+		color.y = sin(6.28f * time / 5.0f)-0.3f;
+		color.z = 0.2f;
 
-		world.SKY_ENERGY.r = sin(6.28f * time / 5.0f)-0.3f;
-		world.SKY_ENERGY.g = sin(6.28f * time / 5.0f)-0.3f;
-		world.SKY_ENERGY.b = 0.2f;
+		lights.emplace_back(Light{
+			.color = vec4(color.x, color.y, color.z, 0),
+			.direction = dir,
+			.type = 0,// 0 indicates SUN
+			.angle = 0,
+			.strength = 1.0f,
+		});
 
-		world.SUN_DIRECTION.x = 0.0f;
-		world.SUN_DIRECTION.y = sin(6.28f * time / 5.0f);
-		world.SUN_DIRECTION.z = cos(6.28f * time / 5.0f)-0.3f;
+		vec4 sun_dir;
+		sun_dir.x = 0.0f;
+		sun_dir.y = sin(6.28f * time / 5.0f);
+		sun_dir.z = cos(6.28f * time / 5.0f)-0.3f;
+		sun_dir.w = 0.0f;
 
-		world.SUN_ENERGY.r = cycle;
-		world.SUN_ENERGY.g = cycle;
-		world.SUN_ENERGY.b = cycle;
+		vec4 sun_color;
+		sun_color.x = cycle;
+		sun_color.y = cycle;
+		sun_color.z = cycle;
+		lights.emplace_back(Light{
+			.color = vec4(sun_color.x, sun_color.y, sun_color.z, 0),
+			.direction = sun_dir,
+			.type = 0,// 0 indicates SUN
+			.angle = 0,
+			.strength = 1.0f,
+		});
 	}
 
 

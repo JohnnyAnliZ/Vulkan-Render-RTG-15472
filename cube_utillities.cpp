@@ -162,7 +162,7 @@ vec3 importance_sample_ggx(vec2 Xi, vec3 N, float roughness)
     float a = roughness*roughness;
 	
     float phi = 2.0f * 3.14159265f * Xi.x; //Xi.x is evenly spaced so phi just evenly goes around the hemisphere
-
+    
     // this black magic is derived from the NDF(normal distribution function), by first converting the NDF from projected
     // area density to solid angle density, then transforming the NDF to be in terms of cosTheta, 
     // then integrating to get the CDF, then using inverse transform sampling to translate from Xi.y (uniform) to 
@@ -292,5 +292,4 @@ vec2 integrate_brdf(float roughness, float NoV){
         }
     }
     return vec2( A, B ) / NumSamples;
-
 }

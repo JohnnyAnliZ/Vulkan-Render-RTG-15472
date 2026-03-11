@@ -345,42 +345,53 @@ void Tutorial::update_scene(float dt) {
 				};
 			}
 
-			if(node->light != nullptr){//two lights for A1
+			if(node->light != nullptr){//load the lights
 				//resolve the variant				
 				std::variant< S72::Light::Sun, S72::Light::Sphere, S72::Light::Spot > &v = node->light->source;
-				vec3 world_dir = normalized((world_from_local * vec4{0,0,1,0}).xyz());//local z axis direction(not -z)
+				vec4 color = vec4(node->light->tint.x, node->light->tint.y, node->light->tint.z, 0) ;
+				vec4 world_dir = (world_from_local * vec4{0,0,1,0});//local z axis direction(not -z)
+				vec4 world_trans = (world_from_local * vec4{0,0,0,1});
 				if(std::holds_alternative<S72::Light::Sun>(v)){
 					default_world_lights = false;
 					S72::Light::Sun &sun = get<S72::Light::Sun>(v);
-					if(std::abs(sun.angle - 3.14156926) < 0.001){// a hemisphere light
-						world.SKY_DIRECTION.x = world_dir.x;
-						world.SKY_DIRECTION.y = world_dir.y;
-						world.SKY_DIRECTION.z = world_dir.z;
-						world.SKY_ENERGY.r = (node->light->tint * sun.strength).x;
-						world.SKY_ENERGY.g = (node->light->tint * sun.strength).y;
-						world.SKY_ENERGY.b = (node->light->tint * sun.strength).z;
-						///std::cout<<"loaded sky light with strength "<< sun.strength<< "and tint"<< node->light->tint.data<<std::endl; 
-					}
-					else{
-						world.SUN_DIRECTION.x = world_dir.x;
-						world.SUN_DIRECTION.y = world_dir.y;
-						world.SUN_DIRECTION.z = world_dir.z;
-						world.SUN_ENERGY.r = (node->light->tint * sun.strength).x;
-						world.SUN_ENERGY.g = (node->light->tint * sun.strength).y;
-						world.SUN_ENERGY.b = (node->light->tint * sun.strength).z;
-						///std::cout<<"loaded sun light with strength "<< sun.strength<< "and tint"<< world.SUN_ENERGY.r<<world.SUN_ENERGY.g<<
-						//world.SUN_ENERGY.b<<std::endl; 
-					}
-					
+					lights.emplace_back(Light{
+						.color = vec4(color.x, color.y, color.z, 0),
+						.direction = world_dir,
+						.type = 0,// 0 indicates SUN
+						.angle = sun.angle,
+						.strength = sun.strength,
+					});
 				}
 				else if(std::holds_alternative<S72::Light::Sphere>(v)){
-
+					default_world_lights = false;
+					S72::Light::Sphere &sphere = get<S72::Light::Sphere>(v);
+					lights.emplace_back(Light{
+						.color = color,
+						.position = world_trans,
+						.type = 1, //1 indcates SPHERE
+						.limit = sphere.limit,
+						.radius = sphere.radius,
+						.power = sphere.power,
+					});
 				}
-
 				else if(std::holds_alternative<S72::Light::Spot>(v)){
-
+					default_world_lights = false;
+					S72::Light::Spot &spot = get<S72::Light::Spot>(v);
+					lights.emplace_back(Light{
+						.color = color,
+						.position = world_trans,
+						.direction = world_dir,
+						.type = 1, //1 indcates SPHERE
+						.limit = spot.limit,
+						.radius = spot.radius,
+						.power = spot.power,
+						.fov = spot.fov,
+						.blend = spot.blend,
+					});
 				}
 			}
+
+
 			for(S72::Node *child : node->children){
 				current_nodes.emplace_back(child, world_from_local);
 			}

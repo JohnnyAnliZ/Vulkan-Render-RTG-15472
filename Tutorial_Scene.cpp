@@ -349,7 +349,7 @@ void Tutorial::update_scene(float dt) {
 				//resolve the variant				
 				std::variant< S72::Light::Sun, S72::Light::Sphere, S72::Light::Spot > &v = node->light->source;
 				vec4 color = vec4(node->light->tint.x, node->light->tint.y, node->light->tint.z, 0) ;
-				vec4 world_dir = (world_from_local * vec4{0,0,1,0});//local z axis direction(not -z)
+				vec4 world_dir = (world_from_local * vec4{0,0,-1,0});//local -z axis direction
 				vec4 world_trans = (world_from_local * vec4{0,0,0,1});
 				if(std::holds_alternative<S72::Light::Sun>(v)){
 					default_world_lights = false;

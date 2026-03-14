@@ -102,6 +102,11 @@ struct Tutorial : RTG::Application {
 		VkDescriptorSetLayout set1_Transforms = VK_NULL_HANDLE;
 		VkDescriptorSetLayout set2_TEXTURE = VK_NULL_HANDLE;
 
+		//push constants
+		struct Push{
+			uint32_t light_count = 0;
+		};
+
 		//pipeline layout
 		VkPipelineLayout layout = VK_NULL_HANDLE;
 		using Vertex = PosNorTanTexVertex;
@@ -140,7 +145,8 @@ struct Tutorial : RTG::Application {
 		//push constants
 		struct Push{
 			float exposure = 0;
-			int32_t tone_map_op = 0;
+			uint32_t tone_map_op = 0;//0 is linear, 1 is reinhard
+			uint32_t light_count = 0;
 		};
 
 

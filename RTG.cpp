@@ -892,8 +892,6 @@ void RTG::run(Application &application) {
 					} else {
 						throw std::runtime_error("unrecognized type");
 					}
-					
-
 				} catch (std::exception &e) {
 					std::cerr << "WARNING: failed to parse event (" << e.what() << ") from: "" << line << ""; ignoring it." << std::endl;
 				}

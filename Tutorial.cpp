@@ -774,7 +774,13 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params) {
 					vkCmdBindDescriptorSets(workspace.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, lambertian_objects_pipeline.layout,
 						0, uint32_t(descriptor_sets.size()),descriptor_sets.data(), 0, nullptr);
 				}
-	
+				{//push constant for lambertian pipeline
+					LambertianObjectsPipeline::Push push{
+						.light_count = lights.size(),
+					};
+					vkCmdPushConstants(workspace.command_buffer, lambertian_objects_pipeline.layout, VK_SHADER_STAGE_FRAGMENT_BIT,
+					0, sizeof(push), &push);
+				}
 				//draw dat ting
 				for (LambertianObjectInstance const &inst : lambertian_object_instances) {
 					uint32_t index = uint32_t(&inst - &lambertian_object_instances[0]);
@@ -841,6 +847,16 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params) {
 					vkCmdBindDescriptorSets(workspace.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pbr_objects_pipeline.layout,
 						0, uint32_t(descriptor_sets.size()),descriptor_sets.data(), 0, nullptr);
 				}
+
+				{//push constants for pbr pipeline
+					PbrObjectsPipeline::Push push{
+						.exposure = (float)rtg.configuration.exposure,
+						.tone_map_op = (int32_t)rtg.configuration.tone_map_op,
+						.light_count = lights.size(),
+					};
+					vkCmdPushConstants(workspace.command_buffer, pbr_objects_pipeline.layout, VK_SHADER_STAGE_FRAGMENT_BIT,
+					0, sizeof(push), &push);
+				}
 				//draw dat ting
 				for (PbrObjectInstance const &inst : pbr_object_instances) {
 					uint32_t index = uint32_t(&inst - &pbr_object_instances[0]);
@@ -852,14 +868,7 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params) {
 						2, 1, &texture_descriptor_sets[inst.texture],
 						0,nullptr
 					);
-					{//push constant to determine whether it's mirror or environment
-						PbrObjectsPipeline::Push push{
-							.exposure = (float)rtg.configuration.exposure,
-							.tone_map_op = (int32_t)rtg.configuration.tone_map_op,
-						};
-						vkCmdPushConstants(workspace.command_buffer, pbr_objects_pipeline.layout, VK_SHADER_STAGE_FRAGMENT_BIT,
-						0, sizeof(push), &push);
-					}
+					
 					vkCmdDraw(workspace.command_buffer, inst.vertices.count, 1, inst.vertices.first, index + index_offset);
 				}
 			}

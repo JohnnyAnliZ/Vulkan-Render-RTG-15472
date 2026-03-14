@@ -72,7 +72,11 @@ void Tutorial::LambertianObjectsPipeline::create(RTG &rtg, VkRenderPass render_p
     }    
 
     {//create pipeline layout
-   
+        VkPushConstantRange range{
+            .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+            .offset = 0,
+            .size = sizeof(Push),
+        };
 
         std::array< VkDescriptorSetLayout, 3 > layouts{
 			set0_Lights,
@@ -84,8 +88,8 @@ void Tutorial::LambertianObjectsPipeline::create(RTG &rtg, VkRenderPass render_p
             .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
             .setLayoutCount = uint32_t(layouts.size()),
             .pSetLayouts = layouts.data(),
-            .pushConstantRangeCount = 0,
-            .pPushConstantRanges = nullptr,
+            .pushConstantRangeCount = 1,
+            .pPushConstantRanges = &range,
         };
 
         VK(vkCreatePipelineLayout(rtg.device, &create_info, nullptr, &layout));

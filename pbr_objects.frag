@@ -54,17 +54,27 @@ void main(){
     vec3 F0 = mix(vec3(0.04), albedo, metalness);
 
     // === Diffuse IBL ===
-    vec3 irradiance = texture(DIFFUSE_IRRADIANCE, N).rgb;
-    vec3 diffuse = irradiance * albedo * (1.0 - metalness);
+    vec3 diffuse_irradiance_from_env = texture(DIFFUSE_IRRADIANCE, N).rgb;
+    vec3 diffuse_irradiance_from_lights = vec3(0);
+    for(uint i = 0; i < pc.light_count; i++){//go through the lights to add up irradiance
+        irradiance_from_lights += diffuse_lighting_irradiance(LIGHTS[i], position, n);
+    }
+    vec3 diffuse = (diffuse_irradiance_from_env + diffuse_irradiance_from_lights) * albedo * (1.0 - metalness);
+    
 
     // === Specular IBL ===
     vec3 R = reflect(-V, N);
 
-    float NoV = max(dot(N, V), 0.0);
-    vec3 prefiltered = textureLod(ENVIRONMENT, R, roughness * 4.0).rgb;
-    vec2 brdf = texture(BRDF_LUT, vec2(NoV, roughness)).rg;
-
-    vec3 specular = prefiltered * (F0 * brdf.x + brdf.y);
+    float NoV = max(dot(N, V), 0.0);//cos of theta, the angle between view and normal
+    vec3 specular_from_prefiltered = textureLod(ENVIRONMENT, R, roughness * 4.0).rgb;
+    vec2 brdf = texture(BRDF_LUT, vec2(NoV, roughness)).rg;\
+    
+    vec3 specular_irradiance_from_lights = vec3(0);
+    for(uint i = 0; i < pc.light_count; i++){//go through the lights to add up irradiance
+        specular_irradiance_from_lights += specular_lighting_irradiance(LIGHTS[i], position, eye, n);
+    }
+    
+    vec3 specular = specular_from_prefiltered  * (F0 * brdf.x + brdf.y) + specular_irradiance_from_lights;
 
     vec3 color = diffuse + specular;
 

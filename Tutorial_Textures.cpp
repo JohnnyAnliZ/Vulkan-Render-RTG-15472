@@ -127,6 +127,7 @@ void Tutorial::make_one_off_texture(TextureType t_type, std::variant<vec3, float
 			create_and_emplace_image(VK_FORMAT_R32G32B32A32_SFLOAT);
 			rtg.helpers.transfer_to_image(&data, sizeof(float) * 4, textures.back());
 		}
+		
 	}
 
 	//also make image view for it
@@ -135,7 +136,6 @@ void Tutorial::make_one_off_texture(TextureType t_type, std::variant<vec3, float
 	texture_views.emplace_back(image_view);
 
 	assert(texture_views.size() == textures.size());
-
 }
 
 
@@ -229,15 +229,18 @@ void Tutorial::load_textures(){
 			texture_index++;//now texture_index is the next texture
 		}
 
-		assert(scene72.environments.size() == 1);
-		environment_name = scene72.environments.begin()->second.name;
-		assert(textures_name_to_index.find(environment_name) != textures_name_to_index.end());
-		std::cout<<"assigning environment to be "<< environment_name <<std::endl;
+		assert(scene72.environments.size() <= 1);
+		if(scene72.environments.size() == 1){
+			environment_name = scene72.environments.begin()->second.name;
+			assert(textures_name_to_index.find(environment_name) != textures_name_to_index.end());
+			std::cout<<"assigning environment to be "<< environment_name <<std::endl;
+		}
+		
 	}
 
 	{//make texture for pre_computed LUTS
 		//get the path to the LUTs 
-		{//lambertian irradiance
+		if(scene72.environments.size() > 0){//lambertian irradiance
 			//load		
 			std::filesystem::path p(scene72.environments.begin()->second.radiance->path);//random texture file
 			std::string filepath = (p.parent_path() / (p.stem().string() + "_mine.lambertian" + p.extension().string())).string();
@@ -261,7 +264,7 @@ void Tutorial::load_textures(){
 			texture_index++;//now texture_index is the next texture
 		}
 
-		{//brdf lut
+		if(scene72.environments.size() > 0){//brdf lut
 			//load		
 			std::filesystem::path p(scene72.textures.begin()->second.path);//random texture file
 			std::string filepath = (p.parent_path() / ("brdf_lut" + p.extension().string())).string();

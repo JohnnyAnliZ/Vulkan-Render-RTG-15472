@@ -15,6 +15,6 @@ tonemap specifiers:
 bin\main --scene scenes\examples\materials.s72 --exposure 1 --tone-map REINHARD
 
 # cubemap utility
-supports ggx or lambertian convolving of cubemap environment images
+convolving of lambertian and ggx split-sum cubemap environment images
 bin\cube scenes\examples\ox_bridge_morning.png --lambertian scenes\examples\ox_bridge_morning_mine.png
 

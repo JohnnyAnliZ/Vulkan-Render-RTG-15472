@@ -209,20 +209,6 @@ Tutorial::Tutorial(RTG &rtg_) : rtg(rtg_) {
 			VK(vkAllocateDescriptorSets(rtg.device, &alloc_info, &workspace.Eye_descriptors));
 		}
 
-		//buffers for Lights descriptors
-		workspace.Lights_src = rtg.helpers.create_buffer(
-			sizeof(Light),
-			VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-			Helpers::Mapped
-		);
-		workspace.Lights = rtg.helpers.create_buffer(
-			sizeof(Light),
-			VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-			Helpers::Unmapped
-		);
-
 		{ //allocate descriptor set for Light descriptor
 			VkDescriptorSetAllocateInfo alloc_info{
 				.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
@@ -252,18 +238,13 @@ Tutorial::Tutorial(RTG &rtg_) : rtg(rtg_) {
 				.range = workspace.Camera.size,
 			};
 
-			VkDescriptorBufferInfo Lights_info{
-				.buffer = workspace.Lights.handle,
-				.offset = 0,
-				.range = workspace.Lights.size,
-			};
 			VkDescriptorBufferInfo Eye_info{
 				.buffer = workspace.Eye.handle,
 				.offset = 0,
 				.range = workspace.Eye.size,
 			};
 			
-			std::array<VkWriteDescriptorSet, 3> writes{
+			std::array<VkWriteDescriptorSet, 2> writes{
 				VkWriteDescriptorSet{
 					.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
 					.dstSet = workspace.Camera_descriptors,
@@ -272,15 +253,6 @@ Tutorial::Tutorial(RTG &rtg_) : rtg(rtg_) {
 					.descriptorCount = 1,
 					.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
 					.pBufferInfo = &Camera_info,
-				},
-				VkWriteDescriptorSet{
-					.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-					.dstSet = workspace.Lights_descriptors,
-					.dstBinding = 0,
-					.dstArrayElement = 0,
-					.descriptorCount = 1,
-					.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-					.pBufferInfo = &Lights_info,
 				},
 				VkWriteDescriptorSet{
 					.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
@@ -302,12 +274,14 @@ Tutorial::Tutorial(RTG &rtg_) : rtg(rtg_) {
 			);
 		}
 	}
-	
+	std::cout<<"LOADING SCENE"<<std::endl;
 	//set up loaded cameras, put mesh data into the object_vertices buffer 
 	load_scene();
 
 	//load textures into texture_descriptor_sets
 	load_textures();
+
+	std::cout<<"finished loading stuff"<<std::endl;
 }
 
 Tutorial::~Tutorial() {
@@ -400,6 +374,7 @@ Tutorial::~Tutorial() {
 	lines_pipeline.destroy(rtg);
 	lambertian_objects_pipeline.destroy(rtg);
 	env_mirror_objects_pipeline.destroy(rtg);
+	pbr_objects_pipeline.destroy(rtg);
 
 	if (command_pool != VK_NULL_HANDLE) {
 		vkDestroyCommandPool(rtg.device, command_pool, nullptr);
@@ -564,8 +539,43 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params) {
 	}
 
 	{ //upload lights info:
-		assert(workspace.Lights_src.size == lights.size() * sizeof(Light));
+		if(workspace.Lights_src.handle == VK_NULL_HANDLE){
+			std::cout<<"allocating the buffer for "<< lights.size()<<"lights"<<std::endl;
+			//allocate the buffers
+			workspace.Lights_src = rtg.helpers.create_buffer(
+				sizeof(Light) * lights.size(),
+				VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+				VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT|VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+				Helpers::Mapped	
+			);
+			workspace.Lights = rtg.helpers.create_buffer(
+				sizeof(Light) * lights.size(),
+				//going to use as storage buffer, also going to have GPU into this memory
+				VK_BUFFER_USAGE_STORAGE_BUFFER_BIT|VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+				VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+				Helpers::Unmapped	
+			);
+			assert(workspace.Lights_src.size == lights.size() * sizeof(Light));
 
+			//update descriptor set
+			VkDescriptorBufferInfo Lights_info{
+				.buffer = workspace.Lights.handle,
+				.offset = 0,
+				.range = workspace.Lights.size,
+			};
+			std::array<VkWriteDescriptorSet,1> writes{
+				VkWriteDescriptorSet{
+					.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+					.dstSet = workspace.Lights_descriptors,
+					.dstBinding = 0,
+					.dstArrayElement = 0,
+					.descriptorCount = 1,
+					.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+					.pBufferInfo = &Lights_info,
+				},
+			};
+			vkUpdateDescriptorSets(rtg.device, uint32_t(writes.size()), writes.data(), 0, nullptr);
+		}
 		//host-side copy into Lights_src:
 		memcpy(workspace.Lights_src.allocation.data(), &lights, lights.size() * sizeof(Light));
 
@@ -581,10 +591,10 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params) {
 
 	{ //upload eye info:
 
-		//host-side copy into Lights_src:
+		//host-side copy into Eye_src:
 		memcpy(workspace.Eye_src.allocation.data(), &EYE, sizeof(EYE));
 
-		//add device-side copy from Lights_src -> Lights:
+		//add device-side copy from Eye_src -> Eye:
 		assert(workspace.Eye_src.size == workspace.Eye.size);
 		VkBufferCopy copy_region{
 			.srcOffset = 0,
@@ -776,7 +786,7 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params) {
 				}
 				{//push constant for lambertian pipeline
 					LambertianObjectsPipeline::Push push{
-						.light_count = lights.size(),
+						.light_count = (uint32_t)lights.size(),
 					};
 					vkCmdPushConstants(workspace.command_buffer, lambertian_objects_pipeline.layout, VK_SHADER_STAGE_FRAGMENT_BIT,
 					0, sizeof(push), &push);
@@ -846,13 +856,16 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params) {
 					};
 					vkCmdBindDescriptorSets(workspace.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pbr_objects_pipeline.layout,
 						0, uint32_t(descriptor_sets.size()),descriptor_sets.data(), 0, nullptr);
+
+					vkCmdBindDescriptorSets(workspace.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pbr_objects_pipeline.layout,
+						3, 1,&workspace.Lights_descriptors, 0, nullptr);
 				}
 
 				{//push constants for pbr pipeline
 					PbrObjectsPipeline::Push push{
 						.exposure = (float)rtg.configuration.exposure,
-						.tone_map_op = (int32_t)rtg.configuration.tone_map_op,
-						.light_count = lights.size(),
+						.tone_map_op = (uint32_t)rtg.configuration.tone_map_op,
+						.light_count = (uint32_t)lights.size(),
 					};
 					vkCmdPushConstants(workspace.command_buffer, pbr_objects_pipeline.layout, VK_SHADER_STAGE_FRAGMENT_BIT,
 					0, sizeof(push), &push);
@@ -928,6 +941,8 @@ void Tutorial::update(float dt) {
 	lambertian_object_instances.clear();
 	env_mirror_object_instances.clear();
 	pbr_object_instances.clear();
+
+	lights.clear();
 	// animation drivers, per-frame graph walk updating changes in transforms
 	update_scene(dt);
 

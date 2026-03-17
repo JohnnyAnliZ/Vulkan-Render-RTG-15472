@@ -206,6 +206,7 @@ function custom_flags_and_rules() {
 		//object file gets os-dependent suffix:
 		const spirvFile = spirvFileBase + options.spirvSuffix;
 
+
 		const glslc = [...options.GLSLC, ...options.GLSLCFlags];
 		const command = [...glslc, '-o', spirvFile, glslFile];
 

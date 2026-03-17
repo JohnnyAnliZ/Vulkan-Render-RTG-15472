@@ -265,6 +265,9 @@ struct Tutorial : RTG::Application {
 		ROUGHNESS = 2,
 		METALNESS = 3,
 		NORMAL = 4,
+		ENV = 5,//cubemap with one mip level
+		ENV_MIP = 6,//cubemap with multiple mip levels
+		BRDF_LUT = 7,
 	};
 	void make_one_off_texture(TextureType t_type, std::variant<vec3, float> value);
 

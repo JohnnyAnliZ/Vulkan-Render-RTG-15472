@@ -577,7 +577,7 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params) {
 			vkUpdateDescriptorSets(rtg.device, uint32_t(writes.size()), writes.data(), 0, nullptr);
 		}
 		//host-side copy into Lights_src:
-		memcpy(workspace.Lights_src.allocation.data(), &lights, lights.size() * sizeof(Light));
+		memcpy(workspace.Lights_src.allocation.data(), lights.data(), lights.size() * sizeof(Light));
 
 		//add device-side copy from Lights_src -> Lights:
 		assert(workspace.Lights_src.size == workspace.Lights.size);

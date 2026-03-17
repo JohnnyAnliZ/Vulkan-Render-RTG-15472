@@ -21,8 +21,6 @@
 
 void Tutorial::load_scene() {
     // the BFS traversal, mesh loading, etc.
-
-
     //load the scene file
 	try {
 		scene72 = S72::load(rtg.configuration.scene_file);
@@ -43,7 +41,7 @@ void Tutorial::load_scene() {
 
 			//this node's world transform
 			mat4 world_from_local = world_from_parent * node->parent_from_local();//accumulate transform
-		 
+		
 			if(node->camera != nullptr){//there could be numerous cameras, but every camera has only one instance 
 				//put every unique camera in the unordered_map, if there is a duplicate, print err and exit
 				
@@ -355,7 +353,7 @@ void Tutorial::update_scene(float dt) {
 					default_world_lights = false;
 					S72::Light::Sun &sun = get<S72::Light::Sun>(v);
 					lights.emplace_back(Light{
-						.color = vec4(color.x, color.y, color.z, 0),
+						.color = color,
 						.direction = world_dir,
 						.type = 0,// 0 indicates SUN
 						.angle = sun.angle,

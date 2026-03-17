@@ -81,14 +81,13 @@ float cone_attenuation(vec3 light_to_surface, vec3 light_dir, float fov, float b
 }
 
 vec3 diffuse_lighting_irradiance(Light light, vec3 surface_point, vec3 n){//doing this in world space
-
+    
     if(light.type == 0){//light type 0 is sun, uses angle and strength 
         float cos_theta = dot(n, -normalize(light.direction.xyz));//since theta could be 0 to 180(angle between n and l)
         float sin_half = sin(light.angle * 0.5);//sin of half of the light's subtended angle(positive)
         vec3 base_irradiance = (light.color.xyz * light.strength);
-
-        return base_irradiance * sun_sphere_horizon_and_forshortening(cos_theta, sin_half);
         
+        return base_irradiance * sun_sphere_horizon_and_forshortening(cos_theta, sin_half);
     }
 
     else if(light.type == 1){//light type 1 is sphere, uses radius, power, position

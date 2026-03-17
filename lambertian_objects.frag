@@ -44,6 +44,6 @@ void main(){
     }
 
 
-    vec3 diffuse = (albedo * (irradiance_from_env + irradiance_from_lights));
+    vec3 diffuse = (albedo / 3.14159265354 * (irradiance_from_env + irradiance_from_lights));
     outColor = vec4(diffuse, 1.0);
 }

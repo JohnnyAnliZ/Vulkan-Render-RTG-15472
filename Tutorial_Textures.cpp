@@ -64,8 +64,6 @@ void Tutorial::make_cube_image(S72::Texture const &texture){
 			rgbe_to_rgba_float(texture.mip_data[i - 1], mip_rgbas[i], cur_width);
 		}
 	}
-
-
 	//get the prefiltered levels into the mip levels
 	rtg.helpers.transfer_to_image(mip_rgbas, mip_rgbas[0].size() * sizeof(float), textures.back());//here size is in bytes
 }
@@ -92,14 +90,16 @@ void Tutorial::make_image_view(VkImageView &image_view, Helpers::AllocatedImage 
 void Tutorial::make_one_off_texture(TextureType t_type, std::variant<vec3, float> value){
 	{//actually make the one-off texture:
 		//make a place for the texture to live on the GPU:
-		auto create_and_emplace_image = [&](VkFormat format) {
+		auto create_and_emplace_image = [&](VkFormat format, bool is_cube = false, uint32_t mip_levels = 1) {
 			textures.emplace_back(rtg.helpers.create_image(
 				VkExtent2D{ .width = 1 , .height = 1 }, //size of image
 				format, //how to interpret image data (in this case, SRGB-encoded 8-bit RGBA)
 				VK_IMAGE_TILING_OPTIMAL,
 				VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, //will sample and upload
 				VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, //should be device-local
-				Helpers::Unmapped
+				Helpers::Unmapped,
+				is_cube,
+				mip_levels
 			));
 		};
 		
@@ -127,7 +127,21 @@ void Tutorial::make_one_off_texture(TextureType t_type, std::variant<vec3, float
 			create_and_emplace_image(VK_FORMAT_R32G32B32A32_SFLOAT);
 			rtg.helpers.transfer_to_image(&data, sizeof(float) * 4, textures.back());
 		}
-		
+		else if(t_type == TextureType::ENV){//black, should be unused
+			float data[6 * 4] = {0.0f, 0.0f, 0.0f, 0.0f};
+			create_and_emplace_image(VK_FORMAT_R32G32B32A32_SFLOAT, true, 1);
+			rtg.helpers.transfer_to_image(&data, sizeof(float) * 4 * 6, textures.back());
+		}
+		else if(t_type == TextureType::ENV_MIP){//black, should be unused
+			float data[6 * 4] = {0.0f, 0.0f, 0.0f, 0.0f};
+			create_and_emplace_image(VK_FORMAT_R32G32B32A32_SFLOAT, true, 1);
+			rtg.helpers.transfer_to_image(&data, sizeof(float) * 4 * 6, textures.back());
+		}
+		else if(t_type == TextureType::BRDF_LUT){//black, should be unused
+			uint32_t data = 0;
+			create_and_emplace_image(VK_FORMAT_R8G8B8A8_UNORM);
+			rtg.helpers.transfer_to_image(&data, sizeof(uint32_t), textures.back());
+		}
 	}
 
 	//also make image view for it
@@ -227,15 +241,17 @@ void Tutorial::load_textures(){
 			textures_name_to_index[texture_unique_key] = texture_index;//record this loaded texture
 			texture.type == S72::Texture::Type::cube ? make_cube_image(texture): make_flat_image(texture);//make texture and put into textures
 			texture_index++;//now texture_index is the next texture
-		}
+		}		
+	}
 
+
+	{//assign the environment name if it's already loaded in the previous all-textures pass
 		assert(scene72.environments.size() <= 1);
 		if(scene72.environments.size() == 1){
 			environment_name = scene72.environments.begin()->second.name;
 			assert(textures_name_to_index.find(environment_name) != textures_name_to_index.end());
 			std::cout<<"assigning environment to be "<< environment_name <<std::endl;
 		}
-		
 	}
 
 	{//make texture for pre_computed LUTS
@@ -263,10 +279,11 @@ void Tutorial::load_textures(){
 			make_cube_image(lambertian_irradiance_cubemap);//make texture and put into textures
 			texture_index++;//now texture_index is the next texture
 		}
+		
 
 		if(scene72.environments.size() > 0){//brdf lut
 			//load		
-			std::filesystem::path p(scene72.textures.begin()->second.path);//random texture file
+			std::filesystem::path p(scene72.textures.begin()->second.path);//random file from the 
 			std::string filepath = (p.parent_path() / ("brdf_lut" + p.extension().string())).string();
 			brdf_lut_name = "brdf_lut" + p.extension().string();
 			if(textures_name_to_index.find(brdf_lut_name) == textures_name_to_index.end()){
@@ -286,7 +303,9 @@ void Tutorial::load_textures(){
 			textures_name_to_index[brdf_lut_name] = texture_index;//record this loaded texture
 			make_flat_image(brdf_lut);//make texture and put into textures
 			texture_index++;//now texture_index is the next texture
+			assert(texture_index == textures.size());
 		}
+		
 	}
 
 	{ //make image views for the textures
@@ -299,12 +318,39 @@ void Tutorial::load_textures(){
 		assert(texture_views.size() == textures.size());
 	}
 
+	{//make one off dummy textures for environment, lambertian environment and brdf lut
+		if(scene72.environments.size() == 0){
+
+			//environment
+			assert(texture_index == textures.size());
+			make_one_off_texture(TextureType::ENV_MIP, vec3(1.0f,1.0f,1.0f));		
+			environment_name = "ONE_OFF_ENVIRONMENT";
+			textures_name_to_index[environment_name] = texture_index;
+			texture_index++;//now texture_index is the next texture	
+
+			//lambertian environment
+			assert(texture_index == textures.size());
+			make_one_off_texture(TextureType::ENV, 1.0f);//make texture and put into textures
+			lambertian_irradiance_lut_name = "ONE_OFF_LAMBERTIAN_LUT";
+			textures_name_to_index[lambertian_irradiance_lut_name] = texture_index;//record this loaded texture
+			texture_index++;//now texture_index is the next texture
+
+
+			//brdf lut
+			assert(texture_index == textures.size());
+			make_one_off_texture(TextureType::BRDF_LUT, 0.0f);//make texture and put into textures		
+			brdf_lut_name = "ONE_OFF_BRDF_LUT";
+			textures_name_to_index[brdf_lut_name] = texture_index;//record this loaded texture		
+			texture_index++;//now texture_index is the next texture
+		}
+	}
+
 	{ //make a sampler for the 2D textures
 		VkSamplerCreateInfo create_info{
 			.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
 			.flags = 0,
-			.magFilter = VK_FILTER_NEAREST,
-			.minFilter = VK_FILTER_NEAREST,
+			.magFilter = VK_FILTER_LINEAR,
+			.minFilter = VK_FILTER_LINEAR,
 			.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR,
 			.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT,
 			.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT,
@@ -468,6 +514,7 @@ void Tutorial::load_textures(){
 			}
 
 			//lambertian irradiance 
+			
 			if(textures_name_to_index.find(lambertian_irradiance_lut_name) != textures_name_to_index.end()){//the texture has already been emplaced into the texture vector
 				std::cout<<"making pbr material with loaded texture "<<lambertian_irradiance_lut_name<<std::endl;
 				diffuse_irradiance_ind = (int)textures_name_to_index.at(lambertian_irradiance_lut_name);//store index for albedo

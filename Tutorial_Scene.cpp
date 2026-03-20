@@ -19,6 +19,9 @@
 
 
 
+
+
+
 void Tutorial::load_scene() {
     // the BFS traversal, mesh loading, etc.
     //load the scene file
@@ -346,9 +349,14 @@ void Tutorial::update_scene(float dt) {
 			if(node->light != nullptr){//load the lights
 				//resolve the variant				
 				std::variant< S72::Light::Sun, S72::Light::Sphere, S72::Light::Spot > &v = node->light->source;
+			
 				vec4 color = vec4(node->light->tint.x, node->light->tint.y, node->light->tint.z, 0) ;
 				vec4 world_dir = (world_from_local * vec4{0,0,-1,0});//local -z axis direction
 				vec4 world_trans = (world_from_local * vec4{0,0,0,1});
+
+				uint32_t shadow_map_size = node->light->shadow;
+
+				uint32_t faces = 0;
 				if(std::holds_alternative<S72::Light::Sun>(v)){
 					default_world_lights = false;
 					S72::Light::Sun &sun = get<S72::Light::Sun>(v);
@@ -358,7 +366,8 @@ void Tutorial::update_scene(float dt) {
 						.type = 0,// 0 indicates SUN
 						.angle = sun.angle,
 						.strength = sun.strength,
-					});
+					});			
+					faces = 1;
 				}
 				else if(std::holds_alternative<S72::Light::Sphere>(v)){
 					default_world_lights = false;
@@ -371,6 +380,7 @@ void Tutorial::update_scene(float dt) {
 						.radius = sphere.radius,
 						.power = sphere.power,
 					});
+					faces = 6;
 				}
 				else if(std::holds_alternative<S72::Light::Spot>(v)){
 					default_world_lights = false;
@@ -379,21 +389,102 @@ void Tutorial::update_scene(float dt) {
 						.color = color,
 						.position = world_trans,
 						.direction = world_dir,
-						.type = 1, //1 indcates SPHERE
+						.type = 2, //2 indcates spot
 						.limit = spot.limit,
 						.radius = spot.radius,
 						.power = spot.power,
 						.fov = spot.fov,
 						.blend = spot.blend,
 					});
+					faces = 1;
 				}
+				light_shadow_map_sizes.emplace_back(shadow_map_size);
+				
+				total_shadow_map_size += shadow_map_size * shadow_map_size * faces;
 			}
-
-
 			for(S72::Node *child : node->children){
 				current_nodes.emplace_back(child, world_from_local);
 			}
 		}
-		
+		//now that the lights are uploaded, make the shadow atlas
+
+		uint32_t atlas_size;
+
+		//find the fitting atlas size
+		for(uint32_t power = 1; power < 14; power++){//2 to the power of 12 ( 16384 side lenght ) should be large enough
+			if((1 << power) * ( 1 << power) > total_shadow_map_size){
+				atlas_size = 1<<power;
+				break;
+			}
+		}
+
+		allocate_texture_atlas(
+			point{.x = atlas_size, .y = atlas_size}, //square atlas, square shadow maps
+			light_shadow_map_sizes
+		);
 	}
+}
+
+
+//following code takes from https://lisyarus.github.io/blog/posts/texture-packing.html
+void Tutorial::allocate_texture_atlas(
+    point const & atlas_size,
+    std::vector<uint32_t> const & texture_sizes)
+{
+	assert(lights.size() == texture_sizes.size());
+    // we have to separately sort the indices so that the i-th region
+    // of the output corresponds to the i-th texture size of the input
+    std::vector<uint32_t> sorted(texture_sizes.size());
+    for (int i = 0; i < sorted.size(); ++i)
+        sorted[i] = i;
+
+    // sort in descending order
+    std::sort(sorted.begin(), sorted.end(), [&](int i, int j){
+        return texture_sizes[i] > texture_sizes[j];
+    });
+
+    std::vector<point> ladder;
+
+    point pen{0, 0};
+
+    for (int i : sorted)
+    {
+        int const size = texture_sizes[i];
+
+		uint32_t faces = 0;
+		if(lights[i].type == 0) faces = 1;
+		if(lights[i].type == 1) faces = 6;
+		if(lights[i].type == 2) faces = 1;
+
+
+		for(uint32_t face = 0; face < faces; face++){
+			
+			// populate the shadow_atlus member of the light struct
+			lights[i].shadow_atlases[face].x = float(pen.x) / float(atlas_size.x);
+			lights[i].shadow_atlases[face].y = float(pen.y) / float(atlas_size.y);
+			lights[i].shadow_atlases[face].z = float(size) / float(atlas_size.x);
+			lights[i].shadow_atlases[face].w = float(size) / float(atlas_size.y);
+			// shift the pen to the right
+			pen.x += size;
+
+			// update the ladder
+			if (!ladder.empty() && ladder.back().y == pen.y + size)
+				ladder.back().x = pen.x;
+			else
+				ladder.push_back({pen.x, pen.y + size});
+
+			if (pen.x == atlas_size.x)
+			{
+				// the pen hit the right edge of the atlas
+				ladder.pop_back();
+
+				pen.y += size;
+				if (!ladder.empty())
+					pen.x = ladder.back().x;
+				else
+					pen.x = 0;
+			}
+		}
+        
+    }
 }

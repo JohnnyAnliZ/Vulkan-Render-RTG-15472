@@ -537,7 +537,7 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params) {
 		};
 		vkCmdCopyBuffer(workspace.command_buffer, workspace.Camera_src.handle, workspace.Camera.handle,1, &copy_region);
 	}
-
+  
 	{ //upload lights info:
 		if(workspace.Lights_src.handle == VK_NULL_HANDLE){
 			std::cout<<"allocating the buffer for "<< lights.size()<<"lights"<<std::endl;
@@ -698,6 +698,7 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params) {
 			0,nullptr
 		);
 	}
+
 	{//render pass
 		std::array< VkClearValue, 2 > clear_values{
 			VkClearValue{ .color{ .float32{0.7f,0.9f,0.3f,1.0f} } },
@@ -734,6 +735,8 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params) {
 			};
 			vkCmdSetViewport(workspace.command_buffer, 0, 1, &viewport);
 		}
+
+		
 		{//draw with background pipeline
 			vkCmdBindPipeline(workspace.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, background_pipeline.handle);
 			{//push the constants
@@ -772,6 +775,36 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params) {
 				std::array<VkDeviceSize, 1> offsets{0};
 				vkCmdBindVertexBuffers(workspace.command_buffer, 0, uint32_t(vertex_buffers.size()), vertex_buffers.data(), offsets.data());
 			}
+
+			{//draw with the shadow map pipeline
+				vkCmdBindPipeline(workspace.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, shadow_2D_pipeline.handle);
+				
+				for(uint32_t i = 0; i<lights.size(); i++){
+					{//bind Transform
+						std::array<VkDescriptorSet, 1> descriptor_sets{
+							workspace.Transforms_descriptors,//0, Transforms
+						};
+						vkCmdBindDescriptorSets(workspace.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, shadow_2D_pipeline.layout,
+							0, uint32_t(descriptor_sets.size()),descriptor_sets.data(), 0, nullptr);
+					}
+
+
+					//get the light's CLIP_FROM_WORLD
+					mat4 CLIP_FROM_WORLD;
+					if(lights[i].type == 0){//sun
+
+					}
+					else if(lights[i].type == 1){//sphere
+						
+					}
+					else{//spot
+						shadow_2D_pipeline.draw_all_objects(workspace.command_buffer, CLIP_FROM_WORLD, lights[i].shadow_atlases[0]);
+					}
+					
+
+				}
+			}
+
 			uint32_t index_offset = 0;//since they all share the same transforms descriptor as well, an offset for indexing the transforms is needed
 			if(!lambertian_object_instances.empty()){//draw the lambertian object instances
 				vkCmdBindPipeline(workspace.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, lambertian_objects_pipeline.handle);

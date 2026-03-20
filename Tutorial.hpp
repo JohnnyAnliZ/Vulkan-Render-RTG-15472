@@ -92,9 +92,29 @@ struct Tutorial : RTG::Application {
 		//spot light only
 		float fov;
 		float blend;
+		vec4 shadow_atlases[6];// (offset.x, offset.y, scale.x, scale.y)
 	};
-	static_assert(sizeof(Light) == 3*4*4 + 8*4  , "Light structure is packed");    
+	static_assert(sizeof(Light) == 3*4*4 + 8*4 + 4 * 4 * 6, "Light structure is packed");    
     
+	struct Shadow2DPipeline{
+		//descriptor set layouts
+		VkDescriptorSetLayout set0_Transforms =VK_NULL_HANDLE;
+
+		//push cosntants
+		struct Push{
+			mat4 LIGHT_CLIP_FROM_WORLD;
+			vec4 shadow_atlas;
+		};
+
+		//pipeline layout
+		VkPipelineLayout layout = VK_NULL_HANDLE;
+		using Vertex = PosNorTanTexVertex;
+		VkPipeline handle = VK_NULL_HANDLE;
+		void create(RTG &,VkRenderPass render_pass, uint32_t subpass);
+		void destroy(RTG &);
+
+		void draw_all_objects(VkCommandBuffer const &cmd, mat4 const &CLIP_FROM_WORLD, vec4 const &_shadow_atlas);
+	}shadow_2D_pipeline;
 
 	struct LambertianObjectsPipeline{
 		//descriptor set layouts
@@ -289,6 +309,7 @@ struct Tutorial : RTG::Application {
 	VkDescriptorPool texture_descriptor_pool = VK_NULL_HANDLE;
 	std::vector<VkDescriptorSet> texture_descriptor_sets;//allocated from texture descriptor pool
 
+	std::vector<VkDescriptorSet> shadow_map_descriptor_sets;
 
 	//--------------------------------------------------------------------
 	//Resources that change when the swapchain is resized:
@@ -397,6 +418,22 @@ struct Tutorial : RTG::Application {
 
 	//world has two lights env and sun
 	std::vector<Light> lights;
+	std::vector<uint32_t> light_shadow_map_sizes;//this should be aligned with lights
+	uint32_t total_shadow_map_size;
+	struct point
+	{
+		uint32_t x, y;
+	};
+
+	struct box
+	{
+		point topleft;
+		point bottomright;
+	};
+	void allocate_texture_atlas(
+		point const & atlas_size,
+		std::vector<uint32_t> const & texture_sizes
+	);
 	bool default_world_lights = true;//if this is true that means there hasn't been any lights loaded
 
 

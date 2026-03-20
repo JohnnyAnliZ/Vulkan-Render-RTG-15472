@@ -14,9 +14,7 @@ layout(set=0,binding=0,std140) uniform Eye {
 	vec3 EYE;
 };
 
-layout(set = 3, binding=0, std140) readonly buffer Lights{
-    Light LIGHTS[];
-};
+
 
 layout(set=2,binding=0) uniform sampler2D NORMAL;
 layout(set=2,binding=1) uniform sampler2D ALBEDO;
@@ -26,6 +24,11 @@ layout(set=2,binding=4) uniform samplerCube ENVIRONMENT;
 layout(set=2,binding=5) uniform sampler2D BRDF_LUT;
 layout(set=2,binding=6) uniform samplerCube DIFFUSE_IRRADIANCE;
 
+layout(set = 3, binding=0, std140) readonly buffer Lights{
+    Light LIGHTS[];
+};
+
+//layout(set = 4, binding=0, std140) uniform sampler2DShadow SHADOW_ATLUS;
 
 
 layout(location = 0) in vec3 position;
@@ -82,7 +85,7 @@ void main(){
     
     vec3 specular = specular_from_prefiltered  * (F0 * brdf.x + brdf.y) + specular_irradiance_from_lights;
 
-    vec3 color = diffuse + specular;
+    vec3 color = specular_irradiance_from_lights;
 
     //tone mapping
     vec3 radiance =  color * pow(2.0, pc.exposure);  // common exposure model

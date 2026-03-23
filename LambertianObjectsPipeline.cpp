@@ -51,8 +51,27 @@ void Tutorial::LambertianObjectsPipeline::create(RTG &rtg, VkRenderPass render_p
         };
         VK(vkCreateDescriptorSetLayout(rtg.device, &create_info, nullptr, &set1_Transforms));
     }
+    
+    {//the set2_Shadows layout has a single descriptor for a shadow atlas
+        uint32_t const num_textures = 1;
+        std::array<VkDescriptorSetLayoutBinding, num_textures> bindings;
+        for(uint32_t i = 0; i < num_textures; i++){
+            bindings[i] = VkDescriptorSetLayoutBinding{
+                .binding = i,
+                .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                .descriptorCount = 1,
+                .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+            };
+        }
+        VkDescriptorSetLayoutCreateInfo create_info{
+            .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+            .bindingCount = uint32_t(bindings.size()),
+            .pBindings = bindings.data(),
+        };
+        VK(vkCreateDescriptorSetLayout(rtg.device, &create_info, nullptr, &set2_Shadows));
+    }  
 
-    {//the set2_TEXTURE layout has a single descriptor for a sample2D used in the fragment shader
+    {//the set3_Texture layout has a single descriptor for a sample2D used in the fragment shader
         uint32_t const num_textures = 3;
         std::array<VkDescriptorSetLayoutBinding, num_textures> bindings;
         for(uint32_t i = 0; i < num_textures; i++){
@@ -68,8 +87,11 @@ void Tutorial::LambertianObjectsPipeline::create(RTG &rtg, VkRenderPass render_p
             .bindingCount = uint32_t(bindings.size()),
             .pBindings = bindings.data(),
         };
-        VK(vkCreateDescriptorSetLayout(rtg.device, &create_info, nullptr, &set2_TEXTURE));
+        VK(vkCreateDescriptorSetLayout(rtg.device, &create_info, nullptr, &set3_Texture));
     }    
+
+      
+
 
     {//create pipeline layout
         VkPushConstantRange range{
@@ -78,10 +100,11 @@ void Tutorial::LambertianObjectsPipeline::create(RTG &rtg, VkRenderPass render_p
             .size = sizeof(Push),
         };
 
-        std::array< VkDescriptorSetLayout, 3 > layouts{
+        std::array< VkDescriptorSetLayout, 4 > layouts{
 			set0_Lights,
             set1_Transforms,
-            set2_TEXTURE,
+            set2_Shadows,
+            set3_Texture,
 		};
 
         VkPipelineLayoutCreateInfo create_info{
@@ -214,9 +237,13 @@ void Tutorial::LambertianObjectsPipeline::destroy(RTG &rtg){
 		vkDestroyDescriptorSetLayout(rtg.device, set1_Transforms, nullptr);
 		set1_Transforms = VK_NULL_HANDLE;
 	}
-    if (set2_TEXTURE != VK_NULL_HANDLE) {
-		vkDestroyDescriptorSetLayout(rtg.device, set2_TEXTURE, nullptr);
-		set2_TEXTURE = VK_NULL_HANDLE;
+    if (set3_Texture != VK_NULL_HANDLE) {
+		vkDestroyDescriptorSetLayout(rtg.device, set3_Texture, nullptr);
+		set3_Texture = VK_NULL_HANDLE;
+	}
+    if (set2_Shadows != VK_NULL_HANDLE) {
+		vkDestroyDescriptorSetLayout(rtg.device, set2_Shadows, nullptr);
+		set2_Shadows = VK_NULL_HANDLE;
 	}
 
 }

@@ -14,6 +14,9 @@ layout(set=2,binding=0) uniform sampler2D NORMAL;
 layout(set=2,binding=1) uniform sampler2D TEXTURE;
 layout(set=2,binding=2) uniform samplerCube DIFFUSE_IRRADIANCE;
 
+layout(set = 3, binding=0, std140) uniform sampler2DShadow SHADOW_ATLUS;
+
+
 layout(location = 0) in vec3 position;
 layout(location = 1) in vec3 normal;
 layout(location = 2) in vec4 tangent;

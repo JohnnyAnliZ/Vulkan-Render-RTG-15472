@@ -28,7 +28,8 @@ layout(set = 3, binding=0, std140) readonly buffer Lights{
     Light LIGHTS[];
 };
 
-//layout(set = 4, binding=0, std140) uniform sampler2DShadow SHADOW_ATLUS;
+layout(set =4,binding=0, std140) uniform sampler2DShadow SHADOW_ATLUS;
+
 
 
 layout(location = 0) in vec3 position;

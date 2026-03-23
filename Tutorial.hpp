@@ -30,6 +30,7 @@ struct Tutorial : RTG::Application {
 	VkFormat depth_format{};
 	//Render passes describe how pipelines write to images:
 	VkRenderPass render_pass = VK_NULL_HANDLE;
+	VkRenderPass shadow_pass = VK_NULL_HANDLE;
 
 	//Pipelines:
 	struct BackgroundPipeline{
@@ -93,8 +94,33 @@ struct Tutorial : RTG::Application {
 		float fov;
 		float blend;
 		vec4 shadow_atlases[6];// (offset.x, offset.y, scale.x, scale.y)
+		mat4 CLIP_FROM_WORLD[6];
+
+		void compute_clip_from_world_spot(){
+			vec3 up;
+			if (abs(dot(direction.xyz(), vec3(0,1,0))) > 0.99f) {
+				// too parallel to Y axis → switch
+				up = vec3(0,0,1);
+			} else {
+				up = vec3(0,1,0);
+			}
+			CLIP_FROM_WORLD[0] = perspective(fov, 1.0f, 0.01f, limit) * look_at(position.xyz(), (position + direction).xyz(), up);
+		}
+		
+		void compute_clip_from_world_sphere(){
+			mat4 views[6];
+			views[0] = look_at(position.xyz(), position.xyz() + vec3(1,0,0), vec3(0,-1,0));
+			views[1] = look_at(position.xyz(), position.xyz() + vec3(-1,0,0), vec3(0,-1,0));
+			views[2] = look_at(position.xyz(), position.xyz() + vec3(0,1,0), vec3(0,0,1));
+			views[3] = look_at(position.xyz(), position.xyz() + vec3(0,-1,0), vec3(0,0,-1));
+			views[4] = look_at(position.xyz(), position.xyz() + vec3(0,0,1), vec3(0,-1,0));
+			views[5] = look_at(position.xyz(), position.xyz() + vec3(0,0,-1), vec3(0,-1,0));
+			for(uint32_t i = 0; i < 6; i++)
+			CLIP_FROM_WORLD[i] = perspective(fov, 1.0f, 0.01f, limit) * views[i];
+		}
+
 	};
-	static_assert(sizeof(Light) == 3*4*4 + 8*4 + 4 * 4 * 6, "Light structure is packed");    
+	static_assert(sizeof(Light) == 3*4*4 + 8*4 + 4 * 4 * 6 + 6 * 16 * 4, "Light structure is packed");    
     
 	struct Shadow2DPipeline{
 		//descriptor set layouts
@@ -120,7 +146,8 @@ struct Tutorial : RTG::Application {
 		//descriptor set layouts
 		VkDescriptorSetLayout set0_Lights = VK_NULL_HANDLE;
 		VkDescriptorSetLayout set1_Transforms = VK_NULL_HANDLE;
-		VkDescriptorSetLayout set2_TEXTURE = VK_NULL_HANDLE;
+		VkDescriptorSetLayout set2_Shadows = VK_NULL_HANDLE;
+		VkDescriptorSetLayout set3_Texture = VK_NULL_HANDLE;
 
 		//push constants
 		struct Push{
@@ -161,6 +188,8 @@ struct Tutorial : RTG::Application {
 		VkDescriptorSetLayout set1_Transforms = VK_NULL_HANDLE;
 		VkDescriptorSetLayout set2_TEXTURE = VK_NULL_HANDLE;
 		VkDescriptorSetLayout set3_Lights = VK_NULL_HANDLE;
+		VkDescriptorSetLayout set4_Shadows = VK_NULL_HANDLE;
+
 
 		//push constants
 		struct Push{
@@ -179,7 +208,7 @@ struct Tutorial : RTG::Application {
 	}pbr_objects_pipeline;
 
 	
-
+	void init_tutorial();
 	//pools from which per-workspace things are allocated:
 	VkCommandPool command_pool = VK_NULL_HANDLE;
 	VkDescriptorPool descriptor_pool = VK_NULL_HANDLE;
@@ -212,6 +241,11 @@ struct Tutorial : RTG::Application {
 		Helpers::AllocatedBuffer Transforms;
 		VkDescriptorSet Transforms_descriptors;
 
+		//location for Shadow_Atlas data
+		Helpers::AllocatedImage Shadow_Atlas;
+		VkImageView Shadow_Atlas_view;
+		VkFramebuffer Shadow_Atlas_FB = VK_NULL_HANDLE;
+		VkDescriptorSet Shadow_Atlas_descriptors;
 	};
 	std::vector< Workspace > workspaces;
 
@@ -306,11 +340,12 @@ struct Tutorial : RTG::Application {
 	std::vector<Helpers::AllocatedImage> textures;
 	std::vector<VkImageView> texture_views;
 	VkSampler texture_sampler = VK_NULL_HANDLE;
+	VkSampler depth_texture_sampler = VK_NULL_HANDLE;
 	VkDescriptorPool texture_descriptor_pool = VK_NULL_HANDLE;
 	std::vector<VkDescriptorSet> texture_descriptor_sets;//allocated from texture descriptor pool
 
 	std::vector<VkDescriptorSet> shadow_map_descriptor_sets;
-
+	void init_shadow_mapping();
 	//--------------------------------------------------------------------
 	//Resources that change when the swapchain is resized:
 
@@ -420,6 +455,8 @@ struct Tutorial : RTG::Application {
 	std::vector<Light> lights;
 	std::vector<uint32_t> light_shadow_map_sizes;//this should be aligned with lights
 	uint32_t total_shadow_map_size;
+	uint32_t atlas_size;//side length of the big square shadow atlas
+
 	struct point
 	{
 		uint32_t x, y;

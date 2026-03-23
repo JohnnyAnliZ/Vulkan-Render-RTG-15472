@@ -330,6 +330,10 @@ inline float dot(vec4 const &a,vec4 const &b){
     return a.x*b.x+ a.y*b.y+ a.z*b.z+ a.w*b.w;
 }
 
+inline vec4 operator+(vec4 const &a, vec4 const&b){
+	return vec4(a.x + b.x, a.y + b.y, a.z + b.z, a.w + b.w);
+}
+
 
 inline vec4 operator*(mat4 const &A, vec4 const &b){
     vec4 ret;

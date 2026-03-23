@@ -22,264 +22,19 @@ std::uniform_real_distribution<float> dist(-1.0f, 1.0f);
 
 
 Tutorial::Tutorial(RTG &rtg_) : rtg(rtg_) {
-	{//preallocate some space on the lines buffer
-		lines_vertices.clear();
-		constexpr size_t lines_vert_count = 4096;
-		lines_vertices.reserve(lines_vert_count);
-		starts.reserve(512);
-	}
+	//command pool, descriptor pool, 
+	init_tutorial();
 
-	//select a depth format:
-	//  (at least one of these two must be supported, according to the spec; but neither are required)
-	depth_format = rtg.helpers.find_image_format(
-		{ VK_FORMAT_D32_SFLOAT, VK_FORMAT_X8_D24_UNORM_PACK32 },
-		VK_IMAGE_TILING_OPTIMAL,
-		VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT
-	);
-
-	{ //create render pass
-		//specify attachments
-		std::array< VkAttachmentDescription, 2 > attachments{
-			VkAttachmentDescription{ //0 - color attachment:
-				.format = rtg.surface_format.format,
-				.samples = VK_SAMPLE_COUNT_1_BIT,
-				.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
-				.storeOp = VK_ATTACHMENT_STORE_OP_STORE,
-				.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
-				.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
-				.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-				.finalLayout = rtg.present_layout,
-			},
-			VkAttachmentDescription{ //1 - depth attachment:
-				.format = depth_format,
-				.samples = VK_SAMPLE_COUNT_1_BIT,
-				.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
-				.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
-				.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
-				.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
-				.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-				.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
-			},
-		};
-		//subpass
-		VkAttachmentReference color_attachment_ref{
-			.attachment = 0,
-			.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-		};
-
-		VkAttachmentReference depth_attachment_ref{
-			.attachment = 1,
-			.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
-		};
-
-		VkSubpassDescription subpass{
-			.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS,
-			.inputAttachmentCount = 0,
-			.pInputAttachments = nullptr,
-			.colorAttachmentCount = 1,
-			.pColorAttachments = &color_attachment_ref,
-			.pDepthStencilAttachment = &depth_attachment_ref,
-		};
-		//dependencies
-		std::array< VkSubpassDependency, 2 > dependencies {
-			VkSubpassDependency{
-				.srcSubpass = VK_SUBPASS_EXTERNAL,
-				.dstSubpass = 0,
-				.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-				.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-				.srcAccessMask = 0,
-				.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-			},
-			VkSubpassDependency{
-				.srcSubpass = VK_SUBPASS_EXTERNAL,
-				.dstSubpass = 0,
-				.srcStageMask = VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
-				.dstStageMask = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT,
-				.srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
-				.dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
-			}
-		};
-		VkRenderPassCreateInfo create_info{
-			.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
-			.attachmentCount = uint32_t(attachments.size()),
-			.pAttachments = attachments.data(),
-			.subpassCount = 1,
-			.pSubpasses = &subpass,
-			.dependencyCount = uint32_t(dependencies.size()),
-			.pDependencies = dependencies.data(),
-		};
-		VK( vkCreateRenderPass(rtg.device, &create_info, nullptr, &render_pass) );
-	}
-
-	{ //create command pool
-		VkCommandPoolCreateInfo create_info{
-			.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
-			.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
-			.queueFamilyIndex = rtg.graphics_queue_family.value(),
-		};
-		VK( vkCreateCommandPool(rtg.device, &create_info, nullptr, &command_pool) );
-	}
-
-	background_pipeline.create(rtg, render_pass, 0);
-	lines_pipeline.create(rtg, render_pass, 0);
-	lambertian_objects_pipeline.create(rtg, render_pass,0);
-	env_mirror_objects_pipeline.create(rtg, render_pass,0);
-	pbr_objects_pipeline.create(rtg, render_pass,0);
-
-	{//create descriptor pool
-		uint32_t per_workspace = uint32_t(rtg.workspaces.size());
-
-		std::array<VkDescriptorPoolSize, 2> pool_sizes{
-			VkDescriptorPoolSize{
-				.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-				.descriptorCount = 2 * per_workspace,//three descriptor per set, one set per workspace(Camera and Eye)
-			},
-			VkDescriptorPoolSize{
-				.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-				.descriptorCount = 2 * per_workspace,//one descriptor per set, one set per workspace(Transform, Lights)
-			},
-		};
-		VkDescriptorPoolCreateInfo create_info{
-			.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
-			.flags = 0,
-			.maxSets = 4 * per_workspace,
-			.poolSizeCount = uint32_t(pool_sizes.size()),
-			.pPoolSizes = pool_sizes.data(),
-		};
-		VK(vkCreateDescriptorPool(rtg.device, &create_info, nullptr, &descriptor_pool));
-	}
-
-
-	workspaces.resize(rtg.workspaces.size());
-	for (Workspace &workspace : workspaces) {
-		{//allocate command buffer
-			VkCommandBufferAllocateInfo alloc_info{
-				.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,				
-				.commandPool = command_pool,
-				.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
-				.commandBufferCount = 1,
-			};
-			VK(vkAllocateCommandBuffers(rtg.device, &alloc_info, &workspace.command_buffer));
-		}
-		//buffers for camera descriptors
-		workspace.Camera_src = rtg.helpers.create_buffer(
-			sizeof(LinesPipeline::Camera),
-			VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT|VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-			Helpers::Mapped
-		);
-		workspace.Camera = rtg.helpers.create_buffer(
-			sizeof(LinesPipeline::Camera),
-			VK_BUFFER_USAGE_TRANSFER_DST_BIT|VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-			Helpers::Unmapped
-		);
-
-		{//allocate descriptor set for Camera descriptor
-			VkDescriptorSetAllocateInfo alloc_info{
-				.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-				.descriptorPool = descriptor_pool,
-				.descriptorSetCount = 1,
-				.pSetLayouts = &lines_pipeline.set0_Camera,
-			};
-			VK(vkAllocateDescriptorSets(rtg.device, &alloc_info, &workspace.Camera_descriptors));
-		}
-
-		//buffers for eye descriptors
-		workspace.Eye_src = rtg.helpers.create_buffer(
-			sizeof(vec3),
-			VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT|VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-			Helpers::Mapped
-		);
-		workspace.Eye = rtg.helpers.create_buffer(
-			sizeof(vec3),
-			VK_BUFFER_USAGE_TRANSFER_DST_BIT|VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-			Helpers::Unmapped
-		);
-
-		{//allocate descriptor set for Eye descriptor
-			VkDescriptorSetAllocateInfo alloc_info{
-				.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-				.descriptorPool = descriptor_pool,
-				.descriptorSetCount = 1,
-				.pSetLayouts = &env_mirror_objects_pipeline.set0_Eye,
-			};
-			VK(vkAllocateDescriptorSets(rtg.device, &alloc_info, &workspace.Eye_descriptors));
-		}
-
-		{ //allocate descriptor set for Light descriptor
-			VkDescriptorSetAllocateInfo alloc_info{
-				.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-				.descriptorPool = descriptor_pool,
-				.descriptorSetCount = 1,
-				.pSetLayouts = &lambertian_objects_pipeline.set0_Lights,
-			};
-			VK( vkAllocateDescriptorSets(rtg.device, &alloc_info, &workspace.Lights_descriptors) );
-			//NOTE: will actually fill in this descriptor set just a bit lower
-		}
-
-		{//allocate descriptor set for Transforms descriptor
-			VkDescriptorSetAllocateInfo alloc_info{
-				.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-				.descriptorPool = descriptor_pool,
-				.descriptorSetCount = 1,
-				.pSetLayouts = &lambertian_objects_pipeline.set1_Transforms,
-			};
-			VK(vkAllocateDescriptorSets(rtg.device, &alloc_info, &workspace.Transforms_descriptors));
-			//NOTE: will fill in this descriptor set in render when buffers are [re-]allocated
-		}
-		
-		{//Write the descriptor sets for camera, lights, and eye
-			VkDescriptorBufferInfo Camera_info{
-				.buffer = workspace.Camera.handle,
-				.offset = 0,
-				.range = workspace.Camera.size,
-			};
-
-			VkDescriptorBufferInfo Eye_info{
-				.buffer = workspace.Eye.handle,
-				.offset = 0,
-				.range = workspace.Eye.size,
-			};
-			
-			std::array<VkWriteDescriptorSet, 2> writes{
-				VkWriteDescriptorSet{
-					.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-					.dstSet = workspace.Camera_descriptors,
-					.dstBinding = 0,
-					.dstArrayElement = 0,
-					.descriptorCount = 1,
-					.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-					.pBufferInfo = &Camera_info,
-				},
-				VkWriteDescriptorSet{
-					.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-					.dstSet = workspace.Eye_descriptors,
-					.dstBinding = 0,
-					.dstArrayElement = 0,
-					.descriptorCount = 1,
-					.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-					.pBufferInfo = &Eye_info,
-				},
-			};
-
-			vkUpdateDescriptorSets(
-				rtg.device, //device
-				uint32_t(writes.size()), //descriptorWriteCount
-				writes.data(), //pDescriptorWrites
-				0, //descriptorCopyCount
-				nullptr //pDescriptorCopies
-			);
-		}
-	}
 	std::cout<<"LOADING SCENE"<<std::endl;
+
 	//set up loaded cameras, put mesh data into the object_vertices buffer 
 	load_scene();
 
 	//load textures into texture_descriptor_sets
 	load_textures();
+
+	//stuff for shadow_mapping(framebuffers, allocating image and stuff)
+	init_shadow_mapping();
 
 	std::cout<<"finished loading stuff"<<std::endl;
 }
@@ -537,7 +292,7 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params) {
 		};
 		vkCmdCopyBuffer(workspace.command_buffer, workspace.Camera_src.handle, workspace.Camera.handle,1, &copy_region);
 	}
-  
+
 	{ //upload lights info:
 		if(workspace.Lights_src.handle == VK_NULL_HANDLE){
 			std::cout<<"allocating the buffer for "<< lights.size()<<"lights"<<std::endl;
@@ -699,6 +454,55 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params) {
 		);
 	}
 
+	{//shadow pass
+		std::array< VkClearValue, 1> clear_values{
+			VkClearValue{ .depthStencil{ .depth = 1.0f, .stencil = 0 } },
+		}; 
+		
+		VkRenderPassBeginInfo begin_info{
+			.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+			.renderPass = shadow_pass,
+			.framebuffer = framebuffer,
+			.renderArea{.offset = {.x = 0, .y =  0}, 
+				.extent = {.width = atlas_size, .height = atlas_size},
+			},
+			.clearValueCount = uint32_t(clear_values.size()),
+			.pClearValues = clear_values.data(),
+		};
+		vkCmdBeginRenderPass(workspace.command_buffer, &begin_info, VK_SUBPASS_CONTENTS_INLINE);
+
+		{//draw with the shadow map pipeline
+			vkCmdBindPipeline(workspace.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, shadow_2D_pipeline.handle);
+			
+			for(uint32_t i = 0; i<lights.size(); i++){
+				{//bind Transform
+					std::array<VkDescriptorSet, 1> descriptor_sets{
+						workspace.Transforms_descriptors,//0, Transforms
+					};
+					vkCmdBindDescriptorSets(workspace.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, shadow_2D_pipeline.layout,
+						0, uint32_t(descriptor_sets.size()),descriptor_sets.data(), 0, nullptr);
+				}				
+				//get the light's CLIP_FROM_WORLD and draw all the objects for each light
+				if(lights[i].type == 0){//sun
+					//TODO: do some shadow cascade thingy
+				}
+				else if(lights[i].type == 1){//sphere
+					lights[i].compute_clip_from_world_sphere();
+					for(uint32_t j = 0; j < 6; j++){
+						shadow_2D_pipeline.draw_all_objects(workspace.command_buffer, lights[i].CLIP_FROM_WORLD[j], lights[i].shadow_atlases[j]);
+					}
+				}
+				else{//spot
+					lights[i].compute_clip_from_world_spot();
+					shadow_2D_pipeline.draw_all_objects(workspace.command_buffer, lights[i].CLIP_FROM_WORLD[0], lights[i].shadow_atlases[0]);
+				}
+			}
+		}
+
+	}
+
+
+
 	{//render pass
 		std::array< VkClearValue, 2 > clear_values{
 			VkClearValue{ .color{ .float32{0.7f,0.9f,0.3f,1.0f} } },
@@ -769,47 +573,22 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params) {
 			vkCmdDraw(workspace.command_buffer, uint32_t(lines_vertices.size()), 1, 0, 0);
 		}
 
-		{//draw with the different materialed objects' pipelines
+		{
 			{//use object_vertices (offset 0) as vertex buffer binding 0: they all share vertex buffer
 				std::array<VkBuffer,1> vertex_buffers{object_vertices.handle};
 				std::array<VkDeviceSize, 1> offsets{0};
 				vkCmdBindVertexBuffers(workspace.command_buffer, 0, uint32_t(vertex_buffers.size()), vertex_buffers.data(), offsets.data());
 			}
 
-			{//draw with the shadow map pipeline
-				vkCmdBindPipeline(workspace.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, shadow_2D_pipeline.handle);
-				
-				for(uint32_t i = 0; i<lights.size(); i++){
-					{//bind Transform
-						std::array<VkDescriptorSet, 1> descriptor_sets{
-							workspace.Transforms_descriptors,//0, Transforms
-						};
-						vkCmdBindDescriptorSets(workspace.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, shadow_2D_pipeline.layout,
-							0, uint32_t(descriptor_sets.size()),descriptor_sets.data(), 0, nullptr);
-					}
+			
+			
 
-
-					//get the light's CLIP_FROM_WORLD
-					mat4 CLIP_FROM_WORLD;
-					if(lights[i].type == 0){//sun
-
-					}
-					else if(lights[i].type == 1){//sphere
-						
-					}
-					else{//spot
-						shadow_2D_pipeline.draw_all_objects(workspace.command_buffer, CLIP_FROM_WORLD, lights[i].shadow_atlases[0]);
-					}
-					
-
-				}
-			}
-
+			//draw with the different materialed objects' pipelines
 			uint32_t index_offset = 0;//since they all share the same transforms descriptor as well, an offset for indexing the transforms is needed
 			if(!lambertian_object_instances.empty()){//draw the lambertian object instances
 				vkCmdBindPipeline(workspace.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, lambertian_objects_pipeline.handle);
 				
-				{////bind Lights and Transforms descriptor sets:
+				{//bind Lights and Transforms and Shadow descriptor sets:
 					std::array<VkDescriptorSet, 2> descriptor_sets{
 						workspace.Lights_descriptors,//0, Lights
 						workspace.Transforms_descriptors,//1, Transforms
@@ -817,6 +596,7 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params) {
 					vkCmdBindDescriptorSets(workspace.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, lambertian_objects_pipeline.layout,
 						0, uint32_t(descriptor_sets.size()),descriptor_sets.data(), 0, nullptr);
 				}
+
 				{//push constant for lambertian pipeline
 					LambertianObjectsPipeline::Push push{
 						.light_count = (uint32_t)lights.size(),

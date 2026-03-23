@@ -90,6 +90,26 @@ void Tutorial::PbrObjectsPipeline::create(RTG &rtg, VkRenderPass render_pass, ui
 		VK( vkCreateDescriptorSetLayout(rtg.device, &create_info, nullptr, &set3_Lights) );
 	}
 
+    {//the set4_Shadows layout has a single descriptor for a shadow atlas
+        uint32_t const num_textures = 1;
+        std::array<VkDescriptorSetLayoutBinding, num_textures> bindings;
+        for(uint32_t i = 0; i < num_textures; i++){
+            bindings[i] = VkDescriptorSetLayoutBinding{
+                .binding = i,
+                .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                .descriptorCount = 1,
+                .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+            };
+        }
+        VkDescriptorSetLayoutCreateInfo create_info{
+            .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+            .bindingCount = uint32_t(bindings.size()),
+            .pBindings = bindings.data(),
+        };
+        VK(vkCreateDescriptorSetLayout(rtg.device, &create_info, nullptr, &set4_Shadows));
+    }    
+
+
     {//create pipeline layout
         VkPushConstantRange range{
             .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
@@ -97,11 +117,12 @@ void Tutorial::PbrObjectsPipeline::create(RTG &rtg, VkRenderPass render_pass, ui
             .size = sizeof(Push),
         };
 
-        std::array< VkDescriptorSetLayout, 4 > layouts{
+        std::array<VkDescriptorSetLayout, 5> layouts{
 			set0_Eye,
             set1_Transforms,
             set2_TEXTURE,
-            set3_Lights
+            set3_Lights,
+            set4_Shadows,
 		};
 
         VkPipelineLayoutCreateInfo create_info{
@@ -241,5 +262,9 @@ void Tutorial::PbrObjectsPipeline::destroy(RTG &rtg){
     if (set3_Lights != VK_NULL_HANDLE) {
 		vkDestroyDescriptorSetLayout(rtg.device, set3_Lights, nullptr);
 		set3_Lights = VK_NULL_HANDLE;
+	}
+    if (set4_Shadows != VK_NULL_HANDLE) {
+		vkDestroyDescriptorSetLayout(rtg.device, set4_Shadows, nullptr);
+		set4_Shadows = VK_NULL_HANDLE;
 	}
 }

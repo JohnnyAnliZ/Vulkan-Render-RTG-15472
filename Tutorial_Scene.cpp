@@ -178,6 +178,8 @@ void Tutorial::load_scene() {
 		//copy data to buffer
 		rtg.helpers.transfer_to_buffer(vertices.data(), bytes, object_vertices);
 	}
+
+	
 }
 
 
@@ -400,7 +402,7 @@ void Tutorial::update_scene(float dt) {
 				}
 				light_shadow_map_sizes.emplace_back(shadow_map_size);
 				
-				total_shadow_map_size += shadow_map_size * shadow_map_size * faces;
+				
 			}
 			for(S72::Node *child : node->children){
 				current_nodes.emplace_back(child, world_from_local);
@@ -408,15 +410,7 @@ void Tutorial::update_scene(float dt) {
 		}
 		//now that the lights are uploaded, make the shadow atlas
 
-		uint32_t atlas_size;
-
-		//find the fitting atlas size
-		for(uint32_t power = 1; power < 14; power++){//2 to the power of 12 ( 16384 side lenght ) should be large enough
-			if((1 << power) * ( 1 << power) > total_shadow_map_size){
-				atlas_size = 1<<power;
-				break;
-			}
-		}
+		
 
 		allocate_texture_atlas(
 			point{.x = atlas_size, .y = atlas_size}, //square atlas, square shadow maps

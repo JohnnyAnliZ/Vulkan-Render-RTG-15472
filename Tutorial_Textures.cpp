@@ -595,7 +595,9 @@ void Tutorial::load_textures(){
 				std::cerr<<"can't find texture: "<<environment_name<<std::endl;
 			}			
 		}
-	}	
+	}
+	
+	
 }
 
 
@@ -605,7 +607,7 @@ void Tutorial::make_descriptor_set(std::string mat_name, MaterialType mat_type, 
 	//allocate descriptor set differing in layout
 	VkDescriptorSetLayout *pDesSetLayout = nullptr;
 	if(mat_type == MaterialType::ENVMIRROR) pDesSetLayout = &env_mirror_objects_pipeline.set2_TEXTURE;
-	else if(mat_type == MaterialType::LAMBERTIAN) pDesSetLayout = &lambertian_objects_pipeline.set2_TEXTURE;
+	else if(mat_type == MaterialType::LAMBERTIAN) pDesSetLayout = &lambertian_objects_pipeline.set3_Texture;
 	else if(mat_type == MaterialType::PBR) pDesSetLayout = &pbr_objects_pipeline.set2_TEXTURE;
 
 

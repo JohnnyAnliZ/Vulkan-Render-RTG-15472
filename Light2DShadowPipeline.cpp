@@ -15,6 +15,32 @@ void Tutorial::Shadow2DPipeline::draw_all_objects(VkCommandBuffer const &cmd, ma
     };
     vkCmdPushConstants(cmd, shadow_2D_pipeline.layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(push), &push);
     
+    float atlas_size_fl = float(atlas_size);
+    float offset_x = atlas_size_fl * _shadow_atlas.x;
+    float offset_y = atlas_size_fl * _shadow_atlas.y;
+    float size_x = atlas_size_fl * _shadow_atlas.z;
+    float size_y = atlas_size_fl * _shadow_atlas.w;
+
+
+    {//scissor rectangle
+        VkRect2D scissor{
+            .offset = {.x = int32_t(offset_x), .y = int32_t(offset_y)},
+            .extent = {.width =uint32_t(size_x), .height = uint32_t(size_y)},
+        };
+        vkCmdSetScissor(cmd, 0, 1, &scissor);
+    }
+    {//viewport transform 
+        VkViewport viewport{
+            .x = offset_x,
+            .y =offset_y,
+            .width = size_x,
+            .height = size_y,
+            .minDepth = 0.0f,
+            .maxDepth = 1.0f,
+        };
+        vkCmdSetViewport(cmd, 0, 1, &viewport);
+    }
+
     //literally draw all the objects
     uint32_t index_offset = 0;
     if(!lambertian_object_instances.empty()){

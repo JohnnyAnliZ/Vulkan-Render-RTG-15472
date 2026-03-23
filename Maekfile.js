@@ -45,6 +45,7 @@ const main_objs = [
 	maek.CPP('main.cpp'),
 	maek.CPP('Tutorial_Scene.cpp'),
 	maek.CPP('Tutorial_Textures.cpp'),
+	maek.CPP('Tutorial_Init.cpp'),
 ];
 
 const cube_objs = [

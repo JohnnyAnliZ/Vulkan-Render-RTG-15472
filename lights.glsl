@@ -18,6 +18,8 @@ struct Light {
     //spot light only
     float fov;
     float blend;
+    vec4 shadow_atlases[6];// (offset.x, offset.y, scale.x, scale.y)
+	mat4 CLIP_FROM_WORLD[6];
 };
 
 
@@ -211,6 +213,28 @@ vec3 specular_lighting_irradiance(Light light, vec3 surface_point, vec3 eye, vec
 
     return light_intensity * specular_brdf * light_attenuation;
 
+}
+
+
+vec3 compute_atlas_coordinates(Light light, vec3 worldPos) {
+    vec4 light_clip = light.CLIP_FROM_WORLD[0] * vec4(worldPos, 1.0);
+
+    if(light_clip.w <= 0.0)
+        return vec3(0.0, 0.0, 0.0);
+
+    vec3 ndc = light_clip.xyz / light_clip.w;
+
+    vec2 uv = ndc.xy * 0.5 + 0.5;
+
+    if(uv.x < 0.0 || uv.x > 1.0 ||
+       uv.y < 0.0 || uv.y > 1.0)
+        return vec3(0.0, 0.0, 0.0);
+
+    vec2 atlas_uv = light.shadow_atlases[0].xy + uv * light.shadow_atlases[0].zw;
+
+    float depth = ndc.z * 0.5 + 0.5;
+
+    return vec3(atlas_uv, depth);
 }
 
 #endif

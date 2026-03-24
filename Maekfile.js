@@ -74,6 +74,7 @@ main_objs.push( maek.CPP('Tutorial-LinesPipeline.cpp', undefined, { depends:[...
 //uncomment to build objects shaders and pipeline:
 const objects_shaders = [
 	maek.GLSLC('objects.vert'),
+	maek.GLSLC('shadows2D.vert'),
 	maek.GLSLC('lambertian_objects.frag'),
 	maek.GLSLC('env_mirror_objects.frag'),
 	maek.GLSLC('pbr_objects.frag'),
@@ -81,6 +82,7 @@ const objects_shaders = [
 main_objs.push( maek.CPP('LambertianObjectsPipeline.cpp', undefined, { depends:[...objects_shaders] } ) );
 main_objs.push( maek.CPP('EnvMirrorObjectsPipeline.cpp', undefined, { depends:[...objects_shaders] } ) );
 main_objs.push( maek.CPP('PbrObjectsPipeline.cpp', undefined, { depends:[...objects_shaders] } ) );
+main_objs.push( maek.CPP('Light2DShadowPipeline.cpp', undefined, { depends:[...objects_shaders] } ) );
 
 
 

@@ -10,11 +10,12 @@ layout(set = 0, binding=0, std140) readonly buffer Lights{
     Light LIGHTS[];
 };
 
-layout(set=2,binding=0) uniform sampler2D NORMAL;
-layout(set=2,binding=1) uniform sampler2D TEXTURE;
-layout(set=2,binding=2) uniform samplerCube DIFFUSE_IRRADIANCE;
+layout(set = 2, binding=0) uniform sampler2DShadow SHADOW_ATLAS;
 
-layout(set = 3, binding=0, std140) uniform sampler2DShadow SHADOW_ATLUS;
+layout(set=3,binding=0) uniform sampler2D NORMAL;
+layout(set=3,binding=1) uniform sampler2D TEXTURE;
+layout(set=3,binding=2) uniform samplerCube DIFFUSE_IRRADIANCE;
+
 
 
 layout(location = 0) in vec3 position;
@@ -24,10 +25,12 @@ layout(location = 3) in vec2 texCoord;
 
 layout(location = 0) out vec4 outColor;
 
+
+
+
 void main(){
     vec3 B = cross(normal, tangent.xyz) * tangent.w;
     mat3 TBN = mat3(tangent.xyz, B, normal);
-
 
     //sample normal map to get normal in tangent space
     vec3 n_tangent = texture(NORMAL, vec2(texCoord.y,-texCoord.x)).rgb * 2.0 - 1.0;
@@ -43,7 +46,9 @@ void main(){
 
     vec3 irradiance_from_lights = vec3(0);
     for(uint i = 0; i < pc.light_count; i++){//go through the lights to add up irradiance
-        irradiance_from_lights += diffuse_lighting_irradiance(LIGHTS[i], position, n);
+        float shadow = texture(SHADOW_ATLAS,
+            compute_atlas_coordinates(LIGHTS[i], position));
+        irradiance_from_lights += shadow * diffuse_lighting_irradiance(LIGHTS[i], position, n);
     }
 
 

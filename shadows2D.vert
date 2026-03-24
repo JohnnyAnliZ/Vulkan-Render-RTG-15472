@@ -28,7 +28,7 @@ layout(location = 3) out vec2 texCoord;
 
 
 void main(){
-
+    //don't need to do anything special because the viewport and scissor take care of things
     gl_Position = pc.LIGHT_CLIP_FROM_WORLD * TRANSFORMS[gl_InstanceIndex].WORLD_FROM_LOCAL * vec4(Position, 1.0);
 
 }

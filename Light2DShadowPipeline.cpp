@@ -7,10 +7,10 @@ static uint32_t vert_code[] =
 #include "spv/shadows2D.vert.inl"
 ;
 
-void Tutorial::Shadow2DPipeline::draw_all_objects(VkCommandBuffer const &cmd, mat4 const &CLIP_FROM_WORLD, vec4 const &_shadow_atlas){
+void Tutorial::draw_all_objects(VkCommandBuffer const &cmd, mat4 const &LIGHTS_CLIP_FROM_WORLD, vec4 const &_shadow_atlas){
     //push constants
-    Push push{
-        .LIGHT_CLIP_FROM_WORLD = CLIP_FROM_WORLD,
+    Shadow2DPipeline::Push push{
+        .LIGHT_CLIP_FROM_WORLD = LIGHTS_CLIP_FROM_WORLD,
         .shadow_atlas = _shadow_atlas,
     };
     vkCmdPushConstants(cmd, shadow_2D_pipeline.layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(push), &push);
@@ -32,7 +32,7 @@ void Tutorial::Shadow2DPipeline::draw_all_objects(VkCommandBuffer const &cmd, ma
     {//viewport transform 
         VkViewport viewport{
             .x = offset_x,
-            .y =offset_y,
+            .y = offset_y,
             .width = size_x,
             .height = size_y,
             .minDepth = 0.0f,
@@ -151,7 +151,7 @@ void Tutorial::Shadow2DPipeline::create(RTG &rtg, VkRenderPass render_pass, uint
     //configure rasterizer to rasterize only backfaces (cuz we shadow mappin) 
         VkPipelineRasterizationStateCreateInfo rasterization_state{
             .sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
-            .depthClampEnable = VK_FALSE,
+            .depthClampEnable = VK_FALSE,//Maybe I have to enable it for sun
             .rasterizerDiscardEnable = VK_FALSE,
             .polygonMode = VK_POLYGON_MODE_FILL,
             .cullMode = VK_CULL_MODE_BACK_BIT,
@@ -186,6 +186,7 @@ void Tutorial::Shadow2DPipeline::create(RTG &rtg, VkRenderPass render_pass, uint
             .pRasterizationState = &rasterization_state,
 			.pMultisampleState = &multisample_state,
 			.pDepthStencilState = &depth_stencil_state,
+            .pColorBlendState = nullptr,
 			.pDynamicState = &dynamic_state,
 			.layout = layout,
 			.renderPass = render_pass,

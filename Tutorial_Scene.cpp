@@ -355,9 +355,7 @@ void Tutorial::update_scene(float dt) {
 				vec4 color = vec4(node->light->tint.x, node->light->tint.y, node->light->tint.z, 0) ;
 				vec4 world_dir = (world_from_local * vec4{0,0,-1,0});//local -z axis direction
 				vec4 world_trans = (world_from_local * vec4{0,0,0,1});
-
-				uint32_t shadow_map_size = node->light->shadow;
-
+				
 				uint32_t faces = 0;
 				if(std::holds_alternative<S72::Light::Sun>(v)){
 					default_world_lights = false;
@@ -369,7 +367,7 @@ void Tutorial::update_scene(float dt) {
 						.angle = sun.angle,
 						.strength = sun.strength,
 					});			
-					faces = 1;
+					faces = sun.shadow_map_num;
 				}
 				else if(std::holds_alternative<S72::Light::Sphere>(v)){
 					default_world_lights = false;
@@ -382,7 +380,7 @@ void Tutorial::update_scene(float dt) {
 						.radius = sphere.radius,
 						.power = sphere.power,
 					});
-					faces = 6;
+					faces = sphere.shadow_map_num;
 				}
 				else if(std::holds_alternative<S72::Light::Spot>(v)){
 					default_world_lights = false;
@@ -398,11 +396,11 @@ void Tutorial::update_scene(float dt) {
 						.fov = spot.fov,
 						.blend = spot.blend,
 					});
-					faces = 1;
+					faces = spot.shadow_map_num;
 				}
+
+				uint32_t shadow_map_size = node->light->shadow;
 				light_shadow_map_sizes.emplace_back(shadow_map_size);
-				
-				
 			}
 			for(S72::Node *child : node->children){
 				current_nodes.emplace_back(child, world_from_local);
@@ -410,8 +408,17 @@ void Tutorial::update_scene(float dt) {
 		}
 		//now that the lights are uploaded, make the shadow atlas
 
-		
+		//find the fitting atlas size
+		uint32_t old_atlas_size = atlas_size;
+		for(uint32_t power = 1; power < 14; power++){//2 to the power of 12 ( 16384 side lenght ) should be large enough
+			if(((uint32_t) 1 << power) * ((uint32_t) 1 << power) > total_shadow_map_size){
+				atlas_size = 1<<power;
+				break;
+			}
+		}
+		assert(atlas_size == old_atlas_size);
 
+		//this function fils in the shadow_atlas member of each light
 		allocate_texture_atlas(
 			point{.x = atlas_size, .y = atlas_size}, //square atlas, square shadow maps
 			light_shadow_map_sizes
@@ -422,9 +429,9 @@ void Tutorial::update_scene(float dt) {
 
 //following code takes from https://lisyarus.github.io/blog/posts/texture-packing.html
 void Tutorial::allocate_texture_atlas(
-    point const & atlas_size,
+    point const & atlas_size_xy,
     std::vector<uint32_t> const & texture_sizes)
-{
+{	
 	assert(lights.size() == texture_sizes.size());
     // we have to separately sort the indices so that the i-th region
     // of the output corresponds to the i-th texture size of the input
@@ -446,18 +453,18 @@ void Tutorial::allocate_texture_atlas(
         int const size = texture_sizes[i];
 
 		uint32_t faces = 0;
-		if(lights[i].type == 0) faces = 1;
-		if(lights[i].type == 1) faces = 6;
-		if(lights[i].type == 2) faces = 1;
+		if(lights[i].type == 0) faces = S72::Light::Sun::shadow_map_num;
+		if(lights[i].type == 1) faces = S72::Light::Sphere::shadow_map_num;
+		if(lights[i].type == 2) faces = S72::Light::Spot::shadow_map_num;
 
 
 		for(uint32_t face = 0; face < faces; face++){
 			
 			// populate the shadow_atlus member of the light struct
-			lights[i].shadow_atlases[face].x = float(pen.x) / float(atlas_size.x);
-			lights[i].shadow_atlases[face].y = float(pen.y) / float(atlas_size.y);
-			lights[i].shadow_atlases[face].z = float(size) / float(atlas_size.x);
-			lights[i].shadow_atlases[face].w = float(size) / float(atlas_size.y);
+			lights[i].shadow_atlases[face].x = float(pen.x) / float(atlas_size_xy.x);
+			lights[i].shadow_atlases[face].y = float(pen.y) / float(atlas_size_xy.y);
+			lights[i].shadow_atlases[face].z = float(size) / float(atlas_size_xy.x);
+			lights[i].shadow_atlases[face].w = float(size) / float(atlas_size_xy.y);
 			// shift the pen to the right
 			pen.x += size;
 
@@ -467,7 +474,7 @@ void Tutorial::allocate_texture_atlas(
 			else
 				ladder.push_back({pen.x, pen.y + size});
 
-			if (pen.x == atlas_size.x)
+			if (pen.x == atlas_size_xy.x)
 			{
 				// the pen hit the right edge of the atlas
 				ladder.pop_back();

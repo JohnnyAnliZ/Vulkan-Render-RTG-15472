@@ -28,7 +28,7 @@ layout(set = 3, binding=0, std140) readonly buffer Lights{
     Light LIGHTS[];
 };
 
-layout(set =4,binding=0, std140) uniform sampler2DShadow SHADOW_ATLUS;
+layout(set =4,binding=0) uniform sampler2DShadow SHADOW_ATLAS;
 
 
 
@@ -65,28 +65,29 @@ void main(){
 
     // === Diffuse IBL ===
     vec3 diffuse_irradiance_from_env = texture(DIFFUSE_IRRADIANCE, N).rgb;
-    vec3 diffuse_irradiance_from_lights = vec3(0);
-    for(uint i = 0; i < pc.light_count; i++){//go through the lights to add up irradiance
-        diffuse_irradiance_from_lights += diffuse_lighting_irradiance(LIGHTS[i], position, N);
-    }
-    vec3 diffuse = (diffuse_irradiance_from_env + diffuse_irradiance_from_lights) * albedo * (1.0 - metalness);
-    
+
 
     // === Specular IBL ===
     vec3 R = reflect(-V, N);
-
     float NoV = max(dot(N, V), 0.0);//cos of theta, the angle between view and normal
     vec3 specular_from_prefiltered = textureLod(ENVIRONMENT, R, roughness * 4.0).rgb;
     vec2 brdf = texture(BRDF_LUT, vec2(NoV, roughness)).rg;
     
+    //Go through the lights to add up irradiance from both specular and diffuse
     vec3 specular_irradiance_from_lights = vec3(0.0);
-    for(uint i = 0; i < pc.light_count; i++){//go through the lights to add up irradiance
-        specular_irradiance_from_lights += specular_lighting_irradiance(LIGHTS[i], position, EYE, N, roughness, F0);
+    vec3 diffuse_irradiance_from_lights = vec3(0.0);
+    for(uint i = 0; i < pc.light_count; i++){
+        float shadow = texture(SHADOW_ATLAS,
+        compute_atlas_coordinates(LIGHTS[i], position));
+
+        specular_irradiance_from_lights += shadow * specular_lighting_irradiance(LIGHTS[i], position, EYE, N, roughness, F0);
+        diffuse_irradiance_from_lights += shadow * diffuse_lighting_irradiance(LIGHTS[i], position, N);
     }
-    
+    vec3 diffuse = (diffuse_irradiance_from_env + diffuse_irradiance_from_lights) * albedo * (1.0 - metalness);
     vec3 specular = specular_from_prefiltered  * (F0 * brdf.x + brdf.y) + specular_irradiance_from_lights;
 
-    vec3 color = specular_irradiance_from_lights;
+
+    vec3 color = diffuse + specular;
 
     //tone mapping
     vec3 radiance =  color * pow(2.0, pc.exposure);  // common exposure model

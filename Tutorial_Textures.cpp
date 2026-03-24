@@ -385,14 +385,14 @@ void Tutorial::load_textures(){
 		std::array< VkDescriptorPoolSize, 1> pool_sizes{
 			VkDescriptorPoolSize{
 				.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-				.descriptorCount = num_lambertian + num_envmirror + num_pbr * 6, //one descriptor per set, one set per texture
+				.descriptorCount = num_lambertian * 4 + num_envmirror * 2 + num_pbr * 8, //one descriptor per set, one set per texture
 			},
 		};
 		
 		VkDescriptorPoolCreateInfo create_info{
 			.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
 			.flags = 0, //because CREATE_FREE_DESCRIPTOR_SET_BIT isn't included, *can't* free individual descriptors allocated from this pool
-			.maxSets = num_lambertian + num_envmirror + num_pbr, //one set per texture
+			.maxSets = num_lambertian * 2 + num_envmirror + num_pbr * 2, //lambertian and pbr have shadow map
 			.poolSizeCount = uint32_t(pool_sizes.size()),
 			.pPoolSizes = pool_sizes.data(),
 		};

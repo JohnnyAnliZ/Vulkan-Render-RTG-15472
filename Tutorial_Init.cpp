@@ -115,6 +115,8 @@ void Tutorial::init_tutorial(){
 	pbr_objects_pipeline.create(rtg, render_pass,0);
 	shadow_2D_pipeline.create(rtg, shadow_pass, 0);
 
+	std::cout<<"created pipelines"<<std::endl;
+
 	{//create descriptor pool
 		uint32_t per_workspace = uint32_t(rtg.workspaces.size());
 
@@ -221,7 +223,7 @@ void Tutorial::init_tutorial(){
 		}
 		
 		{/*Write the descriptor sets for camera and eye, these only need to be updated once since they have fixed size 
-		(texture is as well, but that's handled in load_textures(). Also, shadow atlas descriptor set gets handled in )*/
+		(texture is as well, but that's handled in load_textures(). Also, shadow atlas descriptor set gets handled in shadow_init)*/
 			VkDescriptorBufferInfo Camera_info{
 				.buffer = workspace.Camera.handle,
 				.offset = 0,
@@ -274,7 +276,7 @@ void Tutorial::init_shadow_mapping(){
 				.format = depth_format,
 				.samples = VK_SAMPLE_COUNT_1_BIT,
 				.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
-				.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+				.storeOp = VK_ATTACHMENT_STORE_OP_STORE,
 				.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
 				.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
 				.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
@@ -283,7 +285,7 @@ void Tutorial::init_shadow_mapping(){
 		};
 		//subpass
 		VkAttachmentReference depth_attachment_ref{
-			.attachment = 1,
+			.attachment = 0,
 			.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
 		};
 
@@ -291,20 +293,23 @@ void Tutorial::init_shadow_mapping(){
 			.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS,
 			.inputAttachmentCount = 0,
 			.pInputAttachments = nullptr,
-			.colorAttachmentCount = 1,
+			.colorAttachmentCount = 0,
+			.pColorAttachments = nullptr,
 			.pDepthStencilAttachment = &depth_attachment_ref,
 		};
+
 		//dependencies
 		std::array< VkSubpassDependency, 1 > dependencies {
 			VkSubpassDependency{
-				.srcSubpass = VK_SUBPASS_EXTERNAL,
-				.dstSubpass = 0,
+				.srcSubpass = 0,
+				.dstSubpass = VK_SUBPASS_EXTERNAL,
 				.srcStageMask = VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
-				.dstStageMask = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT,
+				.dstStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
 				.srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
-				.dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+				.dstAccessMask = VK_ACCESS_SHADER_READ_BIT,
 			}
 		};
+
 		VkRenderPassCreateInfo create_info{
 			.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
 			.attachmentCount = uint32_t(attachments.size()),
@@ -315,37 +320,57 @@ void Tutorial::init_shadow_mapping(){
 			.pDependencies = dependencies.data(),
 		};
 		VK( vkCreateRenderPass(rtg.device, &create_info, nullptr, &shadow_pass) );
-	}
+	}	
 
 
-    {//allocate an image for shadow atlas
-		for(auto const &l : scene72.lights){//TODO: THIS IS WRONG, these are actually individual lights, need to go through the whole graph to account for instancing
-			uint32_t shadow_map_size = l.second.shadow;
-			uint32_t faces = 0;
-			if(std::holds_alternative<S72::Light::Sun>(l.second.source)){
-				faces = 1;
-			}
-			else if(std::holds_alternative<S72::Light::Sphere>(l.second.source)){
+	{//go through the lights to count the lights and get a suitable shadow atlas size
+		std::deque<Item> current_nodes;
+		for(auto n : scene72.scene.roots){//start with the root nodes
+			current_nodes.emplace_back(Item{n,mat4::identity()});
+		}
+		while(!current_nodes.empty()){//go through the graph using this queue bfs setup (this creates two instances of a child if two nodes have it as one of the children)
+			auto [node, world_from_parent] = current_nodes.front();
+			current_nodes.pop_front();
 
-				faces = 6;
+			//this node's world transform
+			mat4 world_from_local = world_from_parent * node->parent_from_local();//accumulate transform
+	
+			if(node->light != nullptr){
+				std::variant< S72::Light::Sun, S72::Light::Sphere, S72::Light::Spot > &v = node->light->source;
+
+				uint32_t faces = 0;
+				if(std::holds_alternative<S72::Light::Sun>(v)){
+					S72::Light::Sun &sun = get<S72::Light::Sun>(v);
+					faces = sun.shadow_map_num;
+				}
+				else if(std::holds_alternative<S72::Light::Sphere>(v)){
+					S72::Light::Sphere &sphere = get<S72::Light::Sphere>(v);
+					faces = sphere.shadow_map_num;
+				}
+				else if(std::holds_alternative<S72::Light::Spot>(v)){
+					S72::Light::Spot &spot = get<S72::Light::Spot>(v);
+					faces = spot.shadow_map_num;
+				}
+
+				uint32_t shadow_map_size = node->light->shadow;
+				light_shadow_map_sizes.emplace_back(shadow_map_size);
+				total_shadow_map_size += shadow_map_size * shadow_map_size * faces;	
 			}
-			else if(std::holds_alternative<S72::Light::Spot>(l.second.source)){
-				faces = 1;
+			for(S72::Node *child : node->children){
+				current_nodes.emplace_back(child, world_from_local);
 			}
-			total_shadow_map_size += shadow_map_size * shadow_map_size * faces;
 		}
 		//find the fitting atlas size
 		for(uint32_t power = 1; power < 14; power++){//2 to the power of 12 ( 16384 side lenght ) should be large enough
-			if((1 << power) * ( 1 << power) > total_shadow_map_size){
+			if(((uint32_t) 1 << power) * ((uint32_t) 1 << power) > total_shadow_map_size){
 				atlas_size = 1<<power;
 				break;
 			}
 		}
 	}
 
-    for (Workspace &workspace : workspaces){
-        
 
+    for (Workspace &workspace : workspaces){
         {//create image for shadow atlas
             workspace.Shadow_Atlas = rtg.helpers.create_image(
                 VkExtent2D{.width = atlas_size, .height = atlas_size},
@@ -385,7 +410,6 @@ void Tutorial::init_shadow_mapping(){
         }
 
         {//create sampler
-            VkSampler shadow_sampler;
             VkSamplerCreateInfo sampler_info{
                 .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
                 .magFilter = VK_FILTER_LINEAR,
@@ -401,14 +425,14 @@ void Tutorial::init_shadow_mapping(){
 		{//allocate descriptor set for Shadow Atlas descriptor
 			VkDescriptorSetAllocateInfo alloc_info{
 				.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-				.descriptorPool = descriptor_pool,
+				.descriptorPool = texture_descriptor_pool,
 				.descriptorSetCount = 1,
 				.pSetLayouts = &lambertian_objects_pipeline.set2_Shadows,
 			};
 			VK(vkAllocateDescriptorSets(rtg.device, &alloc_info, &workspace.Shadow_Atlas_descriptors));
 		}
 
-
+		
         {//update the descriptor set for this mtfk
             VkDescriptorImageInfo Shadow_Atlas_info{
 				.sampler = depth_texture_sampler,
@@ -422,7 +446,7 @@ void Tutorial::init_shadow_mapping(){
 					.dstBinding = 0,
 					.dstArrayElement = 0,
 					.descriptorCount = 1,
-					.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+					.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
 					.pImageInfo = &Shadow_Atlas_info,
 				},
 			};

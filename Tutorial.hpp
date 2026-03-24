@@ -139,8 +139,10 @@ struct Tutorial : RTG::Application {
 		void create(RTG &,VkRenderPass render_pass, uint32_t subpass);
 		void destroy(RTG &);
 
-		void draw_all_objects(VkCommandBuffer const &cmd, mat4 const &CLIP_FROM_WORLD, vec4 const &_shadow_atlas);
+		
 	}shadow_2D_pipeline;
+	void draw_all_objects(VkCommandBuffer const &cmd, mat4 const &LIGHTS_CLIP_FROM_WORLD, vec4 const &_shadow_atlas);
+
 
 	struct LambertianObjectsPipeline{
 		//descriptor set layouts

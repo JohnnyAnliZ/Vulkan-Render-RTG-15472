@@ -53,7 +53,7 @@ void Tutorial::EnvMirrorObjectsPipeline::create(RTG &rtg, VkRenderPass render_pa
     }
 
     {//the set2_TEXTURE layout has a single descriptor for a sample2D used in the fragment shader
-        uint32_t const num_textures = 2;
+        uint32_t const num_textures = 2;//normal maps and texture
         std::array<VkDescriptorSetLayoutBinding, num_textures> bindings;
         for(uint32_t i = 0; i < num_textures; i++){
             bindings[i] = VkDescriptorSetLayoutBinding{

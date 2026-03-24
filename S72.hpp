@@ -259,11 +259,13 @@ struct S72 {
 		struct Sun {
 			float angle;
 			float strength;
+			static const uint32_t shadow_map_num = 1;
 		};
 		struct Sphere {
 			float radius;
 			float power;
 			float limit = std::numeric_limits< float >::infinity(); //optional, will be infinity if not specified
+			static const uint32_t shadow_map_num = 6;
 		};
 		struct Spot {
 			float radius;
@@ -271,6 +273,7 @@ struct S72 {
 			float limit = std::numeric_limits< float >::infinity(); //optional, will be infinity if not specified
 			float fov;
 			float blend;
+			static const uint32_t shadow_map_num = 1;
 		};
 		std::variant< Sun, Sphere, Spot > source;
 	};

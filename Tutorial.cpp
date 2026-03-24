@@ -32,7 +32,7 @@ Tutorial::Tutorial(RTG &rtg_) : rtg(rtg_) {
 
 	//load textures into texture_descriptor_sets
 	load_textures();
-
+	
 	//stuff for shadow_mapping(framebuffers, allocating image and stuff)
 	init_shadow_mapping();
 
@@ -59,6 +59,11 @@ Tutorial::~Tutorial() {
 		texture_sampler = VK_NULL_HANDLE;
 	}
 
+	if (depth_texture_sampler) {
+		vkDestroySampler(rtg.device, depth_texture_sampler, nullptr);
+		depth_texture_sampler = VK_NULL_HANDLE;
+	}
+
 	for (VkImageView &view : texture_views) {
 		vkDestroyImageView(rtg.device, view, nullptr);
 		view = VK_NULL_HANDLE;
@@ -78,7 +83,16 @@ Tutorial::~Tutorial() {
 	}
 
 	for (Workspace &workspace : workspaces) {
-
+		
+		//shadow stuff
+		rtg.helpers.destroy_image(std::move(workspace.Shadow_Atlas));
+		vkDestroyImageView(rtg.device, workspace.Shadow_Atlas_view, nullptr);
+		workspace.Shadow_Atlas_view = nullptr;
+		if(workspace.Shadow_Atlas_FB != VK_NULL_HANDLE){
+			vkDestroyFramebuffer(rtg.device, workspace.Shadow_Atlas_FB, nullptr);
+			workspace.Shadow_Atlas_FB = VK_NULL_HANDLE;
+		}
+		
 		if (workspace.command_buffer != VK_NULL_HANDLE) {
 			vkFreeCommandBuffers(rtg.device, command_pool, 1, &workspace.command_buffer);
 			workspace.command_buffer = VK_NULL_HANDLE;
@@ -125,11 +139,13 @@ Tutorial::~Tutorial() {
 		//(this also frees the descriptor sets allocated from the pool)
 	}
 
+
 	background_pipeline.destroy(rtg);
 	lines_pipeline.destroy(rtg);
 	lambertian_objects_pipeline.destroy(rtg);
 	env_mirror_objects_pipeline.destroy(rtg);
 	pbr_objects_pipeline.destroy(rtg);
+	shadow_2D_pipeline.destroy(rtg);
 
 	if (command_pool != VK_NULL_HANDLE) {
 		vkDestroyCommandPool(rtg.device, command_pool, nullptr);
@@ -139,6 +155,11 @@ Tutorial::~Tutorial() {
 	if (render_pass != VK_NULL_HANDLE) {
 		vkDestroyRenderPass(rtg.device, render_pass, nullptr);
 		render_pass = VK_NULL_HANDLE;
+	}
+
+	if (shadow_pass != VK_NULL_HANDLE) {
+		vkDestroyRenderPass(rtg.device, shadow_pass, nullptr);
+		shadow_pass = VK_NULL_HANDLE;
 	}
 
 }
@@ -452,7 +473,10 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params) {
 			0, nullptr,
 			0,nullptr
 		);
+		
 	}
+
+
 
 	{//shadow pass
 		std::array< VkClearValue, 1> clear_values{
@@ -462,7 +486,7 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params) {
 		VkRenderPassBeginInfo begin_info{
 			.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
 			.renderPass = shadow_pass,
-			.framebuffer = framebuffer,
+			.framebuffer = workspace.Shadow_Atlas_FB,
 			.renderArea{.offset = {.x = 0, .y =  0}, 
 				.extent = {.width = atlas_size, .height = atlas_size},
 			},
@@ -474,7 +498,17 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params) {
 		{//draw with the shadow map pipeline
 			vkCmdBindPipeline(workspace.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, shadow_2D_pipeline.handle);
 			
+			{//use object_vertices (offset 0) as vertex buffer binding 0: they all share vertex buffer
+				std::array<VkBuffer,1> vertex_buffers{object_vertices.handle};
+				std::array<VkDeviceSize, 1> offsets{0};
+				vkCmdBindVertexBuffers(workspace.command_buffer, 0, uint32_t(vertex_buffers.size()), vertex_buffers.data(), offsets.data());
+			}
+			
 			for(uint32_t i = 0; i<lights.size(); i++){
+				if(lights[i].shadow_atlases[0].z == 0.0f){
+					continue;
+				}
+
 				{//bind Transform
 					std::array<VkDescriptorSet, 1> descriptor_sets{
 						workspace.Transforms_descriptors,//0, Transforms
@@ -489,21 +523,21 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params) {
 				else if(lights[i].type == 1){//sphere
 					lights[i].compute_clip_from_world_sphere();
 					for(uint32_t j = 0; j < 6; j++){
-						shadow_2D_pipeline.draw_all_objects(workspace.command_buffer, lights[i].CLIP_FROM_WORLD[j], lights[i].shadow_atlases[j]);
+						draw_all_objects(workspace.command_buffer, lights[i].CLIP_FROM_WORLD[j], lights[i].shadow_atlases[j]);
 					}
 				}
 				else{//spot
 					lights[i].compute_clip_from_world_spot();
-					shadow_2D_pipeline.draw_all_objects(workspace.command_buffer, lights[i].CLIP_FROM_WORLD[0], lights[i].shadow_atlases[0]);
+					draw_all_objects(workspace.command_buffer, lights[i].CLIP_FROM_WORLD[0], lights[i].shadow_atlases[0]);
 				}
 			}
 		}
-
+		vkCmdEndRenderPass(workspace.command_buffer);
 	}
 
 
 
-	{//render pass
+	{//actual render pass
 		std::array< VkClearValue, 2 > clear_values{
 			VkClearValue{ .color{ .float32{0.7f,0.9f,0.3f,1.0f} } },
 			VkClearValue{ .depthStencil{ .depth = 1.0f, .stencil = 0 } },
@@ -540,7 +574,6 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params) {
 			vkCmdSetViewport(workspace.command_buffer, 0, 1, &viewport);
 		}
 
-		
 		{//draw with background pipeline
 			vkCmdBindPipeline(workspace.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, background_pipeline.handle);
 			{//push the constants
@@ -573,25 +606,17 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params) {
 			vkCmdDraw(workspace.command_buffer, uint32_t(lines_vertices.size()), 1, 0, 0);
 		}
 
-		{
-			{//use object_vertices (offset 0) as vertex buffer binding 0: they all share vertex buffer
-				std::array<VkBuffer,1> vertex_buffers{object_vertices.handle};
-				std::array<VkDeviceSize, 1> offsets{0};
-				vkCmdBindVertexBuffers(workspace.command_buffer, 0, uint32_t(vertex_buffers.size()), vertex_buffers.data(), offsets.data());
-			}
-
-			
-			
-
+		{		
 			//draw with the different materialed objects' pipelines
 			uint32_t index_offset = 0;//since they all share the same transforms descriptor as well, an offset for indexing the transforms is needed
 			if(!lambertian_object_instances.empty()){//draw the lambertian object instances
 				vkCmdBindPipeline(workspace.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, lambertian_objects_pipeline.handle);
 				
 				{//bind Lights and Transforms and Shadow descriptor sets:
-					std::array<VkDescriptorSet, 2> descriptor_sets{
+					std::array<VkDescriptorSet, 3> descriptor_sets{
 						workspace.Lights_descriptors,//0, Lights
 						workspace.Transforms_descriptors,//1, Transforms
+						workspace.Shadow_Atlas_descriptors, //2, shadows
 					};
 					vkCmdBindDescriptorSets(workspace.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, lambertian_objects_pipeline.layout,
 						0, uint32_t(descriptor_sets.size()),descriptor_sets.data(), 0, nullptr);
@@ -613,7 +638,7 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params) {
 						workspace.command_buffer,
 						VK_PIPELINE_BIND_POINT_GRAPHICS,
 						lambertian_objects_pipeline.layout,
-						2, 1, &texture_descriptor_sets[inst.texture],
+						3, 1, &texture_descriptor_sets[inst.texture],
 						0,nullptr
 					);
 					vkCmdDraw(workspace.command_buffer, inst.vertices.count, 1, inst.vertices.first, index+index_offset);
@@ -672,6 +697,9 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params) {
 
 					vkCmdBindDescriptorSets(workspace.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pbr_objects_pipeline.layout,
 						3, 1,&workspace.Lights_descriptors, 0, nullptr);
+
+					vkCmdBindDescriptorSets(workspace.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pbr_objects_pipeline.layout,
+						4, 1,&workspace.Shadow_Atlas_descriptors, 0, nullptr);
 				}
 
 				{//push constants for pbr pipeline
@@ -756,6 +784,7 @@ void Tutorial::update(float dt) {
 	pbr_object_instances.clear();
 
 	lights.clear();
+	light_shadow_map_sizes.clear();
 	// animation drivers, per-frame graph walk updating changes in transforms
 	update_scene(dt);
 

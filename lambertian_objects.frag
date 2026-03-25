@@ -48,6 +48,7 @@ void main(){
     for(uint i = 0; i < pc.light_count; i++){//go through the lights to add up irradiance
         float shadow = texture(SHADOW_ATLAS,
             compute_atlas_coordinates(LIGHTS[i], position));
+        shadow = 1.0f;
         irradiance_from_lights += shadow * diffuse_lighting_irradiance(LIGHTS[i], position, n);
     }
 

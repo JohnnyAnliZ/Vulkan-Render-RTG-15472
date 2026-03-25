@@ -423,6 +423,7 @@ void Tutorial::update_scene(float dt) {
 			point{.x = atlas_size, .y = atlas_size}, //square atlas, square shadow maps
 			light_shadow_map_sizes
 		);
+		//std::cout<<"allocated a texture atlas, with altas size: "<<atlas_size * atlas_size<<" and total shadow_map_size: "<<total_shadow_map_size<<std::endl;
 	}
 }
 

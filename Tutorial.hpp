@@ -121,7 +121,9 @@ struct Tutorial : RTG::Application {
 
 	};
 	static_assert(sizeof(Light) == 3*4*4 + 8*4 + 4 * 4 * 6 + 6 * 16 * 4, "Light structure is packed");    
-    
+	
+
+	bool shadows_on = false;
 	struct Shadow2DPipeline{
 		//descriptor set layouts
 		VkDescriptorSetLayout set0_Transforms =VK_NULL_HANDLE;
@@ -129,7 +131,6 @@ struct Tutorial : RTG::Application {
 		//push cosntants
 		struct Push{
 			mat4 LIGHT_CLIP_FROM_WORLD;
-			vec4 shadow_atlas;
 		};
 
 		//pipeline layout
@@ -139,7 +140,6 @@ struct Tutorial : RTG::Application {
 		void create(RTG &,VkRenderPass render_pass, uint32_t subpass);
 		void destroy(RTG &);
 
-		
 	}shadow_2D_pipeline;
 	void draw_all_objects(VkCommandBuffer const &cmd, mat4 const &LIGHTS_CLIP_FROM_WORLD, vec4 const &_shadow_atlas);
 

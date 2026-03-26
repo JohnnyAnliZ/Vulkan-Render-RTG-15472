@@ -6,6 +6,7 @@
 #include <cmath>
 #include <cstdint>
 #include <assert.h>
+#include <string>
 
 
 struct mat4;
@@ -38,6 +39,7 @@ struct quat {
 			w *= inv;
 		}
 	}
+
 };
 
 
@@ -150,6 +152,10 @@ struct vec4{
 	};
 	vec3 xyz(){
 		return vec3{x,y,z};
+	}
+
+	std::string convert_to_string(){
+		return std::to_string(x) + " "+ std::to_string(y) + " " + std::to_string(z) +" " + std::to_string(w);
 	}
 };
 

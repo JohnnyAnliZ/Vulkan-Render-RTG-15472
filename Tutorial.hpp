@@ -248,6 +248,7 @@ struct Tutorial : RTG::Application {
 		VkImageView Shadow_Atlas_view;
 		VkFramebuffer Shadow_Atlas_FB = VK_NULL_HANDLE;
 		VkDescriptorSet Shadow_Atlas_descriptors;
+		Helpers::AllocatedBuffer debug_buffer
 	};
 	std::vector< Workspace > workspaces;
 

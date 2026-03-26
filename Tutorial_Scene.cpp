@@ -458,7 +458,7 @@ void Tutorial::allocate_texture_atlas(
 		if(lights[i].type == 1) faces = S72::Light::Sphere::shadow_map_num;
 		if(lights[i].type == 2) faces = S72::Light::Spot::shadow_map_num;
 
-
+		
 		for(uint32_t face = 0; face < faces; face++){
 			
 			// populate the shadow_atlus member of the light struct
@@ -487,6 +487,7 @@ void Tutorial::allocate_texture_atlas(
 					pen.x = 0;
 			}
 		}
-        
+        //std::cout<<"allocating "<<faces <<" faces"<< "with each of them having side length "<< size<<std::endl;
+		//std::cout<<"and its shadow atlas coordinates are: "<<lights[i].shadow_atlases[0].convert_to_string()<<std::endl;
     }
 }

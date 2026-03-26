@@ -535,6 +535,8 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params) {
 		vkCmdEndRenderPass(workspace.command_buffer);
 	}
 
+
+
 	{//actual render pass
 		std::array< VkClearValue, 2 > clear_values{
 			VkClearValue{ .color{ .float32{0.7f,0.9f,0.3f,1.0f} } },
@@ -735,8 +737,74 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params) {
 
 		vkCmdEndRenderPass(workspace.command_buffer);
 	}
+
+	{//transfer shadow_atlas to debug buffer
+		VkImageMemoryBarrier barrier{
+			.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+			.srcAccessMask = VK_ACCESS_SHADER_READ_BIT, // or DEPTH_WRITE if just rendered
+			.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT,
+			.oldLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+			.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+			.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+			.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+			.image = workspace.Shadow_Atlas.handle,
+			.subresourceRange = {
+				VK_IMAGE_ASPECT_DEPTH_BIT,
+				0, 1,
+				0, 1
+			}
+		};
+
+		
+
+		vkCmdPipelineBarrier(
+			workspace.command_buffer,
+			VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+			VK_PIPELINE_STAGE_TRANSFER_BIT,
+			0,
+			0, nullptr,
+			0, nullptr,
+			1, &barrier
+		);
+		
+		VkBufferImageCopy region{
+			.bufferOffset = 0,
+			.bufferRowLength = 0,
+			.bufferImageHeight = 0,
+			.imageSubresource = {
+				VK_IMAGE_ASPECT_DEPTH_BIT,
+				0, 0, 1
+			},
+			.imageOffset = {0,0,0},
+			.imageExtent = {
+				atlas_size,
+				atlas_size,
+				1
+			}
+		};
+
+		workspace.debug_buffer = rtg.helpers.create_buffer(workspace.Shadow_Atlas.allocation.size,
+			VK_BUFFER_USAGE_STORAGE_BUFFER_BIT|VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+			VK_MEMORY_PROPERTY_HOST_COHERENT_BIT|VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT
+		);
+
+		vkCmdCopyImageToBuffer(
+			workspace.command_buffer,
+			workspace.Shadow_Atlas.handle,
+			VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+			workspace.debug_buffer.handle,
+			1,
+			&region
+		);
+		
+	}
+
+
 	//End Recording
 	VK(vkEndCommandBuffer(workspace.command_buffer));
+
+
+
 	
 	{//submit `workspace.command buffer` for the GPU to run:
 		std::array<VkSemaphore,1> wait_semaphores{
@@ -759,6 +827,18 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params) {
 			.pSignalSemaphores = signal_semaphores.data(),
 		};
 		VK(vkQueueSubmit(rtg.graphics_queue, 1, &submit_info, render_params.workspace_available));
+	}
+
+	{//now read the buffer and output it
+		for (uint32_t i = 0; i < atlas_size * atlas_size; i++) {
+			float * floats= reinterpret_cast<float *>(workspace.debug_buffer.allocation.data());
+			float d = floats[i];
+			
+			// process it
+		}
+		rtg.helpers.destroy_buffer(std::move(workspace.debug_buffer));
+
+
 	}
 }
 
@@ -1031,6 +1111,12 @@ void Tutorial::on_input(InputEvent const & evt) {
 		return;
 	}
 	//general controls
+
+	if(evt.type == InputEvent::KeyDown && evt.key.key == GLFW_KEY_M){
+		shadows_on = !shadows_on;
+		std::cout<<"Switching shadows "<<shadows_on<<std::endl;
+
+	}
 	if(evt.type == InputEvent::KeyDown && evt.key.key == GLFW_KEY_TAB){
 		//switch between 2 camera modes
 		if(camera_mode != CameraMode::Debug)camera_mode = CameraMode((int(camera_mode) + 1) % 2);

@@ -7,6 +7,10 @@ static uint32_t vert_code[] =
 #include "spv/shadows2D.vert.inl"
 ;
 
+static uint32_t frag_code[] = 
+#include "spv/shadows2D.frag.inl"
+;
+
 
 void Tutorial::init_shadow_mapping(){
     { //create shadow pass
@@ -129,11 +133,11 @@ void Tutorial::init_shadow_mapping(){
                 VkExtent2D{.width = atlas_size, .height = atlas_size},
                 VK_FORMAT_D32_SFLOAT, 
                 VK_IMAGE_TILING_OPTIMAL,
-                VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+                VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT|VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
                 VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT
             );
         }
-
+    
         {//create image view for it 
             VkImageViewCreateInfo view_info{
                 .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
@@ -160,6 +164,12 @@ void Tutorial::init_shadow_mapping(){
                 .layers = 1
             };
             VK(vkCreateFramebuffer(rtg.device, &fb_info, nullptr, &workspace.Shadow_Atlas_FB));
+        }
+        {
+            workspace.debug_buffer = rtg.helpers.create_buffer(workspace.Shadow_Atlas.allocation.size,
+                VK_BUFFER_USAGE_STORAGE_BUFFER_BIT|VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                VK_MEMORY_PROPERTY_HOST_COHERENT_BIT|VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, Helpers::Mapped
+            );
         }
 
         {//create sampler
@@ -229,6 +239,7 @@ void Tutorial::draw_all_objects(VkCommandBuffer const &cmd, mat4 const &LIGHTS_C
     float size_x = atlas_size_fl * _shadow_atlas.z;
     float size_y = atlas_size_fl * _shadow_atlas.w;
 
+    std::cout<<"set viewport transform to offsets: "<<offset_x<<" "<<offset_y<<" and sizes: "<<size_x<<" "<<size_y<<std::endl;
 
     {//scissor rectangle
         VkRect2D scissor{
@@ -251,7 +262,6 @@ void Tutorial::draw_all_objects(VkCommandBuffer const &cmd, mat4 const &LIGHTS_C
     {//depth bias
         vkCmdSetDepthBias(cmd, 1.75f, 0.0f, 1.75f);
     }
-
     
     //literally draw all the objects
     uint32_t index_offset = 0;
@@ -285,6 +295,7 @@ void Tutorial::draw_all_objects(VkCommandBuffer const &cmd, mat4 const &LIGHTS_C
 
 void Tutorial::Shadow2DPipeline::create(RTG &rtg, VkRenderPass render_pass, uint32_t subpass){
     VkShaderModule vert_module = rtg.helpers.create_shader_module(vert_code);
+    VkShaderModule frag_module = rtg.helpers.create_shader_module(frag_code);
 
     {//the set0_Transform layout holds an array of Transform structures in a storage buffer used in the vertex shader:
         std::array<VkDescriptorSetLayoutBinding, 1> bindings{
@@ -303,7 +314,7 @@ void Tutorial::Shadow2DPipeline::create(RTG &rtg, VkRenderPass render_pass, uint
         };
         VK(vkCreateDescriptorSetLayout(rtg.device, &create_info, nullptr, &set0_Transforms));
     }
-   
+    
 
     {//create pipeline layout
         VkPushConstantRange range{
@@ -328,11 +339,17 @@ void Tutorial::Shadow2DPipeline::create(RTG &rtg, VkRenderPass render_pass, uint
     }
 
     {//create pipeline
-        std::array<VkPipelineShaderStageCreateInfo, 1> stages{
+        std::array<VkPipelineShaderStageCreateInfo, 2> stages{
             VkPipelineShaderStageCreateInfo{
                 .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
                 .stage =VK_SHADER_STAGE_VERTEX_BIT,
                 .module = vert_module,
+                .pName = "main",
+            }, 
+            VkPipelineShaderStageCreateInfo{
+                .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+                .stage =VK_SHADER_STAGE_FRAGMENT_BIT,
+                .module = frag_module,
                 .pName = "main",
             }, 
         };
@@ -382,7 +399,7 @@ void Tutorial::Shadow2DPipeline::create(RTG &rtg, VkRenderPass render_pass, uint
 			.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
 			.depthTestEnable = VK_TRUE,
             .depthWriteEnable = VK_TRUE,
-            .depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL,
+            .depthCompareOp = VK_COMPARE_OP_LESS,
 			.depthBoundsTestEnable = VK_FALSE,
 			.stencilTestEnable = VK_FALSE,
 		};

@@ -70,6 +70,8 @@ TODO:
 
     lambertian: same as pbr diffuse
 
+    TODO: debug the lights for the falloff problem, looks too black and white
+
 //shadow mapping
 
     get the view projection matrix to transform local object coordinates into lights' clip space
@@ -93,4 +95,5 @@ TODO:
 
 
     step 2, make the shadow passes
+    
     

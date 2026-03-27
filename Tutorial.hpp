@@ -7,8 +7,8 @@
 #include "PosNorTanTexVertex.hpp"
 #include "InputEvent.hpp" 
 #include "S72.hpp"
-
-
+#include "stb_image_write.h"
+#include <iostream>
 
 
 #include "RTG.hpp"
@@ -104,7 +104,9 @@ struct Tutorial : RTG::Application {
 			} else {
 				up = vec3(0,1,0);
 			}
-			CLIP_FROM_WORLD[0] = perspective(fov, 1.0f, 0.01f, limit) * look_at(position.xyz(), (position + direction).xyz(), up);
+			up = vec3(0,1,0);
+			
+			CLIP_FROM_WORLD[0] = perspective(fov, 1.0f, 0.01f, INFINITY) * look_at_free(position.xyz(), vec3(0.0f)+direction.xyz(), up);
 		}
 		
 		void compute_clip_from_world_sphere(){
@@ -118,12 +120,12 @@ struct Tutorial : RTG::Application {
 			for(uint32_t i = 0; i < 6; i++)
 			CLIP_FROM_WORLD[i] = perspective(fov, 1.0f, 0.01f, limit) * views[i];
 		}
-
+		std::array<vec3, 8> get_frustum_corners() const;
 	};
 	static_assert(sizeof(Light) == 3*4*4 + 8*4 + 4 * 4 * 6 + 6 * 16 * 4, "Light structure is packed");    
 	
 
-	bool shadows_on = false;
+	bool shadows_on = true;
 	struct Shadow2DPipeline{
 		//descriptor set layouts
 		VkDescriptorSetLayout set0_Transforms =VK_NULL_HANDLE;
@@ -248,7 +250,7 @@ struct Tutorial : RTG::Application {
 		VkImageView Shadow_Atlas_view;
 		VkFramebuffer Shadow_Atlas_FB = VK_NULL_HANDLE;
 		VkDescriptorSet Shadow_Atlas_descriptors;
-		Helpers::AllocatedBuffer debug_buffer
+		Helpers::AllocatedBuffer debug_buffer;
 	};
 	std::vector< Workspace > workspaces;
 
@@ -443,6 +445,7 @@ struct Tutorial : RTG::Application {
 	OrbitCamera debug_camera;//used when camera_mode == CameraMode::Debug:
 	void add_debug_lines_frustrum();
 	void add_debug_lines_bbox(AABB &bbox, mat4 WORLD_FROM_LOCAL);
+	void add_cuboid_from_corners(std::array<vec3, 8> const &box_corners, uint8_t r, uint8_t g, uint8_t b);
 
 	mat4 CLIP_FROM_WORLD;//The CLIP_FROM_WORLD matrix for the camera currently used 
 	vec3 EYE = vec3(0,0,0); 

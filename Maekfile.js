@@ -30,6 +30,7 @@ const shared_objs = [
     maek.CPP('image_helpers.cpp'),
     maek.CPP('mat4.cpp'),
     maek.CPP('stb_image.cpp'),
+	maek.CPP('stb_image_write.cpp'),
 ];
 
 const main_objs = [
@@ -50,7 +51,6 @@ const main_objs = [
 
 const cube_objs = [
 	maek.CPP('cube_main.cpp'),
-	maek.CPP('stb_image_write.cpp'),
 	maek.CPP('cube_utillities.cpp'),
 ];
 
@@ -74,15 +74,19 @@ main_objs.push( maek.CPP('Tutorial-LinesPipeline.cpp', undefined, { depends:[...
 //uncomment to build objects shaders and pipeline:
 const objects_shaders = [
 	maek.GLSLC('objects.vert'),
-	maek.GLSLC('shadows2D.vert'),
 	maek.GLSLC('lambertian_objects.frag'),
 	maek.GLSLC('env_mirror_objects.frag'),
 	maek.GLSLC('pbr_objects.frag'),
 ];
+
+const shadows2D_shaders = [
+	maek.GLSLC('shadows2D.vert'),
+	maek.GLSLC('shadows2D.frag'),
+];
 main_objs.push( maek.CPP('LambertianObjectsPipeline.cpp', undefined, { depends:[...objects_shaders] } ) );
 main_objs.push( maek.CPP('EnvMirrorObjectsPipeline.cpp', undefined, { depends:[...objects_shaders] } ) );
 main_objs.push( maek.CPP('PbrObjectsPipeline.cpp', undefined, { depends:[...objects_shaders] } ) );
-main_objs.push( maek.CPP('Light2DShadowPipeline.cpp', undefined, { depends:[...objects_shaders] } ) );
+main_objs.push( maek.CPP('Light2DShadowPipeline.cpp', undefined, { depends:[...objects_shaders, ...shadows2D_shaders] } ) );
 
 
 

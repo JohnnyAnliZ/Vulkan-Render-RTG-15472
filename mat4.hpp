@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <assert.h>
 #include <string>
+#include <iostream>
 
 
 struct mat4;
@@ -150,11 +151,11 @@ struct vec4{
 		};
 		float data[4] = {};
 	};
-	vec3 xyz(){
+	vec3 xyz() const{
 		return vec3{x,y,z};
 	}
 
-	std::string convert_to_string(){
+	std::string convert_to_string() const{
 		return std::to_string(x) + " "+ std::to_string(y) + " " + std::to_string(z) +" " + std::to_string(w);
 	}
 };
@@ -340,6 +341,10 @@ inline vec4 operator+(vec4 const &a, vec4 const&b){
 	return vec4(a.x + b.x, a.y + b.y, a.z + b.z, a.w + b.w);
 }
 
+inline vec4 operator-(vec4 const &a, vec4 const&b){
+	return vec4(a.x - b.x, a.y - b.y, a.z - b.z, a.w - b.w);
+}
+
 
 inline vec4 operator*(mat4 const &A, vec4 const &b){
     vec4 ret;
@@ -434,15 +439,18 @@ inline mat4 perspective(float vfov, float aspect, float near, float far) {
 	const float a = aspect;
 	const float n = near;
 	const float f = far;
+	if(far==INFINITY)std::cout<<"infinte projection baby"<<std::endl;
+	float p33 = far == INFINITY ? -1.0f : -0.5f - 0.5f * (f+n)/(f-n);
+	float p34 = far == INFINITY ? -n : - (f*n)/(f-n);
 	return mat4{ //note: column-major storage order!
-		e/a,  0.0f,                      0.0f, 0.0f,
-		0.0f,   -e,                      0.0f, 0.0f,
-		0.0f, 0.0f,-0.5f - 0.5f * (f+n)/(f-n),-1.0f,
-		0.0f, 0.0f,             - (f*n)/(f-n), 0.0f,
+		e/a,  0.0f, 0.0f, 0.0f,
+		0.0f,   -e, 0.0f, 0.0f,
+		0.0f, 0.0f, p33,  -1.0f,
+		0.0f, 0.0f, p34,  0.0f,
 	};
-
-    
 }
+
+
 //look at matrix:
 // makes a camera-space-from-world matrix for a camera at eye looking toward
 // target with up-vector pointing (as-close-as-possible) along up.

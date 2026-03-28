@@ -215,9 +215,63 @@ vec3 specular_lighting_irradiance(Light light, vec3 surface_point, vec3 eye, vec
 
 }
 
+uint direction_to_cube_face(vec3 d){
+    uint face = 0;
+    d = normalize(d);
+    vec3 a = vec3(abs(d.x), abs(d.y), abs(d.z));
+
+    float u, v;
+
+    if (a.x >= a.y && a.x >= a.z)
+    {
+        if (d.x > 0) {
+            face = 0;
+            u = -d.z / a.x;
+            v =  d.y / a.x;
+        } else {
+            face = 1;
+            u =  d.z / a.x;
+            v =  d.y / a.x;
+        }
+    }
+    else if (a.y >= a.x && a.y >= a.z)
+    {
+        if (d.y > 0) {
+            face = 2;
+            u =  d.x / a.y;
+            v = -d.z / a.y;
+        } else {
+            face = 3;
+            u =  d.x / a.y;
+            v =  d.z / a.y;
+        }
+    }
+    else
+    {
+        if (d.z > 0) {
+            face = 4;
+            u =  d.x / a.z;
+            v =  d.y / a.z;
+        } else {
+            face = 5;
+            u =  d.x / a.z;
+            v = -d.y / a.z;
+        }
+    }
+    return face;
+}
+
 
 vec3 compute_atlas_coordinates(Light light, vec3 worldPos) {
-    vec4 light_clip = light.CLIP_FROM_WORLD[0] * vec4(worldPos, 1.0);
+    uint face = 0;
+    if(light.type == 2) face = 0;
+    else if(light.type == 1){
+        vec3 light_to_fragment = worldPos - light.position.xyz;
+        face = direction_to_cube_face(light_to_fragment);
+    }
+
+
+    vec4 light_clip = light.CLIP_FROM_WORLD[face] * vec4(worldPos, 1.0);
 
     if(light_clip.w <= 0.0)
         return vec3(0.0, 0.0, 0.0);
@@ -231,15 +285,13 @@ vec3 compute_atlas_coordinates(Light light, vec3 worldPos) {
         return vec3(0.0, 0.0, 0.0);
 
     vec2 atlas_uv;
-    atlas_uv.x = light.shadow_atlases[0].x + (uv.x) * light.shadow_atlases[0].z;
-    atlas_uv.y = light.shadow_atlases[0].y + (uv.y) * light.shadow_atlases[0].w;
-
-
+    atlas_uv.x = light.shadow_atlases[face].x + (uv.x) * light.shadow_atlases[face].z;
+    atlas_uv.y = light.shadow_atlases[face].y + (uv.y) * light.shadow_atlases[face].w;
 
     float depth = ndc.z;
-
-    
     return vec3(atlas_uv, depth);
 }
+
+
 
 #endif

@@ -78,10 +78,9 @@ void main(){
     vec3 diffuse_irradiance_from_lights = vec3(0.0);
     for(uint i = 0; i < pc.light_count; i++){
 
-        vec3 atlas_coordinates = compute_atlas_coordinates(LIGHTS[i], position);
-
+        vec3 atlas_coordinates = compute_atlas_coordinates(LIGHTS[i], position);      
         float shadow = texture(SHADOW_ATLAS, atlas_coordinates);
-        
+
         specular_irradiance_from_lights += shadow * specular_lighting_irradiance(LIGHTS[i], position, EYE, N, roughness, F0);
         diffuse_irradiance_from_lights += shadow * diffuse_lighting_irradiance(LIGHTS[i], position, N);
     }

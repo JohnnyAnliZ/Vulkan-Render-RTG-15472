@@ -125,8 +125,8 @@ void Tutorial::init_shadow_mapping(){
 			}
 		}
 	}
-
-
+    std::cout<<"total shadow map size is: "<<total_shadow_map_size<<std::endl;
+    std::cout<<"shadow atlas size is: "<<atlas_size<<std::endl;
     for (Workspace &workspace : workspaces){
         {//create image for shadow atlas
             workspace.Shadow_Atlas = rtg.helpers.create_image(
@@ -239,6 +239,7 @@ void Tutorial::draw_all_objects(VkCommandBuffer const &cmd, mat4 const &LIGHTS_C
     float size_x = atlas_size_fl * _shadow_atlas.z;
     float size_y = atlas_size_fl * _shadow_atlas.w;
 
+    //std::cout<<"set viewport transform to offsets: "<<offset_x<<" "<<offset_y<<" and sizes: "<<size_x<<" "<<size_y<<std::endl;
 
     {//scissor rectangle
         VkRect2D scissor{

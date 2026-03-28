@@ -428,7 +428,7 @@ void Tutorial::update_scene(float dt) {
 		//std::cout<<"allocated a texture atlas, with altas size: "<<atlas_size * atlas_size<<" and total shadow_map_size: "<<total_shadow_map_size<<std::endl;
 	}
 
-	std::cout<<"first light's shadow atlases: "<<lights[0].shadow_atlases[0].convert_to_string()<<std::endl;
+	
 }
 
 
@@ -491,7 +491,7 @@ void Tutorial::allocate_texture_atlas(
 					pen.x = 0;
 			}
 		}
-        //std::cout<<"allocating "<<faces <<" faces"<< "with each of them having side length "<< size<<std::endl;
-		//std::cout<<"and its shadow atlas coordinates are: "<<lights[i].shadow_atlases[0].convert_to_string()<<std::endl;
+        std::cout<<"for light: "<<i<<", type: "<<lights[i].type<<", allocating "<<faces <<" faces"<< "with each of them having side length "<< size<<std::endl;
+		std::cout<<"and its shadow atlas coordinates are: "<<lights[i].shadow_atlases[0].convert_to_string()<<std::endl;
     }
 }

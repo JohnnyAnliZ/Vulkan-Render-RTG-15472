@@ -69,8 +69,6 @@ struct Tutorial : RTG::Application {
 	}lines_pipeline;
 
 
-
-
 	struct Transform{
 		mat4 CLIP_FROM_LOCAL;
 		mat4 WORLD_FROM_LOCAL;
@@ -97,6 +95,7 @@ struct Tutorial : RTG::Application {
 		mat4 CLIP_FROM_WORLD[6];
 
 		void compute_clip_from_world_spot(){
+			assert(type == 2);
 			vec3 up;
 			if (abs(dot(direction.xyz(), vec3(0,1,0))) > 0.99f) {
 				// too parallel to Y axis → switch
@@ -106,20 +105,23 @@ struct Tutorial : RTG::Application {
 			}
 			up = vec3(0,1,0);
 			
-			CLIP_FROM_WORLD[0] = perspective(fov, 1.0f, 4.0f, INFINITY) * look_at_free(position.xyz(), vec3(0.0f)+direction.xyz(), up);
+			CLIP_FROM_WORLD[0] = perspective(fov, 1.0f, 1.0f, limit) * look_at_free(position.xyz(), vec3(0.0f)+direction.xyz(), up);
 		}
 		
 		void compute_clip_from_world_sphere(){
+			assert(type == 1);
 			mat4 views[6];
-			views[0] = look_at(position.xyz(), position.xyz() + vec3(1,0,0), vec3(0,-1,0));
-			views[1] = look_at(position.xyz(), position.xyz() + vec3(-1,0,0), vec3(0,-1,0));
-			views[2] = look_at(position.xyz(), position.xyz() + vec3(0,1,0), vec3(0,0,1));
-			views[3] = look_at(position.xyz(), position.xyz() + vec3(0,-1,0), vec3(0,0,-1));
-			views[4] = look_at(position.xyz(), position.xyz() + vec3(0,0,1), vec3(0,-1,0));
-			views[5] = look_at(position.xyz(), position.xyz() + vec3(0,0,-1), vec3(0,-1,0));
+			views[0] = look_at_free(position.xyz(), vec3(1,0,0), vec3(0,-1,0));
+			views[1] = look_at_free(position.xyz(), vec3(-1,0,0), vec3(0,-1,0));
+			views[2] = look_at_free(position.xyz(), vec3(0,1,0), vec3(0,0,1));
+			views[3] = look_at_free(position.xyz(), vec3(0,-1,0), vec3(0,0,-1));
+			views[4] = look_at_free(position.xyz(), vec3(0,0,1), vec3(0,-1,0));
+			views[5] = look_at_free(position.xyz(), vec3(0,0,-1), vec3(0,-1,0));
 			for(uint32_t i = 0; i < 6; i++)
-			CLIP_FROM_WORLD[i] = perspective(fov, 1.0f, 4.0f, limit) * views[i];
+			CLIP_FROM_WORLD[i] = perspective((float)M_PI / 2.0f, 1.0f, 1.0f, limit) * views[i];
 		}
+
+		std::array<vec3, 8> get_corners() const;
 		std::array<vec3, 8> get_frustum_corners() const;
 	};
 	static_assert(sizeof(Light) == 3*4*4 + 8*4 + 4 * 4 * 6 + 6 * 16 * 4, "Light structure is packed");    

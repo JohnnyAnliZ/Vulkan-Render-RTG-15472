@@ -558,13 +558,12 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params)
 				{ // sphere
 
 					for (uint32_t j = 0; j < 6; j++)
-					{
+					{	
 						draw_all_objects(workspace.command_buffer, lights[i].CLIP_FROM_WORLD[j], lights[i].shadow_atlases[j]);
 					}
 				}
 				else
 				{ // spot
-
 					// std::cout<<"computing CLIP_FROM_WORLD for: fov "<< lights[i].fov << "direction: "<<lights[i].direction.convert_to_string()<<std::endl;
 					draw_all_objects(workspace.command_buffer, lights[i].CLIP_FROM_WORLD[0], lights[i].shadow_atlases[0]);
 				}
@@ -573,7 +572,7 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params)
 		vkCmdEndRenderPass(workspace.command_buffer);
 	}
 
-	{ // transfer shadow_atlas to debug buffer
+	if(camera_mode == CameraMode::Debug){ // transfer shadow_atlas to debug buffer
 		VkImageMemoryBarrier barrier{
 			.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
 			.srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT, // or DEPTH_WRITE if just rendered
@@ -894,8 +893,9 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params)
 		};
 		VK(vkQueueSubmit(rtg.graphics_queue, 1, &submit_info, render_params.workspace_available));
 	}
-	vkQueueWaitIdle(rtg.graphics_queue);
-	{ // now read the debug buffer and output it
+	
+	if(camera_mode == CameraMode::Debug){ // now read the debug buffer and output it
+		vkQueueWaitIdle(rtg.graphics_queue);
 		std::vector<char> shadow_map_output;
 		shadow_map_output.resize(atlas_size * atlas_size);
 		if (workspace.debug_buffer.allocation.mapped == nullptr)
@@ -977,12 +977,12 @@ void Tutorial::update(float dt)
 			add_debug_lines_frustrum();
 			
 			//change debug camera to be spotlight
-			// lights[0].compute_clip_from_world_spot();
-			// CLIP_FROM_WORLD = lights[0].CLIP_FROM_WORLD[0];
-			// EYE = lights[0].position.xyz();
+			lights[0].compute_clip_from_world_sphere();
+			CLIP_FROM_WORLD = lights[0].CLIP_FROM_WORLD[0];
+			EYE = lights[0].position.xyz();
 
 			// add debug lines for lights
-			add_cuboid_from_corners(lights[0].get_frustum_corners(), 155, 22, 56);
+			//add_cuboid_from_corners(lights[0].get_frustum_corners(), 155, 22, 56);
 		}
 		else
 		{
@@ -1510,6 +1510,9 @@ vec3 Tutorial::OrbitCamera::get_eye() const
 							radius * sin_elev};
 	return eye;
 }
+
+
+
 
 std::array<vec3, 8> Tutorial::Light::get_frustum_corners() const
 { // only use this on spotlights, where a frustum is defined

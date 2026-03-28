@@ -381,6 +381,7 @@ void Tutorial::update_scene(float dt) {
 						.power = sphere.power,
 					});
 					faces = sphere.shadow_map_num;
+					lights.back().compute_clip_from_world_sphere();
 				}
 				else if(std::holds_alternative<S72::Light::Spot>(v)){
 					default_world_lights = false;
@@ -397,6 +398,7 @@ void Tutorial::update_scene(float dt) {
 						.blend = spot.blend,
 					});
 					faces = spot.shadow_map_num;
+					lights.back().compute_clip_from_world_spot();
 				}
 
 				uint32_t shadow_map_size = node->light->shadow;
@@ -425,6 +427,8 @@ void Tutorial::update_scene(float dt) {
 		);
 		//std::cout<<"allocated a texture atlas, with altas size: "<<atlas_size * atlas_size<<" and total shadow_map_size: "<<total_shadow_map_size<<std::endl;
 	}
+
+	std::cout<<"first light's shadow atlases: "<<lights[0].shadow_atlases[0].convert_to_string()<<std::endl;
 }
 
 

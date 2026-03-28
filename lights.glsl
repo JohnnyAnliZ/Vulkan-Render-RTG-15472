@@ -230,10 +230,15 @@ vec3 compute_atlas_coordinates(Light light, vec3 worldPos) {
        uv.y < 0.0 || uv.y > 1.0)
         return vec3(0.0, 0.0, 0.0);
 
-    vec2 atlas_uv = light.shadow_atlases[0].xy + uv * light.shadow_atlases[0].zw;
+    vec2 atlas_uv;
+    atlas_uv.x = light.shadow_atlases[0].x + (uv.x) * light.shadow_atlases[0].z;
+    atlas_uv.y = light.shadow_atlases[0].y + (uv.y) * light.shadow_atlases[0].w;
 
-    float depth = ndc.z * 0.5 + 0.5;
 
+
+    float depth = ndc.z;
+
+    
     return vec3(atlas_uv, depth);
 }
 

@@ -106,7 +106,7 @@ struct Tutorial : RTG::Application {
 			}
 			up = vec3(0,1,0);
 			
-			CLIP_FROM_WORLD[0] = perspective(fov, 1.0f, 0.01f, INFINITY) * look_at_free(position.xyz(), vec3(0.0f)+direction.xyz(), up);
+			CLIP_FROM_WORLD[0] = perspective(fov, 1.0f, 4.0f, INFINITY) * look_at_free(position.xyz(), vec3(0.0f)+direction.xyz(), up);
 		}
 		
 		void compute_clip_from_world_sphere(){
@@ -118,7 +118,7 @@ struct Tutorial : RTG::Application {
 			views[4] = look_at(position.xyz(), position.xyz() + vec3(0,0,1), vec3(0,-1,0));
 			views[5] = look_at(position.xyz(), position.xyz() + vec3(0,0,-1), vec3(0,-1,0));
 			for(uint32_t i = 0; i < 6; i++)
-			CLIP_FROM_WORLD[i] = perspective(fov, 1.0f, 0.01f, limit) * views[i];
+			CLIP_FROM_WORLD[i] = perspective(fov, 1.0f, 4.0f, limit) * views[i];
 		}
 		std::array<vec3, 8> get_frustum_corners() const;
 	};

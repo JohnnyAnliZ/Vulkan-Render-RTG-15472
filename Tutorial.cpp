@@ -556,7 +556,7 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params)
 				}
 				else if (lights[i].type == 1)
 				{ // sphere
-					lights[i].compute_clip_from_world_sphere();
+
 					for (uint32_t j = 0; j < 6; j++)
 					{
 						draw_all_objects(workspace.command_buffer, lights[i].CLIP_FROM_WORLD[j], lights[i].shadow_atlases[j]);
@@ -564,7 +564,7 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params)
 				}
 				else
 				{ // spot
-					lights[i].compute_clip_from_world_spot();
+
 					// std::cout<<"computing CLIP_FROM_WORLD for: fov "<< lights[i].fov << "direction: "<<lights[i].direction.convert_to_string()<<std::endl;
 					draw_all_objects(workspace.command_buffer, lights[i].CLIP_FROM_WORLD[0], lights[i].shadow_atlases[0]);
 				}
@@ -576,9 +576,9 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params)
 	{ // transfer shadow_atlas to debug buffer
 		VkImageMemoryBarrier barrier{
 			.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
-			.srcAccessMask = VK_ACCESS_SHADER_READ_BIT, // or DEPTH_WRITE if just rendered
+			.srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT, // or DEPTH_WRITE if just rendered
 			.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT,
-			.oldLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+			.oldLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL,
 			.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
 			.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
 			.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
@@ -614,7 +614,28 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params)
 			workspace.debug_buffer.handle,
 			1,
 			&region);
+		
+		VkBufferMemoryBarrier buffer_barrier{
+			.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
+			.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
+			.dstAccessMask = VK_ACCESS_HOST_READ_BIT,
+			.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+			.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+			.buffer = workspace.debug_buffer.handle,
+			.offset = 0,
+			.size = VK_WHOLE_SIZE
+		};
 
+		vkCmdPipelineBarrier(
+			workspace.command_buffer,
+			VK_PIPELINE_STAGE_TRANSFER_BIT,
+			VK_PIPELINE_STAGE_HOST_BIT,
+			0,
+			0, nullptr,
+			1, &buffer_barrier,
+			0, nullptr);
+			
+	
 		VkImageMemoryBarrier barrier2{
 			.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
 			.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT, // or DEPTH_WRITE if just rendered
@@ -638,6 +659,9 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params)
 			0, nullptr,
 			1, &barrier2);
 	}
+
+
+
 
 	{ // actual render pass
 		std::array<VkClearValue, 2> clear_values{
@@ -870,7 +894,6 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params)
 		};
 		VK(vkQueueSubmit(rtg.graphics_queue, 1, &submit_info, render_params.workspace_available));
 	}
-
 	vkQueueWaitIdle(rtg.graphics_queue);
 	{ // now read the debug buffer and output it
 		std::vector<char> shadow_map_output;
@@ -884,6 +907,7 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params)
 		}
 		stbi_write_png("debug/shadow_map_debug.png", atlas_size, atlas_size, 1, shadow_map_output.data(), atlas_size);
 	}
+
 }
 
 void Tutorial::update(float dt)
@@ -913,8 +937,6 @@ void Tutorial::update(float dt)
 
 	lights.clear();
 	light_shadow_map_sizes.clear();
-	// animation drivers, per-frame graph walk updating changes in transforms
-	update_scene(dt);
 
 	//----Update camera----
 	{ // compute CLIP_FROM_WORLD based on what camera mode it is now
@@ -955,9 +977,9 @@ void Tutorial::update(float dt)
 			add_debug_lines_frustrum();
 			
 			//change debug camera to be spotlight
-			lights[0].compute_clip_from_world_spot();
-			CLIP_FROM_WORLD = lights[0].CLIP_FROM_WORLD[0];
-			EYE = lights[0].position.xyz();
+			// lights[0].compute_clip_from_world_spot();
+			// CLIP_FROM_WORLD = lights[0].CLIP_FROM_WORLD[0];
+			// EYE = lights[0].position.xyz();
 
 			// add debug lines for lights
 			add_cuboid_from_corners(lights[0].get_frustum_corners(), 155, 22, 56);
@@ -967,6 +989,11 @@ void Tutorial::update(float dt)
 			assert(0 && "only three camera modes");
 		}
 	}
+
+
+	// animation drivers, per-frame graph walk updating changes in transforms
+	update_scene(dt);
+
 
 	if (default_world_lights)
 	{ // moving sun and sky:

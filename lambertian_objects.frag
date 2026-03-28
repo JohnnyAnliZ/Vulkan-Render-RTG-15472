@@ -39,20 +39,21 @@ void main(){
 
     //direction that the light is from(this should point to -z)
     vec3 albedo = texture(TEXTURE, vec2(texCoord.y,-texCoord.x)).rgb;
-
     
     vec3 irradiance_from_env = texture(DIFFUSE_IRRADIANCE, n).rgb;
 
 
     vec3 irradiance_from_lights = vec3(0);
     for(uint i = 0; i < pc.light_count; i++){//go through the lights to add up irradiance
-        float shadow = texture(SHADOW_ATLAS,
-            compute_atlas_coordinates(LIGHTS[i], position));
-        shadow = 1.0f;
+
+        vec3 atlas_coordinates = compute_atlas_coordinates(LIGHTS[i], position);
+    
+        float shadow = texture(SHADOW_ATLAS, atlas_coordinates);
         irradiance_from_lights += shadow * diffuse_lighting_irradiance(LIGHTS[i], position, n);
     }
 
 
     vec3 diffuse = (albedo / 3.14159265354 * (irradiance_from_env + irradiance_from_lights));
     outColor = vec4(diffuse, 1.0);
+
 }

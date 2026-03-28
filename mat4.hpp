@@ -439,7 +439,7 @@ inline mat4 perspective(float vfov, float aspect, float near, float far) {
 	const float a = aspect;
 	const float n = near;
 	const float f = far;
-	if(far==INFINITY)std::cout<<"infinte projection baby"<<std::endl;
+
 	float p33 = far == INFINITY ? -1.0f : -0.5f - 0.5f * (f+n)/(f-n);
 	float p34 = far == INFINITY ? -n : - (f*n)/(f-n);
 	return mat4{ //note: column-major storage order!

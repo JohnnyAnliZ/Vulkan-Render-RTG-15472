@@ -17,14 +17,14 @@ void Tutorial::init_shadow_mapping(){
 		//specify attachments
 		std::array< VkAttachmentDescription, 1 > attachments{
 			VkAttachmentDescription{ //0 - depth attachment:
-				.format = depth_format,
+				.format = VK_FORMAT_D32_SFLOAT,
 				.samples = VK_SAMPLE_COUNT_1_BIT,
 				.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
 				.storeOp = VK_ATTACHMENT_STORE_OP_STORE,
 				.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
 				.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
 				.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-				.finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+				.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL,
 			},
 		};
 		//subpass
@@ -167,7 +167,7 @@ void Tutorial::init_shadow_mapping(){
         }
         {
             workspace.debug_buffer = rtg.helpers.create_buffer(workspace.Shadow_Atlas.allocation.size,
-                VK_BUFFER_USAGE_STORAGE_BUFFER_BIT|VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                VK_BUFFER_USAGE_TRANSFER_DST_BIT,
                 VK_MEMORY_PROPERTY_HOST_COHERENT_BIT|VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, Helpers::Mapped
             );
         }
@@ -239,7 +239,6 @@ void Tutorial::draw_all_objects(VkCommandBuffer const &cmd, mat4 const &LIGHTS_C
     float size_x = atlas_size_fl * _shadow_atlas.z;
     float size_y = atlas_size_fl * _shadow_atlas.w;
 
-    std::cout<<"set viewport transform to offsets: "<<offset_x<<" "<<offset_y<<" and sizes: "<<size_x<<" "<<size_y<<std::endl;
 
     {//scissor rectangle
         VkRect2D scissor{

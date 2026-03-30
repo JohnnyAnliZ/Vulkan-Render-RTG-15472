@@ -118,7 +118,7 @@ struct Tutorial : RTG::Application {
 			views[4] = look_at_free(position.xyz(), vec3(0,0,1), vec3(0,-1,0));
 			views[5] = look_at_free(position.xyz(), vec3(0,0,-1), vec3(0,-1,0));
 			for(uint32_t i = 0; i < 6; i++)
-			CLIP_FROM_WORLD[i] = perspective((float)M_PI / 2.0f, 1.0f, 1.0f, limit) * views[i];
+			CLIP_FROM_WORLD[i] = perspective((float)M_PI / 2.0f, 1.0f, 0.2f, limit) * views[i];
 		}
 
 		std::array<vec3, 8> get_corners() const;

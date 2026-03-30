@@ -358,7 +358,7 @@ void Tutorial::update_scene(float dt) {
 				
 				uint32_t faces = 0;
 				if(std::holds_alternative<S72::Light::Sun>(v)){
-					continue;
+					//continue;
 					default_world_lights = false;
 					S72::Light::Sun &sun = get<S72::Light::Sun>(v);
 					lights.emplace_back(Light{
@@ -371,7 +371,7 @@ void Tutorial::update_scene(float dt) {
 					faces = sun.shadow_map_num;
 				}
 				else if(std::holds_alternative<S72::Light::Sphere>(v)){
-					
+
 					default_world_lights = false;
 					S72::Light::Sphere &sphere = get<S72::Light::Sphere>(v);
 					lights.emplace_back(Light{
@@ -386,7 +386,7 @@ void Tutorial::update_scene(float dt) {
 					lights.back().compute_clip_from_world_sphere();
 				}
 				else if(std::holds_alternative<S72::Light::Spot>(v)){
-					continue;
+
 					default_world_lights = false;
 					S72::Light::Spot &spot = get<S72::Light::Spot>(v);
 					lights.emplace_back(Light{

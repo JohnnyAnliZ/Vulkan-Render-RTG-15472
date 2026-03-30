@@ -269,6 +269,7 @@ vec3 compute_atlas_coordinates(Light light, vec3 worldPos) {
         vec3 light_to_fragment = worldPos - light.position.xyz;
         face = direction_to_cube_face(light_to_fragment);
     }
+    else if(light.type == 0) return vec3(0,0,0);
 
 
     vec4 light_clip = light.CLIP_FROM_WORLD[face] * vec4(worldPos, 1.0);

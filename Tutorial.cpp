@@ -35,6 +35,9 @@ Tutorial::Tutorial(RTG &rtg_) : rtg(rtg_)
 	// stuff for shadow_mapping(framebuffers, allocating image and stuff)
 	init_shadow_mapping();
 
+	//initial update
+	update(0.0f);
+	update_scene(0.0f);
 	std::cout << "finished loading stuff" << std::endl;
 }
 
@@ -950,19 +953,11 @@ void Tutorial::update(float dt)
 	last_update_time = current_time;
 
 	time = std::fmod(time + dt, 5.0f);
-	if(animating) time_elapsed += dt;
-
-	//----update scene graph----
-	// TODO: if there is no change in any of the nodes, the chunk below shouldn't be run
-	lines_vertices.clear();
-	lambertian_object_instances.clear();
-	env_mirror_object_instances.clear();
-	pbr_object_instances.clear();
-
-	lights.clear();
-	light_shadow_map_sizes.clear();
-
+	if(animating)update_scene(dt);
+	
 	//----Update camera----
+	lines_vertices.clear();
+
 	{ // compute CLIP_FROM_WORLD based on what camera mode it is now
 		if (camera_mode == CameraMode::Scene)
 		{ // unresponsive camera orbiting the origin
@@ -1015,8 +1010,7 @@ void Tutorial::update(float dt)
 	}
 
 
-	// animation drivers, per-frame graph walk updating changes in transforms
-	update_scene(dt);
+	
 
 
 	if (default_world_lights)

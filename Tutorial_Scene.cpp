@@ -186,6 +186,16 @@ void Tutorial::load_scene() {
 
 
 void Tutorial::update_scene(float dt) {
+	time_elapsed += dt;
+	{//clear stored data
+		lambertian_object_instances.clear();
+		env_mirror_object_instances.clear();
+		pbr_object_instances.clear();
+
+		lights.clear();
+		light_shadow_map_sizes.clear();
+	}
+
     // animation drivers, per-frame graph walk
     {//go through the animation drivers to update nodes' transforms
 		for(S72::Driver const &d: scene72.drivers){
@@ -280,8 +290,7 @@ void Tutorial::update_scene(float dt) {
 					mat3 linear(world_from_local);
 					mat3 normal_matrix = linear.inverse().transpose();
 			
-					if(std::holds_alternative<S72::Material::Lambertian>(v)){
-						
+					if(std::holds_alternative<S72::Material::Lambertian>(v)){	
 						lambertian_object_instances.emplace_back(
 							LambertianObjectInstance{
 								.vertices = meshes[node->mesh->name].verts,
@@ -312,6 +321,7 @@ void Tutorial::update_scene(float dt) {
 						);
 					}
 					else if(std::holds_alternative<S72::Material::PBR>(v)){
+
 						pbr_object_instances.emplace_back(
 							PbrObjectInstance{
 								.vertices = meshes[node->mesh->name].verts,
@@ -358,7 +368,7 @@ void Tutorial::update_scene(float dt) {
 				
 				uint32_t faces = 0;
 				if(std::holds_alternative<S72::Light::Sun>(v)){
-					//continue;
+					continue;
 					default_world_lights = false;
 					S72::Light::Sun &sun = get<S72::Light::Sun>(v);
 					lights.emplace_back(Light{
@@ -386,7 +396,7 @@ void Tutorial::update_scene(float dt) {
 					lights.back().compute_clip_from_world_sphere();
 				}
 				else if(std::holds_alternative<S72::Light::Spot>(v)){
-
+					//continue;
 					default_world_lights = false;
 					S72::Light::Spot &spot = get<S72::Light::Spot>(v);
 					lights.emplace_back(Light{
@@ -421,6 +431,7 @@ void Tutorial::update_scene(float dt) {
 				break;
 			}
 		}
+
 		assert(atlas_size == old_atlas_size);
 
 		//this function fils in the shadow_atlas member of each light
@@ -431,7 +442,6 @@ void Tutorial::update_scene(float dt) {
 		//std::cout<<"allocated a texture atlas, with altas size: "<<atlas_size * atlas_size<<" and total shadow_map_size: "<<total_shadow_map_size<<std::endl;
 	}
 
-	
 }
 
 

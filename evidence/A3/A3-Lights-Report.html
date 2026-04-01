@@ -169,16 +169,24 @@ I used an int to represent the type of light it is.
 
 <h3>Adding Direct Lighting to Materials <span class="atag">A3-materials</span></h3>
 
-<p class="placeholder">
+<p class="body">
 Since I didn't want spot lights and sphere lights or sun lights to be stored in different classes, so I just have 
 every light store 6 CLIP_FROM_WORLD matrices and 6 shadow_atlas transform coordinates to transform uvs to shadow atlas coordinates.
 Sphere lights need 6 shadow maps, sun light 4 and spotlight one, so in the shader, there will be maybe a better memory access, 
 since all the lights are stored in one storage buffer? 
 </p>
 
-<p class="placeholder">
-Include screenshots or recordings of your viewer showing proper behavior of lambertian and pbr materials under sphere, spot, and sun lights.
-</p>
+
+<figure>
+<img src="lambertian-with-sphere-spot-and-sun.PNG" width="600" height="333">
+<figcaption>sphere, spot and sun light on lambertian scene</figcaption>
+</figure>
+
+
+<figure>
+<img src="Lights-on-pbr-and-lambertian.PNG" width="600" height="333">
+<figcaption>different lights on pbr and lambertian materials</figcaption>
+</figure>
 
 <p class="placeholder">
 Include a graph showing the performance impact of adding additional lights to a test scene.

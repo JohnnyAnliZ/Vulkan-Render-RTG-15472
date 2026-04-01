@@ -466,8 +466,8 @@ struct Tutorial : RTG::Application {
 	//world has two lights env and sun
 	std::vector<Light> lights;
 	std::vector<uint32_t> light_shadow_map_sizes;//this should be aligned with lights
-	uint32_t total_shadow_map_size;
-	uint32_t atlas_size;//side length of the big square shadow atlas
+	uint32_t total_shadow_map_size = 0;
+	uint32_t atlas_size = 0;//side length of the big square shadow atlas
 
 	struct point
 	{

@@ -950,7 +950,7 @@ void Tutorial::update(float dt)
 	last_update_time = current_time;
 
 	time = std::fmod(time + dt, 5.0f);
-	time_elapsed += dt;
+	if(animating) time_elapsed += dt;
 
 	//----update scene graph----
 	// TODO: if there is no change in any of the nodes, the chunk below shouldn't be run
@@ -1001,9 +1001,9 @@ void Tutorial::update(float dt)
 			add_debug_lines_frustrum();
 			
 			//change debug camera to be spotlight
-			lights[0].compute_clip_from_world_sphere();
-			CLIP_FROM_WORLD = lights[0].CLIP_FROM_WORLD[0];
-			EYE = lights[0].position.xyz();
+			// lights[2].compute_clip_from_world_sphere();
+			// CLIP_FROM_WORLD = lights[2].CLIP_FROM_WORLD[0];
+			// EYE = lights[2].position.xyz();
 
 			// add debug lines for lights
 			//add_cuboid_from_corners(lights[0].get_frustum_corners(), 155, 22, 56);
@@ -1059,130 +1059,6 @@ void Tutorial::update(float dt)
 			.strength = 1.0f,
 		});
 	}
-
-	{ // lines stuff
-	  //  if(starts.size() > 64){
-	  //  	std::cout<<"too many nodes"<<std::endl;
-	  //  	object_instances.clear();
-	  //  	starts.clear();
-	  //  	lines_vertices.clear();
-	  //  	iters = 0;
-	  //  }
-	  //  if(lines_vertices.size() > 1024){
-	  //  	std::cout<<"too many vertices"<<std::endl;
-	  //  	object_instances.clear();
-	  //  	starts.clear();
-	  //  	lines_vertices.clear();
-	  //  	iters = 0;
-	  //  }
-
-		//----tree stuff----
-		// if(starts.empty())starts.emplace_back(vec3(0.0f,0.0f,0.0f));
-		// if(time_elapsed > 0.5f && growing){
-		// 	size_t num_nodes = starts.size();
-
-		// 	auto verts = meshes.begin();//go through the mesh vertcies (like with poker cards) to grow them on trees
-		// 	for(size_t i = 0; i < num_nodes; ++i){
-		// 		vec3 cur_node = starts[i];
-		// 		starts.emplace_back(emplace_random_line(cur_node,iters));
-
-		// 		if(dist(engine) > 0.2f){
-		// 			vec3 fruit_node = emplace_random_line(cur_node,iters);
-		// 			//make fruits
-		// 			if(dist(engine) > 1.0f-(iters-5) * 0.07f && iters>5){
-
-		// 				{//spiky ball shrunken by a factor
-
-		// 					float scaling_factor = 0.5f;
-		// 					mat4 WORLD_FROM_LOCAL{
-		// 						scaling_factor, 0.0f,  0.0f, 0.0f,
-		// 						0.0f,scaling_factor, 0.0f, 0.0f,
-		// 						0.0f, 0.0f,   scaling_factor, 0.0f,
-		// 						fruit_node.x,fruit_node.y,fruit_node.z, 1.0f,
-		// 					};
-		// 					object_instances.emplace_back(ObjectInstance{
-		// 						.vertices = fruit_vertices,//which vertices to use
-		// 						.transform{
-		// 							.CLIP_FROM_LOCAL = CLIP_FROM_WORLD * WORLD_FROM_LOCAL,
-		// 							.WORLD_FROM_LOCAL = WORLD_FROM_LOCAL,
-		// 							.WORLD_FROM_LOCAL_NORMAL = WORLD_FROM_LOCAL,
-		// 						},
-		// 						.texture = 1,
-		// 					});
-		// 				}
-		// 				verts++;
-		// 				if(verts == meshes.end())verts = meshes.begin();
-		// 			}
-		// 			//else branch
-		// 			else starts.emplace_back(fruit_node);
-		// 		}
-		// 	}
-		// 	// Remove the old nodes (keep only the new branches)
-		// 	starts.erase(starts.begin(), starts.begin() + num_nodes);
-		// 	time_elapsed = 0.0f;
-		// 	iters++;
-		// }
-	}
-
-	{ // make some objects
-
-		// { //plane translated +x by one unit:
-		// 	mat4 WORLD_FROM_LOCAL{
-		// 		1.0f, 0.0f, 0.0f, 0.0f,
-		// 		0.0f, 1.0f, 0.0f, 0.0f,
-		// 		0.0f, 0.0f, 1.0f, 0.0f,
-		// 		1.0f, 0.0f, 0.0f, 1.0f,
-		// 	};
-
-		// 	object_instances.emplace_back(ObjectInstance{
-		// 		.vertices = plane_vertices,
-		// 		.transform{
-		// 			.CLIP_FROM_LOCAL = CLIP_FROM_WORLD * WORLD_FROM_LOCAL,
-		// 			.WORLD_FROM_LOCAL = WORLD_FROM_LOCAL,
-		// 			.WORLD_FROM_LOCAL_NORMAL = WORLD_FROM_LOCAL,
-		// 		},
-		// 		.texture = 1,
-		// 	});
-		// }
-		// { //torus translated -x by one unit and rotated CCW around +y:
-		// 	float ang = time / 60.0f * 2.0f * float(M_PI) * 10.0f;
-		// 	float ca = std::cos(ang);
-		// 	float sa = std::sin(ang);
-		// 	mat4 WORLD_FROM_LOCAL{
-		// 		  ca, 0.0f,  -sa, 0.0f,
-		// 		0.0f, 1.0f, 0.0f, 0.0f,
-		// 		  sa, 0.0f,   ca, 0.0f,
-		// 		-1.0f,0.0f, 0.0f, 1.0f,
-		// 	};
-
-		// 	object_instances.emplace_back(ObjectInstance{
-		// 		.vertices = torus_vertices,
-		// 		.transform{
-		// 			.CLIP_FROM_LOCAL = CLIP_FROM_WORLD * WORLD_FROM_LOCAL,
-		// 			.WORLD_FROM_LOCAL = WORLD_FROM_LOCAL,
-		// 			.WORLD_FROM_LOCAL_NORMAL = WORLD_FROM_LOCAL,
-		// 		},
-		// 	});
-		// }
-		// {//spiky ball shrunken by a factor of 0.5
-		// 	float scaling_factor = 0.5f;
-		// 	mat4 WORLD_FROM_LOCAL{
-		// 		scaling_factor, 0.0f,  0.0f, 0.0f,
-		// 		0.0f,scaling_factor, 0.0f, 0.0f,
-		// 		0.0f, 0.0f,   scaling_factor, 0.0f,
-		// 		0.0f,0.0f, 0.0f, 1.0f,
-		// 	};
-		// 	object_instances.emplace_back(ObjectInstance{
-		// 		.vertices = fruit_vertices,
-		// 		.transform{
-		// 			.CLIP_FROM_LOCAL = CLIP_FROM_WORLD * WORLD_FROM_LOCAL,
-		// 			.WORLD_FROM_LOCAL = WORLD_FROM_LOCAL,
-		// 			.WORLD_FROM_LOCAL_NORMAL = WORLD_FROM_LOCAL,
-		// 		},
-		// 		.texture = 1,
-		// 	});
-		// }
-	}
 }
 
 // helper functions
@@ -1227,6 +1103,16 @@ void Tutorial::on_input(InputEvent const &evt)
 	{
 		shadows_on = !shadows_on;
 		std::cout << "Switching shadows " << shadows_on << std::endl;
+	}
+	if (evt.type == InputEvent::KeyDown && evt.key.key == GLFW_KEY_SPACE)
+	{
+		animating = !animating;
+		std::cout << "Switching animating " << animating << std::endl;
+	}
+	if (evt.type == InputEvent::KeyDown && evt.key.key == GLFW_KEY_R)
+	{
+		time_elapsed = 0.0f;
+		std::cout<<"resetting animation"<<std::endl;
 	}
 	if (evt.type == InputEvent::KeyDown && evt.key.key == GLFW_KEY_TAB)
 	{

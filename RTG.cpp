@@ -81,6 +81,7 @@ void RTG::Configuration::usage(std::function< void(const char *, const char *) >
 	callback("--physical-device <name>", "Run on the named physical device (guesses, otherwise).");
 	callback("--drawing-size <w> <h>", "Set the size of the surface to draw to.");
 	callback("--headless", "Don't create a window; read events from stdin.");
+	callback("--nocull", "Disable culling, could be good for shadow stuff, eg. shadows from objects outside the frustum");
 }
 
 

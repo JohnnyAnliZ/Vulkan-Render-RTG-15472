@@ -99,3 +99,132 @@ IndexedMesh make_spiky_icosphere(int subdivisions)
 
     return{vertices, triangles};
 }
+
+
+//could be useful in future but eh
+void make_tree_with_fruits(){
+    { // lines stuff
+	  //  if(starts.size() > 64){
+	  //  	std::cout<<"too many nodes"<<std::endl;
+	  //  	object_instances.clear();
+	  //  	starts.clear();
+	  //  	lines_vertices.clear();
+	  //  	iters = 0;
+	  //  }
+	  //  if(lines_vertices.size() > 1024){
+	  //  	std::cout<<"too many vertices"<<std::endl;
+	  //  	object_instances.clear();
+	  //  	starts.clear();
+	  //  	lines_vertices.clear();
+	  //  	iters = 0;
+	  //  }
+
+		//----tree stuff----
+		// if(starts.empty())starts.emplace_back(vec3(0.0f,0.0f,0.0f));
+		// if(time_elapsed > 0.5f && growing){
+		// 	size_t num_nodes = starts.size();
+
+		// 	auto verts = meshes.begin();//go through the mesh vertcies (like with poker cards) to grow them on trees
+		// 	for(size_t i = 0; i < num_nodes; ++i){
+		// 		vec3 cur_node = starts[i];
+		// 		starts.emplace_back(emplace_random_line(cur_node,iters));
+
+		// 		if(dist(engine) > 0.2f){
+		// 			vec3 fruit_node = emplace_random_line(cur_node,iters);
+		// 			//make fruits
+		// 			if(dist(engine) > 1.0f-(iters-5) * 0.07f && iters>5){
+
+		// 				{//spiky ball shrunken by a factor
+
+		// 					float scaling_factor = 0.5f;
+		// 					mat4 WORLD_FROM_LOCAL{
+		// 						scaling_factor, 0.0f,  0.0f, 0.0f,
+		// 						0.0f,scaling_factor, 0.0f, 0.0f,
+		// 						0.0f, 0.0f,   scaling_factor, 0.0f,
+		// 						fruit_node.x,fruit_node.y,fruit_node.z, 1.0f,
+		// 					};
+		// 					object_instances.emplace_back(ObjectInstance{
+		// 						.vertices = fruit_vertices,//which vertices to use
+		// 						.transform{
+		// 							.CLIP_FROM_LOCAL = CLIP_FROM_WORLD * WORLD_FROM_LOCAL,
+		// 							.WORLD_FROM_LOCAL = WORLD_FROM_LOCAL,
+		// 							.WORLD_FROM_LOCAL_NORMAL = WORLD_FROM_LOCAL,
+		// 						},
+		// 						.texture = 1,
+		// 					});
+		// 				}
+		// 				verts++;
+		// 				if(verts == meshes.end())verts = meshes.begin();
+		// 			}
+		// 			//else branch
+		// 			else starts.emplace_back(fruit_node);
+		// 		}
+		// 	}
+		// 	// Remove the old nodes (keep only the new branches)
+		// 	starts.erase(starts.begin(), starts.begin() + num_nodes);
+		// 	time_elapsed = 0.0f;
+		// 	iters++;
+		// }
+	}
+
+	{ // make some objects
+
+		// { //plane translated +x by one unit:
+		// 	mat4 WORLD_FROM_LOCAL{
+		// 		1.0f, 0.0f, 0.0f, 0.0f,
+		// 		0.0f, 1.0f, 0.0f, 0.0f,
+		// 		0.0f, 0.0f, 1.0f, 0.0f,
+		// 		1.0f, 0.0f, 0.0f, 1.0f,
+		// 	};
+
+		// 	object_instances.emplace_back(ObjectInstance{
+		// 		.vertices = plane_vertices,
+		// 		.transform{
+		// 			.CLIP_FROM_LOCAL = CLIP_FROM_WORLD * WORLD_FROM_LOCAL,
+		// 			.WORLD_FROM_LOCAL = WORLD_FROM_LOCAL,
+		// 			.WORLD_FROM_LOCAL_NORMAL = WORLD_FROM_LOCAL,
+		// 		},
+		// 		.texture = 1,
+		// 	});
+		// }
+		// { //torus translated -x by one unit and rotated CCW around +y:
+		// 	float ang = time / 60.0f * 2.0f * float(M_PI) * 10.0f;
+		// 	float ca = std::cos(ang);
+		// 	float sa = std::sin(ang);
+		// 	mat4 WORLD_FROM_LOCAL{
+		// 		  ca, 0.0f,  -sa, 0.0f,
+		// 		0.0f, 1.0f, 0.0f, 0.0f,
+		// 		  sa, 0.0f,   ca, 0.0f,
+		// 		-1.0f,0.0f, 0.0f, 1.0f,
+		// 	};
+
+		// 	object_instances.emplace_back(ObjectInstance{
+		// 		.vertices = torus_vertices,
+		// 		.transform{
+		// 			.CLIP_FROM_LOCAL = CLIP_FROM_WORLD * WORLD_FROM_LOCAL,
+		// 			.WORLD_FROM_LOCAL = WORLD_FROM_LOCAL,
+		// 			.WORLD_FROM_LOCAL_NORMAL = WORLD_FROM_LOCAL,
+		// 		},
+		// 	});
+		// }
+		// {//spiky ball shrunken by a factor of 0.5
+		// 	float scaling_factor = 0.5f;
+		// 	mat4 WORLD_FROM_LOCAL{
+		// 		scaling_factor, 0.0f,  0.0f, 0.0f,
+		// 		0.0f,scaling_factor, 0.0f, 0.0f,
+		// 		0.0f, 0.0f,   scaling_factor, 0.0f,
+		// 		0.0f,0.0f, 0.0f, 1.0f,
+		// 	};
+		// 	object_instances.emplace_back(ObjectInstance{
+		// 		.vertices = fruit_vertices,
+		// 		.transform{
+		// 			.CLIP_FROM_LOCAL = CLIP_FROM_WORLD * WORLD_FROM_LOCAL,
+		// 			.WORLD_FROM_LOCAL = WORLD_FROM_LOCAL,
+		// 			.WORLD_FROM_LOCAL_NORMAL = WORLD_FROM_LOCAL,
+		// 		},
+		// 		.texture = 1,
+		// 	});
+		// }
+	}
+}
+    

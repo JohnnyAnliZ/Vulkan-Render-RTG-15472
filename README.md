@@ -3,13 +3,17 @@ My work on top of nakluV https://github.com/15-472/nakluV, the Vulkan tutorial f
 
 # s72 Loader, s72 format to C++ data
 
-this is how to load a scene:
+# how to load a scene from blender(for windows):
+run scenes\Makefile.WINDOWS with
+$nmake -f makefile.windows
+Change the content of the .WINDOWS file to change settings of running the exporter python script located in scenes\exporters
 
-go to the nakluV directory：
+# (For myself) go to the nakluV directory:
 cd C:\Users\zal17\Documents\RealTimeG\nakluV
 
 run viewer with a scene:
 bin\main --scene scenes\examples\
+
 
 tonemap specifiers:
 bin\main --scene scenes\examples\materials.s72 --exposure 1 --tone-map REINHARD

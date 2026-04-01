@@ -260,7 +260,7 @@ void Tutorial::draw_all_objects(VkCommandBuffer const &cmd, mat4 const &LIGHTS_C
         vkCmdSetViewport(cmd, 0, 1, &viewport);
     }
     {//depth bias
-        vkCmdSetDepthBias(cmd, 1.75f, 0.0f, 1.75f);
+        vkCmdSetDepthBias(cmd, 3.75f, 0.0f, 5.75f);
     }
     
     //literally draw all the objects

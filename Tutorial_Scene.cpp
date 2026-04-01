@@ -494,7 +494,7 @@ void Tutorial::allocate_texture_atlas(
 					pen.x = 0;
 			}
 		}
-        std::cout<<"for light: "<<i<<", type: "<<lights[i].type<<", allocating "<<faces <<" faces"<< "with each of them having side length "<< size<<std::endl;
-		std::cout<<"and its shadow atlas coordinates are: "<<lights[i].shadow_atlases[0].convert_to_string()<<std::endl;
+        //std::cout<<"for light: "<<i<<", type: "<<lights[i].type<<", allocating "<<faces <<" faces"<< "with each of them having side length "<< size<<std::endl;
+		//std::cout<<"and its shadow atlas coordinates are: "<<lights[i].shadow_atlases[0].convert_to_string()<<std::endl;
     }
 }

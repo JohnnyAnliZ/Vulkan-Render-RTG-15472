@@ -130,7 +130,6 @@ void Tutorial::load_scene() {
 			}
 		}
 
-
 		{//a spiky fruit (durian?)
 			fruit_vertices.first = uint32_t(vertices.size());
 
@@ -190,8 +189,7 @@ void Tutorial::update_scene(float dt) {
 	{//clear stored data
 		lambertian_object_instances.clear();
 		env_mirror_object_instances.clear();
-		pbr_object_instances.clear();
-
+		pbr_object_instances.clear();	
 		lights.clear();
 		light_shadow_map_sizes.clear();
 	}
@@ -227,8 +225,6 @@ void Tutorial::update_scene(float dt) {
 				float t_total = *(it+1) - *it;
 				t_percentage = t/t_total;//between 0 and 1
 			}
-			
-			
 
 			switch (d.channel){
 				case  S72::Driver::Channel::translation:{
@@ -295,7 +291,6 @@ void Tutorial::update_scene(float dt) {
 							LambertianObjectInstance{
 								.vertices = meshes[node->mesh->name].verts,
 								.transform{
-									.CLIP_FROM_LOCAL = CLIP_FROM_WORLD * world_from_local,
 									.WORLD_FROM_LOCAL = world_from_local,
 									.WORLD_FROM_LOCAL_NORMAL = mat4(normal_matrix),//normal matrix
 								},
@@ -310,7 +305,6 @@ void Tutorial::update_scene(float dt) {
 							EnvMirrorObjectInstance{
 								.vertices = meshes[node->mesh->name].verts,
 								.transform{
-									.CLIP_FROM_LOCAL = CLIP_FROM_WORLD * world_from_local,
 									.WORLD_FROM_LOCAL = world_from_local,
 									.WORLD_FROM_LOCAL_NORMAL = mat4(normal_matrix),//normal matrix
 								},
@@ -326,7 +320,6 @@ void Tutorial::update_scene(float dt) {
 							PbrObjectInstance{
 								.vertices = meshes[node->mesh->name].verts,
 								.transform{
-									.CLIP_FROM_LOCAL = CLIP_FROM_WORLD * world_from_local,
 									.WORLD_FROM_LOCAL = world_from_local,
 									.WORLD_FROM_LOCAL_NORMAL = mat4(normal_matrix),//normal matrix	
 								},
@@ -336,9 +329,10 @@ void Tutorial::update_scene(float dt) {
 					}
 				}			
 				if(camera_mode == CameraMode::Debug){
+					//std::cout<<"adding debug bb0x"<<b.max.convert_to_string()<<", "<<b.min.convert_to_string()<<std::endl;
 					add_debug_lines_bbox(b, world_from_local);	
 				}	
-			}
+			}                             
 		
 			if(node->camera != nullptr){
 				//now that all the cameras are loaded
@@ -368,7 +362,6 @@ void Tutorial::update_scene(float dt) {
 				
 				uint32_t faces = 0;
 				if(std::holds_alternative<S72::Light::Sun>(v)){
-					continue;
 					default_world_lights = false;
 					S72::Light::Sun &sun = get<S72::Light::Sun>(v);
 					lights.emplace_back(Light{
@@ -384,19 +377,21 @@ void Tutorial::update_scene(float dt) {
 
 					default_world_lights = false;
 					S72::Light::Sphere &sphere = get<S72::Light::Sphere>(v);
-					lights.emplace_back(Light{
-						.color = color,
-						.position = world_trans,
-						.type = 1, //1 indcates SPHERE
-						.limit = sphere.limit,
-						.radius = sphere.radius,
-						.power = sphere.power,
-					});
-					faces = sphere.shadow_map_num;
-					lights.back().compute_clip_from_world_sphere();
+					const int duplicates = 1;
+					for(uint32_t i = 0; i < duplicates; i++){
+						lights.emplace_back(Light{
+							.color = color,
+							.position = world_trans,
+							.type = 1, //1 indcates SPHERE
+							.limit = sphere.limit,
+							.radius = sphere.radius,
+							.power = sphere.power,
+						});
+						faces = sphere.shadow_map_num;
+						lights.back().compute_clip_from_world_sphere();
+					}
 				}
 				else if(std::holds_alternative<S72::Light::Spot>(v)){
-					//continue;
 					default_world_lights = false;
 					S72::Light::Spot &spot = get<S72::Light::Spot>(v);
 					lights.emplace_back(Light{
@@ -421,25 +416,21 @@ void Tutorial::update_scene(float dt) {
 				current_nodes.emplace_back(child, world_from_local);
 			}
 		}
-		//now that the lights are uploaded, make the shadow atlas
+		
+		{//now that the lights are uploaded, make the shadow atlas
+			//find the fitting atlas size
+			uint32_t old_atlas_size = atlas_size;
+			atlas_size = Shadow2DPipeline::find_fitting_atlas_size(total_shadow_map_size);
+			assert(atlas_size == old_atlas_size);
 
-		//find the fitting atlas size
-		uint32_t old_atlas_size = atlas_size;
-		for(uint32_t power = 1; power < 14; power++){//2 to the power of 12 ( 16384 side lenght ) should be large enough
-			if(((uint32_t) 1 << power) * ((uint32_t) 1 << power) > total_shadow_map_size){
-				atlas_size = 1<<power;
-				break;
-			}
+			//this function fils in the shadow_atlas member of each light
+			allocate_texture_atlas(
+				point{.x = atlas_size, .y = atlas_size}, //square atlas, square shadow maps
+				light_shadow_map_sizes
+			);
+			//std::cout<<"allocated a texture atlas, with altas size: "<<atlas_size * atlas_size<<" and total shadow_map_size: "<<total_shadow_map_size<<std::endl;
 		}
-
-		assert(atlas_size == old_atlas_size);
-
-		//this function fils in the shadow_atlas member of each light
-		allocate_texture_atlas(
-			point{.x = atlas_size, .y = atlas_size}, //square atlas, square shadow maps
-			light_shadow_map_sizes
-		);
-		//std::cout<<"allocated a texture atlas, with altas size: "<<atlas_size * atlas_size<<" and total shadow_map_size: "<<total_shadow_map_size<<std::endl;
+		
 	}
 
 }
@@ -479,7 +470,7 @@ void Tutorial::allocate_texture_atlas(
 		for(uint32_t face = 0; face < faces; face++){
 			
 			// populate the shadow_atlus member of the light struct
-			lights[i].shadow_atlases[face].x = float(pen.x) / float(atlas_size_xy.x);
+			lights[i].shadow_atlases[face].x = float(pen.x) / float(atlas_size_xy.x);//with padding
 			lights[i].shadow_atlases[face].y = float(pen.y) / float(atlas_size_xy.y);
 			lights[i].shadow_atlases[face].z = float(size) / float(atlas_size_xy.x);
 			lights[i].shadow_atlases[face].w = float(size) / float(atlas_size_xy.y);

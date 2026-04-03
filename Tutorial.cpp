@@ -35,9 +35,7 @@ Tutorial::Tutorial(RTG &rtg_) : rtg(rtg_)
 	// stuff for shadow_mapping(framebuffers, allocating image and stuff)
 	init_shadow_mapping();
 
-	//initial update
-	update(0.0f);
-	update_scene(0.0f);
+
 	std::cout << "finished loading stuff" << std::endl;
 }
 
@@ -510,7 +508,7 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params)
 							 0, nullptr);
 	}
 
-	{ // shadow pass
+	if(shadows_on){ // shadow pass
 		std::array<VkClearValue, 1> clear_values{
 			VkClearValue{.depthStencil{.depth = 1.0f, .stencil = 0}},
 		};
@@ -527,8 +525,7 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params)
 			.pClearValues = clear_values.data(),
 		};
 		vkCmdBeginRenderPass(workspace.command_buffer, &begin_info, VK_SUBPASS_CONTENTS_INLINE);
-
-		if (shadows_on)
+		
 		{ // draw with the shadow map pipeline
 			vkCmdBindPipeline(workspace.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, shadow_2D_pipeline.handle);
 
@@ -575,12 +572,14 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params)
 		vkCmdEndRenderPass(workspace.command_buffer);
 	}
 
-	if(camera_mode == CameraMode::Debug){ // transfer shadow_atlas to debug buffer
+	
+	
+	if(shadow_dump){ // transfer shadow_atlas to debug buffer
 		VkImageMemoryBarrier barrier{
 			.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
 			.srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT, // or DEPTH_WRITE if just rendered
 			.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT,
-			.oldLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL,
+			.oldLayout = shadows_on ? VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
 			.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
 			.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
 			.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
@@ -661,7 +660,7 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params)
 			0, nullptr,
 			1, &barrier2);
 	}
-	else{
+	else if(shadows_on){
 		VkImageMemoryBarrier barrier2{
 			.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
 			.srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT, // or DEPTH_WRITE if just rendered
@@ -674,7 +673,7 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params)
 			.subresourceRange = {
 				VK_IMAGE_ASPECT_DEPTH_BIT,
 				0, 1,
-				0, 1}};
+				0, 1}};   
 
 		vkCmdPipelineBarrier(
 			workspace.command_buffer,
@@ -684,6 +683,33 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params)
 			0, nullptr,
 			0, nullptr,
 			1, &barrier2);
+	}
+	else {
+		VkImageMemoryBarrier barrier{
+			.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+			.srcAccessMask = VK_ACCESS_SHADER_READ_BIT,   // previous usage
+			.dstAccessMask = VK_ACCESS_SHADER_READ_BIT,   // next usage
+			.oldLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+			.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+			.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+			.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+			.image = workspace.Shadow_Atlas.handle,
+			.subresourceRange = {
+				VK_IMAGE_ASPECT_DEPTH_BIT,
+				0, 1,
+				0, 1
+			}
+		};
+
+		vkCmdPipelineBarrier(
+			workspace.command_buffer,
+			VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, // previous frame usage
+			VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, // current usage
+			0,
+			0, nullptr,
+			0, nullptr,
+			1, &barrier
+		);
 	}
 
 
@@ -893,8 +919,6 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params)
 		vkCmdEndRenderPass(workspace.command_buffer);
 	}
 
-
-
 	// End Recording
 	VK(vkEndCommandBuffer(workspace.command_buffer));
 
@@ -921,7 +945,7 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params)
 		VK(vkQueueSubmit(rtg.graphics_queue, 1, &submit_info, render_params.workspace_available));
 	}
 	
-	if(camera_mode == CameraMode::Debug){ // now read the debug buffer and output it
+	if(shadow_dump){ // now read the debug buffer and output it
 		vkQueueWaitIdle(rtg.graphics_queue);
 		std::vector<char> shadow_map_output;
 		shadow_map_output.resize(atlas_size * atlas_size);
@@ -933,6 +957,8 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params)
 			shadow_map_output[i] = static_cast<unsigned char>(floats[i] * 255.0f);
 		}
 		stbi_write_png("debug/shadow_map_debug.png", atlas_size, atlas_size, 1, shadow_map_output.data(), atlas_size);
+		std::cout<<"dumped a shadow map"<<std::endl;
+		shadow_dump = false;
 	}
 
 }
@@ -953,11 +979,12 @@ void Tutorial::update(float dt)
 	last_update_time = current_time;
 
 	time = std::fmod(time + dt, 5.0f);
-	if(animating)update_scene(dt);
-	
-	//----Update camera----
-	lines_vertices.clear();
 
+	//--update_scene
+	lines_vertices.clear();//this gets cleared always because 	
+	if(animating)update_scene(dt);
+
+	//----Update camera----
 	{ // compute CLIP_FROM_WORLD based on what camera mode it is now
 		if (camera_mode == CameraMode::Scene)
 		{ // unresponsive camera orbiting the origin
@@ -979,6 +1006,7 @@ void Tutorial::update(float dt)
 			}
 			else
 			{ // fixed, potentially keyframed camera that is loaded from s72 file
+
 				CLIP_FROM_WORLD = current_camera->second.clip_from_world();
 				EYE = current_camera->second.eye;
 			}
@@ -990,6 +1018,7 @@ void Tutorial::update(float dt)
 		}
 		else if (camera_mode == CameraMode::Debug)
 		{
+			
 			CLIP_FROM_WORLD = debug_camera.clip_from_world(rtg.swapchain_extent.width / float(rtg.swapchain_extent.height)); // aspect passed in
 			EYE = debug_camera.get_eye();
 			// draw frustrum for previous camera
@@ -1010,9 +1039,15 @@ void Tutorial::update(float dt)
 	}
 
 
+	//---compute CLIP_FROM_LOCAL for all instances---
+	for(auto & lamb_inst : lambertian_object_instances) 
+		lamb_inst.transform.CLIP_FROM_LOCAL = CLIP_FROM_WORLD * lamb_inst.transform.WORLD_FROM_LOCAL;
+	for(auto & env_mirror_inst : env_mirror_object_instances) 
+		env_mirror_inst.transform.CLIP_FROM_LOCAL = CLIP_FROM_WORLD * env_mirror_inst.transform.WORLD_FROM_LOCAL;
+	for(auto & pbr_inst : pbr_object_instances) pbr_inst.transform.CLIP_FROM_LOCAL = CLIP_FROM_WORLD * pbr_inst.transform.WORLD_FROM_LOCAL;
 	
 
-
+	//backup lights for when there's no lights
 	if (default_world_lights)
 	{ // moving sun and sky:
 		float cycle = (sin(6.28f * time / 5.0f) + 0.8f) / 1.8f;
@@ -1119,6 +1154,7 @@ void Tutorial::on_input(InputEvent const &evt)
 	}
 	if (evt.type == InputEvent::KeyDown && evt.key.key == GLFW_KEY_D)
 	{
+		if(camera_mode != CameraMode::Debug)shadow_dump = true;
 		// go between debug and not debug
 		CameraMode temp_current_mode = camera_mode;
 		camera_mode = prev_camera_mode;

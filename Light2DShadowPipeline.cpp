@@ -118,15 +118,11 @@ void Tutorial::init_shadow_mapping(){
 			}
 		}
 		//find the fitting atlas size
-		for(uint32_t power = 1; power < 14; power++){//2 to the power of 12 ( 16384 side lenght ) should be large enough
-			if(((uint32_t) 1 << power) * ((uint32_t) 1 << power) > total_shadow_map_size){
-				atlas_size = 1<<power;
-				break;
-			}
-		}
+		atlas_size = Shadow2DPipeline::find_fitting_atlas_size(total_shadow_map_size);
 	}
+    
     std::cout<<"total shadow map size is: "<<total_shadow_map_size<<std::endl;
-    std::cout<<"shadow atlas size is: "<<atlas_size<<std::endl;
+    std::cout<<"shadow atlas total size is: "<<atlas_size<<std::endl;
     for (Workspace &workspace : workspaces){
         {//create image for shadow atlas
             workspace.Shadow_Atlas = rtg.helpers.create_image(
@@ -152,7 +148,7 @@ void Tutorial::init_shadow_mapping(){
             };
             VK( vkCreateImageView(rtg.device, &view_info, nullptr, &workspace.Shadow_Atlas_view));
         }
-
+        
         {//framebuffer 
             VkFramebufferCreateInfo fb_info{
                 .sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
@@ -194,8 +190,8 @@ void Tutorial::init_shadow_mapping(){
 			};
 			VK(vkAllocateDescriptorSets(rtg.device, &alloc_info, &workspace.Shadow_Atlas_descriptors));
 		}
-
-		
+        
+        
         {//update the descriptor set for this mtfk
             VkDescriptorImageInfo Shadow_Atlas_info{
 				.sampler = depth_texture_sampler,
@@ -213,7 +209,7 @@ void Tutorial::init_shadow_mapping(){
 					.pImageInfo = &Shadow_Atlas_info,
 				},
 			};
-
+            
 			vkUpdateDescriptorSets(
 				rtg.device, //device
 				uint32_t(writes.size()), //descriptorWriteCount
@@ -222,7 +218,7 @@ void Tutorial::init_shadow_mapping(){
 				nullptr //pDescriptorCopies
 			);
         }
-
+        
     }
 }
 
@@ -442,4 +438,14 @@ void Tutorial::Shadow2DPipeline::destroy(RTG &rtg){
 		set0_Transforms = VK_NULL_HANDLE;
 	}
 
+}
+
+uint32_t Tutorial::Shadow2DPipeline::find_fitting_atlas_size(uint64_t total_shadow_map_size){
+    for(uint32_t power = 1; power < 20; power++){//2 to the power of 12 ( 16384 side lenght ) should be large enough
+        if(((uint64_t) 1 << power) * ((uint64_t) 1 << power) > total_shadow_map_size){
+            return 1<<power;
+        }
+    }
+    std::cerr<<"didn't find it after 2 to the 20, shadow map too big or something?"<<std::endl;
+    return 0;
 }

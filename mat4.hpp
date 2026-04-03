@@ -123,6 +123,10 @@ struct vec3{
         z *= scalar;
         return *this;
     }
+
+	std::string convert_to_string() const{
+		return std::to_string(x) + " "+ std::to_string(y) + " " + std::to_string(z);
+	}
 };
 static_assert(sizeof(vec3) == 3 * 4 );
 

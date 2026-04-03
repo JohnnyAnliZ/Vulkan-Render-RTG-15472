@@ -369,6 +369,8 @@ void Tutorial::load_textures(){
 	}
 
 	{ //create the texture descriptor pool
+		uint32_t per_workspace = uint32_t(rtg.workspaces.size());
+
 		uint32_t num_lambertian = 0;
 		uint32_t num_envmirror= 0;
 		uint32_t num_pbr = 0;
@@ -385,18 +387,18 @@ void Tutorial::load_textures(){
 		std::array< VkDescriptorPoolSize, 1> pool_sizes{
 			VkDescriptorPoolSize{
 				.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-				.descriptorCount = num_lambertian * 4 + num_envmirror * 2 + num_pbr * 8, //one descriptor per set, one set per texture
+				.descriptorCount = num_lambertian * 4 + num_envmirror * 2 + num_pbr * 8 , //one descriptor per set, one set per texture
 			},
 		};
 		
 		VkDescriptorPoolCreateInfo create_info{
 			.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
 			.flags = 0, //because CREATE_FREE_DESCRIPTOR_SET_BIT isn't included, *can't* free individual descriptors allocated from this pool
-			.maxSets = num_lambertian * 2 + num_envmirror + num_pbr * 2, //lambertian and pbr have shadow map
+			.maxSets = num_lambertian * (1+per_workspace)   + num_envmirror + num_pbr * (1+per_workspace), //lambertian and pbr have shadow map
 			.poolSizeCount = uint32_t(pool_sizes.size()),
 			.pPoolSizes = pool_sizes.data(),
 		};
-		
+		std::cout<<"texture descriptor pool has max count"<<num_lambertian * (1+per_workspace)   + num_envmirror + num_pbr * (1+per_workspace)<<std::endl;
 		VK( vkCreateDescriptorPool(rtg.device, &create_info, nullptr, &texture_descriptor_pool) );	
 	}
 

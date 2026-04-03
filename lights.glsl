@@ -283,7 +283,7 @@ vec3 compute_atlas_coordinates(Light light, vec3 worldPos) {
 
     if(uv.x < 0.0 || uv.x > 1.0 ||
        uv.y < 0.0 || uv.y > 1.0)
-        return vec3(0.0, 0.0, 0.0);
+        return vec3(0.0, 0.0, 1.0);
 
     vec2 atlas_uv;
     atlas_uv.x = light.shadow_atlases[face].x + (uv.x) * light.shadow_atlases[face].z;

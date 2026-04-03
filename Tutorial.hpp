@@ -128,6 +128,7 @@ struct Tutorial : RTG::Application {
 	
 
 	bool shadows_on = true;
+	bool shadow_dump = false;
 	struct Shadow2DPipeline{
 		//descriptor set layouts
 		VkDescriptorSetLayout set0_Transforms =VK_NULL_HANDLE;
@@ -143,7 +144,7 @@ struct Tutorial : RTG::Application {
 		VkPipeline handle = VK_NULL_HANDLE;
 		void create(RTG &,VkRenderPass render_pass, uint32_t subpass);
 		void destroy(RTG &);
-
+		static uint32_t find_fitting_atlas_size(uint64_t total_shadow_map_size);
 	}shadow_2D_pipeline;
 	void draw_all_objects(VkCommandBuffer const &cmd, mat4 const &LIGHTS_CLIP_FROM_WORLD, vec4 const &_shadow_atlas);
 
@@ -380,7 +381,7 @@ struct Tutorial : RTG::Application {
 	uint32_t frame_number = 0;
 	float frame_time = 0.0f;
 
-	bool animating = false;
+	bool animating = true;
 
 	
 
@@ -466,7 +467,7 @@ struct Tutorial : RTG::Application {
 	//world has two lights env and sun
 	std::vector<Light> lights;
 	std::vector<uint32_t> light_shadow_map_sizes;//this should be aligned with lights
-	uint32_t total_shadow_map_size = 0;
+	uint64_t total_shadow_map_size = 0;
 	uint32_t atlas_size = 0;//side length of the big square shadow atlas
 
 	struct point

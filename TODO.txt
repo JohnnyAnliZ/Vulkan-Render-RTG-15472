@@ -96,4 +96,10 @@ TODO:
 
     step 2, make the shadow passes
     
-    
+4/1/2026
+Problem: I want to really figure out how to separate the scene and the camera updating
+    Bottom line: transforms uploaded to the shader needs to be updated everytime the cameras or the scene updates
+Solution: maybe always update camera and always compute CLIP_FROM_LOCAL for every instance at the end of update 
+
+Problem: Somehow shadow map dumping doesn't work no more    
+Solution: no solution, turns out it's just that the shadow map is too big, takes too long 

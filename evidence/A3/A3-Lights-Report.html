@@ -155,6 +155,10 @@ Wood normal map and Tile textures that gets mapped onto the wall and real vase r
 <li class="body"><code>--camera <var>CAMERA_NAME</var></code> -- optional -- select camera named <code><var>CAMERA_NAME</var></code></li>
 <li class="body"><code>--drawing-size <var>width</var> <var>height</var></code> -- optional -- specify window size </li>
 <li class="body"><code>--headless </code> -- optional -- run in headless mode </li>
+<li class="body"><code>--exposure <var>e</var></code> -- optional -- change exposure of tone mapping, default is 0 </li>
+<li class="body"><code>--tone-map <var>type</var></code> -- optional -- change curve of tone mapping, default is linear </li>
+
+
 </ul>
 
 <h2>Evidence</h2>
@@ -188,29 +192,29 @@ since all the lights are stored in one storage buffer?
 <figcaption>different lights on pbr and lambertian materials</figcaption>
 </figure>
 
-<p class="placeholder">
-Include a graph showing the performance impact of adding additional lights to a test scene.
-Document how you made the scene and what kind of lights and camera positioning you used.
-(Disable shadows for this test.)
-We would theoretically expect a linear increase in computing time; is this borne out in practice?
-How many lights can your viewer handle at a reasonable frame rate?
+<p class="body">
+I just did two scenes with pink default pbr and lambertian materials. Data is collected using RenderDoc. 
+The relationship is a rather linear increase at large numbers. My viewer could handle around 200 lights at barely 16ms. 
 </p>
 
+<figure>
+<img src="light-stress-testing.PNG" width="600" height="333">
+<figcaption>20 sphere lights on lambertian sphere</figcaption>
+</figure>
 <figure>
 <!-- Feel free to use and duplicate the below example graph to plot data
  	 Edit labels and variables in script below the canvas -->
 <canvas id="A3-light-perf" style="display:block; width:100%; max-width:600px; margin:0 auto; background:#fff;"></canvas>
 <figcaption>
 The performance of my materials on a given number of lights.
-The result of (my tone-mapping curve) applied to a color of increasing intensity.
 </figcaption>
 </figure>
 <script>
 //adding an event listener so that this chart gets made *after* the document loads:
 window.addEventListener('load', () => {
 	const lights     = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000];
-	const frameTimeL = [16.67, 16.50, 16.81, 16.53, 15.0, 18.0, 20.1, 25.7, 25.0, 20.0, 30.0, 40.0];
-	const frameTimeP = [10, 20, 30, 30, 30, 40, 50, 60, 60, 60, 70, 80];
+	const frameTimeL = [16, 16, 16, 16, 16, 16, 16, 16, 33, 70, 170, 400];
+	const frameTimeP = [16, 16, 16, 16, 16, 16, 17, 17, 40, 100, 195, 500];
 	//if your tone mapping handles color channels separately
 
 	// Chart.js supports many types of charts and configuration options.
@@ -246,27 +250,30 @@ window.addEventListener('load', () => {
 
 <h3>Adding Shadows for Spot Lights <span class="atag">A3-shadows</span></h3>
 
-<p class="placeholder">
-Cover, at least:
-how (and when) your viewer renders shadow maps;
-how your viewer works to avoid shadow map artifacts (e.g., rendering backfaces; using bias/offset; ...);
-how cube map textures are provided to materials;
-how many PCF samples your code takes and how it weights them.
+<p class="body">
+I render shadowmaps before the actual render pass; 
+There's a depth bias set before each draw pass, I could change the depth bias based on the resolution of the shadow map;
+The material doesn't sample cube shadow maps using a normalized direction vector, but instead, a face number is computed in 
+shader using the normalized direction vector, then the uv coordinates are computed using the corresponding face's CLIP_FROM_WORLD
+matrix, and the offset in the shadow atlas coordinates are calculated using the face's atlas offsets and the computed uvs.
+I'm taking 4 samples, weighted linearly using vulkan's sampler's linear interpolation option.
+</p>
+
+<figure>
+<img src="Shadow-map-different-sizes-on-pbr-and-lambertian.PNG" width="600" height="333">
+<figcaption>spot light shadows on pbr and lambertian materials with different shadow map resolutions</figcaption>
+</figure>
+
+<p class="body">
+I rendered the lights-mix scene in 4k with 4096 by 4096 shadow maps for each of the cube face for the sphere light and for each of the spot lights. My pipeline
+is configured that when I turn shadows off, the previously render shadow map persists and still continues getting sampled, even without the shadow pass updating the 
+shadow maps. The video shows that, when shadow maps are being rendered, the frame time goes up to 20ms, and when it's off it's 16ms again. 
 </p>
 
 
-<p class="placeholder">
-Include output images showing that spot light shadows are working correctly for both lambertian and pbr materials.
-</p>
-<p class="placeholder">
-Include output images showing that "shadow" light parameter does actually change the shadow map resolution.
-</p>
-
-<p class="placeholder">
-Include a graph showing the performance impact of adding shadowing to lights to a scene.
-Attempt to separate the performance impact of shadow map rendering and shadow map sampling (e.g., by testing the same scenes with per-frame rendered shadow maps and pre-rendered shadow maps). Which is larger?
-</p>
-
+<video width="640" height="339" controls>
+<source src="shadow-pass-on-off.mp4" type="video/mp4" />
+</video>
 
 
 <h3>Extra: Light Sort <span class="atag extra">A3x-sort</span></h3>
@@ -313,14 +320,21 @@ Include images from a debug camera, showing how the shadow map cascade fits the 
 <h3>Extra: Shadows for Sphere Lights <span class="atag extra">A3x-cube</span></h3>
 
 <p class="placeholder">
-Cover, at least:
-how you chose to set up cameras for cube map rendering
+I just have 6 draws to render shadow maps for 6 faces of the sphere light cubemap 
 </p>
 
 <p class="placeholder">
-Include images or video showing a scene rendered with a shadow-casting sphere light.
-Show that there are no artifacts at the edges or corners of the shadow map cube.
+In this screenshot, there's no clear artifacts of the cubemap edge seam issue, but in my plato's cave demo, you 
+could see that there is an issue with the seam of the cubemap being a thin line. This is because the shadowmap sampler
+is filtering to some other wrong cube face. This error is due to a major flaw in my shadow atlas design, where I try to pack cube maps
+naively into the same atlas as single-faced maps. One solution to this would be to have multiple shadow atlas descriptors, each having 
+a fixed face number and it's god-intended sampling method. 
 </p>
+
+<figure>
+<img src="sphere-shadow.PNG" width="600" height="333">
+<figcaption>sphere light shadow</figcaption>
+</figure>
 
 
 <h3>Extra: Other <span class="atag extra">A3x-*</span></h3>
@@ -331,10 +345,7 @@ If you have received instructor permission to pursue another extra credit activi
 
 
 
-<p class="placeholder">
-Include images or video showing a scene rendered with a shadow-casting sphere light.
-Show that there are no artifacts at the edges or corners of the shadow map cube.
-</p>
+
 
 
 

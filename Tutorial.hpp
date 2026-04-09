@@ -2,13 +2,20 @@
 
 #include "mat4.hpp"
 #include "GeometryGen.hpp"
-#include "PosColVertex.hpp"
+
 #include "PosNorTexVertex.hpp"
 #include "PosNorTanTexVertex.hpp"
 #include "InputEvent.hpp" 
 #include "S72.hpp"
 #include "stb_image_write.h"
 #include <iostream>
+
+#include "BackgroundPipeline.hpp"
+#include "LinesPipeline.hpp"
+#include "TextureDebugPipeline.hpp"
+#include "ObjectPipelines.hpp"
+#include "Shadow2DPipeline.hpp"
+#include "AddVectorSourcesPipeline.hpp"
 
 
 #include "RTG.hpp"
@@ -33,40 +40,13 @@ struct Tutorial : RTG::Application {
 	VkRenderPass shadow_pass = VK_NULL_HANDLE;
 
 	//Pipelines:
-	struct BackgroundPipeline{
-		//descriptor set layouts
+	BackgroundPipeline background_pipeline;
+	TextureDebugPipeline texture_debug_pipeline;
+	LinesPipeline lines_pipeline;
 
-		struct Push{
-			float time;
-		};
-
-		VkPipelineLayout layout = VK_NULL_HANDLE;
-
-		//vertex bindings
-		
-		VkPipeline handle = VK_NULL_HANDLE;
-
-		void create(RTG &, VkRenderPass render_pass, uint32_t subpass);
-		void destroy(RTG &);
-	}background_pipeline;
-
-	struct LinesPipeline{
-
-		//descriptor set layouts
-		VkDescriptorSetLayout set0_Camera = VK_NULL_HANDLE;
-        //types for descriptors
-        struct Camera{
-            mat4 CLIP_FROM_WORLD;
-        };
-        static_assert(sizeof(Camera) == 16*4, "camera buffer structure is packed");
-
-		//pipeline layout
-		VkPipelineLayout layout = VK_NULL_HANDLE;
-		using Vertex = PosColVertex;
-		VkPipeline handle = VK_NULL_HANDLE;
-		void create(RTG &,VkRenderPass render_pass, uint32_t subpass);
-		void destroy(RTG &);
-	}lines_pipeline;
+	LambertianObjectsPipeline lambertian_objects_pipeline;
+	EnvMirrorObjectsPipeline env_mirror_objects_pipeline;
+	PbrObjectsPipeline pbr_objects_pipeline;
 
 
 	struct Transform{
@@ -127,94 +107,6 @@ struct Tutorial : RTG::Application {
 	static_assert(sizeof(Light) == 3*4*4 + 8*4 + 4 * 4 * 6 + 6 * 16 * 4, "Light structure is packed");    
 	
 
-	bool shadows_on = true;
-	bool shadow_dump = false;
-	struct Shadow2DPipeline{
-		//descriptor set layouts
-		VkDescriptorSetLayout set0_Transforms =VK_NULL_HANDLE;
-
-		//push cosntants
-		struct Push{
-			mat4 LIGHT_CLIP_FROM_WORLD;
-		};
-
-		//pipeline layout
-		VkPipelineLayout layout = VK_NULL_HANDLE;
-		using Vertex = PosNorTanTexVertex;
-		VkPipeline handle = VK_NULL_HANDLE;
-		void create(RTG &,VkRenderPass render_pass, uint32_t subpass);
-		void destroy(RTG &);
-		static uint32_t find_fitting_atlas_size(uint64_t total_shadow_map_size);
-	}shadow_2D_pipeline;
-	void draw_all_objects(VkCommandBuffer const &cmd, mat4 const &LIGHTS_CLIP_FROM_WORLD, vec4 const &_shadow_atlas);
-
-
-	struct LambertianObjectsPipeline{
-		//descriptor set layouts
-		VkDescriptorSetLayout set0_Lights = VK_NULL_HANDLE;
-		VkDescriptorSetLayout set1_Transforms = VK_NULL_HANDLE;
-		VkDescriptorSetLayout set2_Shadows = VK_NULL_HANDLE;
-		VkDescriptorSetLayout set3_Texture = VK_NULL_HANDLE;
-
-		//push constants
-		struct Push{
-			uint32_t light_count = 0;
-		};
-
-		//pipeline layout
-		VkPipelineLayout layout = VK_NULL_HANDLE;
-		using Vertex = PosNorTanTexVertex;
-		VkPipeline handle = VK_NULL_HANDLE;
-		void create(RTG &,VkRenderPass render_pass, uint32_t subpass);
-		void destroy(RTG &);
-	}lambertian_objects_pipeline;
-
-	struct EnvMirrorObjectsPipeline{
-		//descriptor set layouts
-		VkDescriptorSetLayout set0_Eye= VK_NULL_HANDLE;
-		VkDescriptorSetLayout set1_Transforms = VK_NULL_HANDLE;
-		VkDescriptorSetLayout set2_TEXTURE = VK_NULL_HANDLE;
-
-		struct Push{
-			int32_t is_env = 1;
-			float exposure = 0;
-			int32_t tone_map_op = 0;
-		};
-
-		//pipeline layout
-		VkPipelineLayout layout = VK_NULL_HANDLE;
-		using Vertex = PosNorTanTexVertex;
-		VkPipeline handle = VK_NULL_HANDLE;
-		void create(RTG &,VkRenderPass render_pass, uint32_t subpass);
-		void destroy(RTG &);
-	}env_mirror_objects_pipeline;
-
-	struct PbrObjectsPipeline{
-		//descriptor set layouts
-		VkDescriptorSetLayout set0_Eye= VK_NULL_HANDLE;
-		VkDescriptorSetLayout set1_Transforms = VK_NULL_HANDLE;
-		VkDescriptorSetLayout set2_TEXTURE = VK_NULL_HANDLE;
-		VkDescriptorSetLayout set3_Lights = VK_NULL_HANDLE;
-		VkDescriptorSetLayout set4_Shadows = VK_NULL_HANDLE;
-
-
-		//push constants
-		struct Push{
-			float exposure = 0;
-			uint32_t tone_map_op = 0;//0 is linear, 1 is reinhard
-			uint32_t light_count = 0;
-		};
-
-
-		//pipeline layout
-		VkPipelineLayout layout = VK_NULL_HANDLE;
-		using Vertex = PosNorTanTexVertex;
-		VkPipeline handle = VK_NULL_HANDLE;
-		void create(RTG &,VkRenderPass render_pass, uint32_t subpass);
-		void destroy(RTG &);
-	}pbr_objects_pipeline;
-
-	
 	void init_tutorial();
 	//pools from which per-workspace things are allocated:
 	VkCommandPool command_pool = VK_NULL_HANDLE;
@@ -271,24 +163,40 @@ struct Tutorial : RTG::Application {
 		uint32_t first = 0;
 		uint32_t count = 0;
 	};
+	ObjectVertices fruit_vertices;//these vertices are hard coded 
+
+	//Mesh contains stats of a unique mesh asset
+
 	struct AABB{
 		vec3 max = vec3{-INFINITY,-INFINITY,-INFINITY};
 		vec3 min = vec3{INFINITY,INFINITY,INFINITY};
 		void get_box_corners(mat4 WORLD_FROM_LOCAL, std::array<vec3, 8> &box_corners);
 	};
-
-	//Mesh contains stats of a unique mesh asset
 	struct Mesh{
 		ObjectVertices verts;
 		AABB bbox;
 	};
-
-	ObjectVertices fruit_vertices;//these vertices are hard coded 
 	std::map<std::string, Mesh> meshes;
 
 	void load_scene();
 	void update_scene(float dt);
 
+	//------Fluid Simulation stuff-----
+	VkCommandPool compute_command_pool = VK_NULL_HANDLE;
+	VkCommandBuffer compute_cmd_buf = VK_NULL_HANDLE;
+	AddVectorSourcesPipeline add_vector_sources_pipeline;
+
+	const uint32_t v_volume_side_length = 64;//side length of the velocity volume
+	const uint32_t groupCounts[3] = {8,8,8};
+	uint32_t velocity_ind = 0;//this tracks which velocity volume descriptorset to use
+	VkDescriptorSet velocity_volume[2];
+	VkDescriptorSet density_volume = VK_NULL_HANDLE;
+	Helpers::AllocatedImage3D velocity_3D_texture[2];//two for ping-ponging
+	VkImageView velocity_3D_view[2];
+
+	void init_compute_pipeline();
+	void init_fluid();
+	void update_fluid(float dt);
 
 	//------Texture stuff------
 	struct Texture_Indices{
@@ -322,6 +230,8 @@ struct Tutorial : RTG::Application {
 	void make_flat_image(S72::Texture const &texture);
 	void make_cube_image(S72::Texture const &texture);
 	void make_image_view(VkImageView &image_view, Helpers::AllocatedImage const & image);
+	void make_image_view_3D(VkImageView &image_view, Helpers::AllocatedImage3D const & image);
+
 	enum class TextureType{
 		ALBEDO = 1,
 		ROUGHNESS = 2,
@@ -334,14 +244,14 @@ struct Tutorial : RTG::Application {
 	void make_one_off_texture(TextureType t_type, std::variant<vec3, float> value);
 
 
-
 	enum class MaterialType{
 		LAMBERTIAN = 1,
 		ENVMIRROR = 2,
 		PBR = 3,
 	};
-
 	void make_descriptor_set(std::string mat_name, MaterialType mat_type, Texture_Indices tex_inds);
+	void make_velocity_descriptor_sets(VkDescriptorSet *velocity_sets, VkDescriptorSetLayout const &layout);
+
 	
 
 	//textures, texture_views, and texture_descriptors are all indexed the same
@@ -352,8 +262,15 @@ struct Tutorial : RTG::Application {
 	VkDescriptorPool texture_descriptor_pool = VK_NULL_HANDLE;
 	std::vector<VkDescriptorSet> texture_descriptor_sets;//allocated from texture descriptor pool
 
-	std::vector<VkDescriptorSet> shadow_map_descriptor_sets;
+
+	//------shadow stuff-------
+	bool shadows_on = true;
+	bool shadow_dump = false;
+	Shadow2DPipeline shadow_2D_pipeline;
 	void init_shadow_mapping();
+	//draw all objects with shadow2DPipeline from light's perspective into shadow_atlas
+	void draw_all_objects(VkCommandBuffer const &cmd, mat4 const &LIGHTS_CLIP_FROM_WORLD, vec4 const &_shadow_atlas);
+	
 	//--------------------------------------------------------------------
 	//Resources that change when the swapchain is resized:
 
@@ -462,7 +379,7 @@ struct Tutorial : RTG::Application {
 	//the camera currently in use 
 	std::unordered_map<std::string, BasicCamera>::iterator current_camera;
 
-	std::vector<LinesPipeline::Vertex> lines_vertices;
+	std::vector<LinesPipeline::Vertex>lines_vertices;
 
 	//world has two lights env and sun
 	std::vector<Light> lights;

@@ -289,7 +289,7 @@ void Tutorial::draw_all_objects(VkCommandBuffer const &cmd, mat4 const &LIGHTS_C
 }
 
 
-void Tutorial::Shadow2DPipeline::create(RTG &rtg, VkRenderPass render_pass, uint32_t subpass){
+void Shadow2DPipeline::create(RTG &rtg, VkRenderPass render_pass, uint32_t subpass){
     VkShaderModule vert_module = rtg.helpers.create_shader_module(vert_code);
     VkShaderModule frag_module = rtg.helpers.create_shader_module(frag_code);
 
@@ -423,7 +423,7 @@ void Tutorial::Shadow2DPipeline::create(RTG &rtg, VkRenderPass render_pass, uint
     vkDestroyShaderModule(rtg.device, vert_module, nullptr);
 }
 
-void Tutorial::Shadow2DPipeline::destroy(RTG &rtg){
+void Shadow2DPipeline::destroy(RTG &rtg){
     if(handle != VK_NULL_HANDLE){
         vkDestroyPipeline(rtg.device, handle, nullptr);
         handle = VK_NULL_HANDLE;
@@ -440,7 +440,7 @@ void Tutorial::Shadow2DPipeline::destroy(RTG &rtg){
 
 }
 
-uint32_t Tutorial::Shadow2DPipeline::find_fitting_atlas_size(uint64_t total_shadow_map_size){
+uint32_t Shadow2DPipeline::find_fitting_atlas_size(uint64_t total_shadow_map_size){
     for(uint32_t power = 1; power < 20; power++){//2 to the power of 12 ( 16384 side lenght ) should be large enough
         if(((uint64_t) 1 << power) * ((uint64_t) 1 << power) > total_shadow_map_size){
             return 1<<power;

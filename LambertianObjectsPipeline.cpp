@@ -11,7 +11,7 @@ static uint32_t frag_code[] =
 #include "spv/lambertian_objects.frag.inl"
 ;
 
-void Tutorial::LambertianObjectsPipeline::create(RTG &rtg, VkRenderPass render_pass, uint32_t subpass){
+void LambertianObjectsPipeline::create(RTG &rtg, VkRenderPass render_pass, uint32_t subpass){
     VkShaderModule vert_module = rtg.helpers.create_shader_module(vert_code);
     VkShaderModule frag_module = rtg.helpers.create_shader_module(frag_code);
 
@@ -220,7 +220,7 @@ void Tutorial::LambertianObjectsPipeline::create(RTG &rtg, VkRenderPass render_p
     vkDestroyShaderModule(rtg.device, frag_module, nullptr);
 }
 
-void Tutorial::LambertianObjectsPipeline::destroy(RTG &rtg){
+void LambertianObjectsPipeline::destroy(RTG &rtg){
     if(handle != VK_NULL_HANDLE){
         vkDestroyPipeline(rtg.device, handle, nullptr);
         handle = VK_NULL_HANDLE;

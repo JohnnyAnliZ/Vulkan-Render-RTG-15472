@@ -8,25 +8,43 @@ static uint32_t vert_code[] =
 ;
 
 static uint32_t frag_code[] = 
-#include "spv/background.frag.inl"
+#include "spv/textureDebug.frag.inl"
 ;
 
-void BackgroundPipeline::create(RTG &rtg, VkRenderPass render_pass, uint32_t subpass){
+void TextureDebugPipeline::create(RTG &rtg, VkRenderPass render_pass, uint32_t subpass){
     VkShaderModule vert_module = rtg.helpers.create_shader_module(vert_code);
     VkShaderModule frag_module = rtg.helpers.create_shader_module(frag_code);
+
+    { //the set0_shadow_atlas layout holds the shadow_atlas 
+		std::array< VkDescriptorSetLayoutBinding, 1 > bindings{
+			VkDescriptorSetLayoutBinding{
+				.binding = 0,
+				.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+				.descriptorCount = 1,
+				.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT
+			},
+		};
+		
+		VkDescriptorSetLayoutCreateInfo create_info{
+			.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+			.bindingCount = uint32_t(bindings.size()),
+			.pBindings = bindings.data(),
+		};
+
+		VK( vkCreateDescriptorSetLayout(rtg.device, &create_info, nullptr, &set0_shadow_atlas) );
+	}
+
     {//create pipeline layout
-        VkPushConstantRange range{
-            .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
-            .offset = 0,
-            .size = sizeof(Push),
-        };
+        std::array< VkDescriptorSetLayout, 4 > layouts{
+			set0_shadow_atlas
+		};
 
         VkPipelineLayoutCreateInfo create_info{
             .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
             .setLayoutCount = 0,
-            .pSetLayouts = nullptr,
-            .pushConstantRangeCount = 1,
-            .pPushConstantRanges = &range,
+            .pSetLayouts = layouts.data(),
+            .pushConstantRangeCount = 0,
+            .pPushConstantRanges = nullptr,
         };
 
         VK(vkCreatePipelineLayout(rtg.device, &create_info, nullptr, &layout));
@@ -139,7 +157,7 @@ void BackgroundPipeline::create(RTG &rtg, VkRenderPass render_pass, uint32_t sub
     vkDestroyShaderModule(rtg.device, frag_module, nullptr);
 }
 
-void BackgroundPipeline::destroy(RTG &rtg){
+void TextureDebugPipeline::destroy(RTG &rtg){
     if(layout != VK_NULL_HANDLE){
         vkDestroyPipelineLayout(rtg.device, layout, nullptr);
         layout = VK_NULL_HANDLE;
@@ -148,4 +166,8 @@ void BackgroundPipeline::destroy(RTG &rtg){
         vkDestroyPipeline(rtg.device, handle, nullptr);
         handle = VK_NULL_HANDLE;
     }
+    if (set0_shadow_atlas != VK_NULL_HANDLE) {
+		vkDestroyDescriptorSetLayout(rtg.device, set0_shadow_atlas, nullptr);
+		set0_shadow_atlas = VK_NULL_HANDLE;
+	}
 }

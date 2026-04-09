@@ -11,7 +11,7 @@ static uint32_t frag_code[] =
 #include "spv/pbr_objects.frag.inl"
 ;
 
-void Tutorial::PbrObjectsPipeline::create(RTG &rtg, VkRenderPass render_pass, uint32_t subpass){
+void PbrObjectsPipeline::create(RTG &rtg, VkRenderPass render_pass, uint32_t subpass){
     VkShaderModule vert_module = rtg.helpers.create_shader_module(vert_code);
     VkShaderModule frag_module = rtg.helpers.create_shader_module(frag_code);
 
@@ -238,7 +238,7 @@ void Tutorial::PbrObjectsPipeline::create(RTG &rtg, VkRenderPass render_pass, ui
     vkDestroyShaderModule(rtg.device, frag_module, nullptr);
 }
 
-void Tutorial::PbrObjectsPipeline::destroy(RTG &rtg){
+void PbrObjectsPipeline::destroy(RTG &rtg){
     if(handle != VK_NULL_HANDLE){
         vkDestroyPipeline(rtg.device, handle, nullptr);
         handle = VK_NULL_HANDLE;

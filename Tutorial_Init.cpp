@@ -98,7 +98,6 @@ void Tutorial::init_tutorial(){
 	}
 
 
-
 	{ //create command pool
 		VkCommandPoolCreateInfo create_info{
 			.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
@@ -264,8 +263,6 @@ void Tutorial::init_tutorial(){
 			);
 		}
 	}
-
-	
 }   
 
 

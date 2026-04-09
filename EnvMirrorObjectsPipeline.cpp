@@ -11,7 +11,7 @@ static uint32_t frag_code[] =
 #include "spv/env_mirror_objects.frag.inl"
 ;
 
-void Tutorial::EnvMirrorObjectsPipeline::create(RTG &rtg, VkRenderPass render_pass, uint32_t subpass){
+void EnvMirrorObjectsPipeline::create(RTG &rtg, VkRenderPass render_pass, uint32_t subpass){
     VkShaderModule vert_module = rtg.helpers.create_shader_module(vert_code);
     VkShaderModule frag_module = rtg.helpers.create_shader_module(frag_code);
 
@@ -197,7 +197,7 @@ void Tutorial::EnvMirrorObjectsPipeline::create(RTG &rtg, VkRenderPass render_pa
     vkDestroyShaderModule(rtg.device, frag_module, nullptr);
 }
 
-void Tutorial::EnvMirrorObjectsPipeline::destroy(RTG &rtg){
+void EnvMirrorObjectsPipeline::destroy(RTG &rtg){
     if(handle != VK_NULL_HANDLE){
         vkDestroyPipeline(rtg.device, handle, nullptr);
         handle = VK_NULL_HANDLE;

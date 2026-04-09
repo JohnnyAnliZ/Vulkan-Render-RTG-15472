@@ -86,7 +86,7 @@ const shadows2D_shaders = [
 main_objs.push( maek.CPP('LambertianObjectsPipeline.cpp', undefined, { depends:[...objects_shaders] } ) );
 main_objs.push( maek.CPP('EnvMirrorObjectsPipeline.cpp', undefined, { depends:[...objects_shaders] } ) );
 main_objs.push( maek.CPP('PbrObjectsPipeline.cpp', undefined, { depends:[...objects_shaders] } ) );
-main_objs.push( maek.CPP('Light2DShadowPipeline.cpp', undefined, { depends:[...objects_shaders, ...shadows2D_shaders] } ) );
+main_objs.push( maek.CPP('Shadow2DPipeline.cpp', undefined, { depends:[...objects_shaders, ...shadows2D_shaders] } ) );
 
 
 

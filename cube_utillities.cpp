@@ -169,7 +169,6 @@ vec3 importance_sample_ggx(vec2 Xi, vec3 N, float roughness)
     // cosTheta (biased by the ndf)
     float cosTheta = sqrt((1.0f - Xi.y) / (1.0f + (a*a - 1.0f) * Xi.y)); 
 
-
     float sinTheta = sqrt(1.0f - cosTheta*cosTheta);
 	
     // from spherical coordinates to cartesian coordinates

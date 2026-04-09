@@ -1038,7 +1038,6 @@ void Tutorial::update(float dt)
 		}
 	}
 
-
 	//---compute CLIP_FROM_LOCAL for all instances---
 	for(auto & lamb_inst : lambertian_object_instances) 
 		lamb_inst.transform.CLIP_FROM_LOCAL = CLIP_FROM_WORLD * lamb_inst.transform.WORLD_FROM_LOCAL;

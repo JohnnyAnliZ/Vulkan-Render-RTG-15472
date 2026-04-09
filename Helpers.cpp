@@ -141,6 +141,44 @@ Helpers::AllocatedImage Helpers::create_image(VkExtent2D const &extent, VkFormat
 	return image;
 }
 
+
+Helpers::AllocatedImage3D Helpers::create_image_3D(VkExtent3D const &extent, VkFormat format, VkImageTiling tiling, 
+	VkImageUsageFlags usage, VkMemoryPropertyFlags properties) {
+	AllocatedImage3D image;
+	image.extent = extent;
+	image.format = format;
+
+
+	VkImageCreateInfo create_info{
+		.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+		.flags = 0,
+		.imageType = VK_IMAGE_TYPE_3D,
+		.format = format,
+		.extent{
+			.width = extent.width,
+			.height = extent.height,
+			.depth = extent.depth,
+		},
+		.mipLevels = 1u,
+		.arrayLayers = 1u,
+		.samples = VK_SAMPLE_COUNT_1_BIT,
+		.tiling = tiling,
+		.usage = usage,
+		.sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+		.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED, 
+	};
+
+	VK(vkCreateImage(rtg.device, &create_info, nullptr, &image.handle));
+
+	VkMemoryRequirements req;
+	vkGetImageMemoryRequirements(rtg.device, image.handle, &req);//now req contains info about how much memory to allocate
+
+	image.allocation = allocate(req, properties);//allocate that much memory
+
+	VK(vkBindImageMemory(rtg.device, image.handle, image.allocation.handle, image.allocation.offset));
+	return image;
+}
+
 void Helpers::destroy_image(AllocatedImage &&image) {
 	vkDestroyImage(rtg.device, image.handle, nullptr);
 

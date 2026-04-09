@@ -87,6 +87,25 @@ void Tutorial::make_image_view(VkImageView &image_view, Helpers::AllocatedImage 
 	VK( vkCreateImageView(rtg.device, &create_info, nullptr, &image_view) );
 }
 
+void Tutorial::make_image_view_3D(VkImageView &image_view, Helpers::AllocatedImage3D const & image){
+	VkImageViewCreateInfo create_info{
+		.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+		.flags = 0,
+		.image = image.handle,
+		.viewType = VK_IMAGE_VIEW_TYPE_3D,
+		.format = image.format,
+		// .components sets swizzling and is fine when zero-initialized
+		.subresourceRange{
+			.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+			.baseMipLevel = 0,
+			.levelCount = 1u,
+			.baseArrayLayer = 0,
+			.layerCount = 1u,
+		},
+	};
+	VK( vkCreateImageView(rtg.device, &create_info, nullptr, &image_view));
+}
+
 void Tutorial::make_one_off_texture(TextureType t_type, std::variant<vec3, float> value){
 	{//actually make the one-off texture:
 		//make a place for the texture to live on the GPU:
@@ -384,10 +403,20 @@ void Tutorial::load_textures(){
 			else if(std::holds_alternative<S72::Material::PBR>(v))
 				num_pbr++;
 		}
+		//descriptors each material uses including the shadow atlas
+		uint32_t lambertian_material_descriptors = 4;
+		uint32_t env_mirror_material_descriptors = 2;
+		uint32_t pbr_material_descriptors = 8;
+		//number of fluid 3d texture descriptors
+		uint32_t fluid_descriptors = 2;
 		std::array< VkDescriptorPoolSize, 1> pool_sizes{
 			VkDescriptorPoolSize{
 				.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-				.descriptorCount = num_lambertian * 4 + num_envmirror * 2 + num_pbr * 8 , //one descriptor per set, one set per texture
+				.descriptorCount = 
+					num_lambertian * lambertian_material_descriptors + 
+					num_envmirror * env_mirror_material_descriptors + 
+					num_pbr * pbr_material_descriptors + 
+					fluid_descriptors,// 
 			},
 		};
 		
@@ -601,8 +630,6 @@ void Tutorial::load_textures(){
 	
 	
 }
-
-
 
 
 void Tutorial::make_descriptor_set(std::string mat_name, MaterialType mat_type, Texture_Indices tex_inds){//allocate and write the texture descriptor sets

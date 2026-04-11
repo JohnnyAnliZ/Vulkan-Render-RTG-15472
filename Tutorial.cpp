@@ -791,8 +791,7 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params)
 			vkCmdBindVertexBuffers(workspace.command_buffer, 0, uint32_t(vertex_buffers.size()), vertex_buffers.data(), offsets.data());
 		}
 
-		{
-			// draw with the different materialed objects' pipelines
+		{// draw with the different materialed objects' pipelines
 			uint32_t index_offset = 0; // since they all share the same transforms descriptor as well, an offset for indexing the transforms is needed
 			if (!lambertian_object_instances.empty())
 			{ // draw the lambertian object instances
@@ -916,8 +915,22 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params)
 			index_offset += (uint32_t)pbr_object_instances.size(); // update index_offset for the next batch of instances
 		}
 
+		{// draw with TextureDebugPipeline
+			vkCmdBindPipeline(workspace.command_buffer,VK_PIPELINE_BIND_POINT_GRAPHICS, texture_debug_pipeline.handle);
+			
+			vkCmdBindDescriptorSets(workspace.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, texture_debug_pipeline.layout,
+			0, 1, &workspace.Shadow_Atlas_descriptors, 0, nullptr);
+			vkCmdBindDescriptorSets(workspace.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, texture_debug_pipeline.layout,
+			1, 1, &velocity_volume[velocity_ind], 0, nullptr);
+
+			vkCmdDraw(workspace.command_buffer, 3, 1, 0, 0);
+
+		}
+
 		vkCmdEndRenderPass(workspace.command_buffer);
 	}
+
+
 
 	// End Recording
 	VK(vkEndCommandBuffer(workspace.command_buffer));

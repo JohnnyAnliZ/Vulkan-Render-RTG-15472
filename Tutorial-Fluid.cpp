@@ -28,11 +28,13 @@ void Tutorial::make_velocity_descriptor_sets(
         VkDescriptorImageInfo infos[2]{};
         std::array<VkDescriptorImageInfo, 2>{
             VkDescriptorImageInfo{
-                .imageView = velocity_3D_view[read],
+                .sampler = texture_sampler,
+                .imageView = velocity_3D_views[read],
                 .imageLayout = VK_IMAGE_LAYOUT_GENERAL
             },
             VkDescriptorImageInfo{
-                .imageView = velocity_3D_view[write],
+                .sampler = texture_sampler,
+                .imageView = velocity_3D_views[write],
                 .imageLayout = VK_IMAGE_LAYOUT_GENERAL
             }
         };
@@ -52,6 +54,9 @@ void Tutorial::make_velocity_descriptor_sets(
 
         vkUpdateDescriptorSets(rtg.device, 2, writes.data(), 0, nullptr);
     }
+    
+
+
 }
 
 
@@ -72,8 +77,8 @@ void Tutorial::init_fluid(){
         VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT
     );
 
-    make_image_view_3D(velocity_3D_view[0], velocity_3D_texture[0]);
-    make_image_view_3D(velocity_3D_view[1], velocity_3D_texture[1]);
+    make_image_view_3D(velocity_3D_views[0], velocity_3D_texture[0]);
+    make_image_view_3D(velocity_3D_views[1], velocity_3D_texture[1]);
 
     //use the regular texture sampler
 
@@ -239,7 +244,27 @@ void Tutorial::update_fluid(float dt){
 
         vkQueueSubmit(rtg.graphics_queue, 1, &submit, VK_NULL_HANDLE);
         vkQueueWaitIdle(rtg.graphics_queue);
-    }
+    }    
+
     
+    {//update descriptor sets for the two sampled images
+        VkDescriptorImageInfo image_info{
+            .sampler = texture_sampler,
+            .imageView = velocity_3D_views[velocity_ind],
+            .imageLayout = VK_IMAGE_LAYOUT_GENERAL,
+        };
+
+        VkWriteDescriptorSet write{
+            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+            .dstSet = velocity_tex,
+            .dstBinding = 0,
+            .descriptorCount = 1,
+            .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
+            .pImageInfo = &image_info,
+        };
+
+        vkUpdateDescriptorSets(rtg.device, 1, &write, 0, nullptr);
+    }
+
 
 }

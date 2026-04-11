@@ -103,3 +103,19 @@ Solution: maybe always update camera and always compute CLIP_FROM_LOCAL for ever
 
 Problem: Somehow shadow map dumping doesn't work no more    
 Solution: no solution, turns out it's just that the shadow map is too big, takes too long 
+
+
+4/6/2026
+I've started researching fluid simulation with grids. I've narrowed down the implementation decisions:
+For parallelism on gpu, I should use a red-black gauss-seidel method for diffusion.
+
+4/7/2026
+First thing first, I should make a 3D texture, and first do just the add sources pass once 
+
+
+4/10
+Get some debug slices on the screen, make simple shader for add sources.
+
+Need to write shaders for TextureDebugPipeline and AddVectorSourcesPipeline!
+
+I need to understand the threads mapping thing with compute shaders

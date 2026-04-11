@@ -26,8 +26,6 @@ layout(location = 3) in vec2 texCoord;
 layout(location = 0) out vec4 outColor;
 
 
-
-
 void main(){
     vec3 B = cross(normal, tangent.xyz) * tangent.w;
     mat3 TBN = mat3(tangent.xyz, B, normal);

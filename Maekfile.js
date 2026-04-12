@@ -47,6 +47,8 @@ const main_objs = [
 	maek.CPP('Tutorial_Scene.cpp'),
 	maek.CPP('Tutorial_Textures.cpp'),
 	maek.CPP('Tutorial_Init.cpp'),
+	maek.CPP('Tutorial_Fluid.cpp'),
+	maek.CPP('Compute_Init.cpp')
 ];
 
 const cube_objs = [
@@ -57,21 +59,23 @@ const cube_objs = [
 //maek.GLSLC(...) builds a glsl source file:
 // it returns the path to the output .inl file
 
-//uncomment to build background shaders and pipeline:
-const background_shaders = [
+//full pass, overlay shaders
+const overlay_shaders = [
 	maek.GLSLC('background.vert'),
 	maek.GLSLC('background.frag'),
+	maek.GLSLC('textureDebug.frag'),
 ];
-main_objs.push( maek.CPP('Tutorial-BackgroundPipeline.cpp', undefined, { depends:[...background_shaders] } ) );
+main_objs.push( maek.CPP('Tutorial-BackgroundPipeline.cpp', undefined, { depends:[...overlay_shaders] } ) );
+main_objs.push( maek.CPP('TextureDebugPipeline.cpp', undefined, { depends:[...overlay_shaders] } ) );
 
-//uncomment to build lines shaders and pipeline:
+//build lines shaders and pipeline:
 const lines_shaders = [
 	maek.GLSLC('lines.vert'),
 	maek.GLSLC('lines.frag'),
 ];
 main_objs.push( maek.CPP('Tutorial-LinesPipeline.cpp', undefined, { depends:[...lines_shaders] } ) );
 
-//uncomment to build objects shaders and pipeline:
+//build objects shaders and pipeline:
 const objects_shaders = [
 	maek.GLSLC('objects.vert'),
 	maek.GLSLC('lambertian_objects.frag'),
@@ -83,6 +87,13 @@ const shadows2D_shaders = [
 	maek.GLSLC('shadows2D.vert'),
 	maek.GLSLC('shadows2D.frag'),
 ];
+
+//compute shaders
+const compute_shaders = [
+	maek.GLSLC('addSources.comp'),
+]
+main_objs.push( maek.CPP('AddVectorSourcesPipeline.cpp', undefined, { depends:[...compute_shaders] } ) );
+
 main_objs.push( maek.CPP('LambertianObjectsPipeline.cpp', undefined, { depends:[...objects_shaders] } ) );
 main_objs.push( maek.CPP('EnvMirrorObjectsPipeline.cpp', undefined, { depends:[...objects_shaders] } ) );
 main_objs.push( maek.CPP('PbrObjectsPipeline.cpp', undefined, { depends:[...objects_shaders] } ) );

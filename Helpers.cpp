@@ -189,6 +189,17 @@ void Helpers::destroy_image(AllocatedImage &&image) {
 	this->free(std::move(image.allocation));
 }
 
+void Helpers::destroy_image_3D(AllocatedImage3D &&image) {
+	vkDestroyImage(rtg.device, image.handle, nullptr);
+
+	image.handle = VK_NULL_HANDLE;
+	image.extent = VkExtent3D{.width = 0, .height = 0, .depth = 0};
+	image.format = VK_FORMAT_UNDEFINED;
+
+	this->free(std::move(image.allocation));
+}
+
+
 
 
 

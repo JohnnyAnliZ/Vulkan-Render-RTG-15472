@@ -61,7 +61,7 @@ void TextureDebugPipeline::create(RTG &rtg, VkRenderPass render_pass, uint32_t s
 
         VkPipelineLayoutCreateInfo create_info{
             .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-            .setLayoutCount = layouts.size(),
+            .setLayoutCount = (uint32_t)layouts.size(),
             .pSetLayouts = layouts.data(),
             .pushConstantRangeCount = 0,
             .pPushConstantRanges = nullptr,

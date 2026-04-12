@@ -6,7 +6,7 @@
 #include <GLFW/glfw3.h>
 
 
-void Tutorial::init_compute_pipeline(){
+void Tutorial::init_compute(){
     { //create command pool
 		VkCommandPoolCreateInfo create_info{
 			.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
@@ -26,6 +26,25 @@ void Tutorial::init_compute_pipeline(){
         VK(vkAllocateCommandBuffers(rtg.device, &alloc_info, &compute_cmd_buf));
     }
 
+    {//make a descriptor pool
+        //number of fluid 3d texture descriptors
+		uint32_t fluid_descriptors = 2 * 2; //two descriptor sets, each with two storage images for ping-ponging
+        std::array<VkDescriptorPoolSize, 1> pool_sizes{
+            VkDescriptorPoolSize{
+                .type = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
+                .descriptorCount = fluid_descriptors
+            },
+        };
+        VkDescriptorPoolCreateInfo create_info{
+			.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+			.flags = 0, //because CREATE_FREE_DESCRIPTOR_SET_BIT isn't included, *can't* free individual descriptors allocated from this pool
+			.maxSets = 2, //lambertian and pbr have shadow map
+			.poolSizeCount = uint32_t(pool_sizes.size()),
+			.pPoolSizes = pool_sizes.data(),
+		};
+		std::cout<<"storage descriptor pool has max count"<<fluid_descriptors<<std::endl;
+		VK( vkCreateDescriptorPool(rtg.device, &create_info, nullptr, &storage_descriptor_pool) );	
+    }
 }
 
 

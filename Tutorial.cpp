@@ -24,6 +24,7 @@ Tutorial::Tutorial(RTG &rtg_) : rtg(rtg_)
 	// command pool, descriptor pool,
 	init_tutorial();
 
+	init_compute();
 	std::cout << "LOADING SCENE" << std::endl;
 
 	// set up loaded cameras, put mesh data into the object_vertices buffer
@@ -32,9 +33,13 @@ Tutorial::Tutorial(RTG &rtg_) : rtg(rtg_)
 	// load textures into texture_descriptor_sets
 	load_textures();
 
+	std::cout<<"INITIALIZING fluid"<<std::endl;
+	init_fluid();	
+
+	std::cout<<"INITIALIZING shadows"<<std::endl;
+
 	// stuff for shadow_mapping(framebuffers, allocating image and stuff)
 	init_shadow_mapping();
-
 
 	std::cout << "finished loading stuff" << std::endl;
 }
@@ -90,9 +95,22 @@ Tutorial::~Tutorial()
 		destroy_framebuffers();
 	}
 
+
+	{//fluid stuff
+		//image views
+		for (VkImageView &view_3D : velocity_3D_views){
+			vkDestroyImageView(rtg.device, view_3D, nullptr);
+			view_3D = VK_NULL_HANDLE;
+		}
+
+		//images
+		for (auto &image_3D : velocity_3D_textures){
+			rtg.helpers.destroy_image_3D(std::move(image_3D));
+		}
+	}
+
 	for (Workspace &workspace : workspaces)
 	{
-
 		// shadow stuff
 		rtg.helpers.destroy_image(std::move(workspace.Shadow_Atlas));
 		vkDestroyImageView(rtg.device, workspace.Shadow_Atlas_view, nullptr);
@@ -170,11 +188,20 @@ Tutorial::~Tutorial()
 	env_mirror_objects_pipeline.destroy(rtg);
 	pbr_objects_pipeline.destroy(rtg);
 	shadow_2D_pipeline.destroy(rtg);
+	texture_debug_pipeline.destroy(rtg);
+	
+	add_vector_sources_pipeline.destroy(rtg);
 
 	if (command_pool != VK_NULL_HANDLE)
 	{
 		vkDestroyCommandPool(rtg.device, command_pool, nullptr);
 		command_pool = VK_NULL_HANDLE;
+	}
+
+	if(compute_command_pool != VK_NULL_HANDLE)
+	{
+		vkDestroyCommandPool(rtg.device, compute_command_pool, nullptr);
+		compute_command_pool = VK_NULL_HANDLE;
 	}
 
 	if (render_pass != VK_NULL_HANDLE)
@@ -917,11 +944,12 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params)
 
 		{// draw with TextureDebugPipeline
 			vkCmdBindPipeline(workspace.command_buffer,VK_PIPELINE_BIND_POINT_GRAPHICS, texture_debug_pipeline.handle);
-			
+
 			vkCmdBindDescriptorSets(workspace.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, texture_debug_pipeline.layout,
 			0, 1, &workspace.Shadow_Atlas_descriptors, 0, nullptr);
+
 			vkCmdBindDescriptorSets(workspace.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, texture_debug_pipeline.layout,
-			1, 1, &velocity_volume[velocity_ind], 0, nullptr);
+			1, 1, &velocity_tex, 0, nullptr);
 
 			vkCmdDraw(workspace.command_buffer, 3, 1, 0, 0);
 
@@ -1100,6 +1128,9 @@ void Tutorial::update(float dt)
 			.strength = 1.0f,
 		});
 	}
+
+	update_fluid(dt);
+
 }
 
 // helper functions

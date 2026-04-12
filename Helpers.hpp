@@ -75,6 +75,8 @@ struct Helpers {
 		VkMemoryPropertyFlags properties);
 	
 	void destroy_image(AllocatedImage &&allocated_image);
+	void destroy_image_3D(AllocatedImage3D &&allocated_image);
+
 
 
 	//-----------------------

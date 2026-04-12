@@ -133,7 +133,7 @@ void Tutorial::init_shadow_mapping(){
                 VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT
             );
         }
-    
+
         {//create image view for it 
             VkImageViewCreateInfo view_info{
                 .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
@@ -168,6 +168,7 @@ void Tutorial::init_shadow_mapping(){
             );
         }
 
+
         {//create sampler
             VkSamplerCreateInfo sampler_info{
                 .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
@@ -188,10 +189,10 @@ void Tutorial::init_shadow_mapping(){
 				.descriptorSetCount = 1,
 				.pSetLayouts = &lambertian_objects_pipeline.set2_Shadows,
 			};
+
 			VK(vkAllocateDescriptorSets(rtg.device, &alloc_info, &workspace.Shadow_Atlas_descriptors));
 		}
-        
-        
+
         {//update the descriptor set for this mtfk
             VkDescriptorImageInfo Shadow_Atlas_info{
 				.sampler = depth_texture_sampler,

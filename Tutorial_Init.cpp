@@ -112,6 +112,9 @@ void Tutorial::init_tutorial(){
 	lambertian_objects_pipeline.create(rtg, render_pass,0);
 	env_mirror_objects_pipeline.create(rtg, render_pass,0);
 	pbr_objects_pipeline.create(rtg, render_pass,0);
+	texture_debug_pipeline.create(rtg, render_pass,0);
+	
+	
 
 	std::cout<<"created render pass pipelines"<<std::endl;
 

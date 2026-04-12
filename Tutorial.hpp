@@ -182,6 +182,7 @@ struct Tutorial : RTG::Application {
 	void update_scene(float dt);
 
 	//------Fluid Simulation stuff-----
+	VkDescriptorPool storage_descriptor_pool = VK_NULL_HANDLE;
 	VkCommandPool compute_command_pool = VK_NULL_HANDLE;
 	VkCommandBuffer compute_cmd_buf = VK_NULL_HANDLE;
 	AddVectorSourcesPipeline add_vector_sources_pipeline;
@@ -189,13 +190,13 @@ struct Tutorial : RTG::Application {
 	const uint32_t v_volume_side_length = 64; //side length of the velocity volume
 	const uint32_t groupCounts[3] = {8,8,8};
 	uint32_t velocity_ind = 0; //this tracks which velocity volume descriptor set to use. When velocity_ind == 0, binding 0 is velocity_3D[0 , 1] 
-	VkDescriptorSet velocity_volume[2]; //these two buffers each contain two bindings of the same image views in opposite order
+	VkDescriptorSet velocity_volumes[2]; //these two buffers each contain two bindings of the same image views in opposite order
 	VkDescriptorSet velocity_tex = VK_NULL_HANDLE; //this one is just for sampling;
 	VkDescriptorSet density_volume = VK_NULL_HANDLE;
-	Helpers::AllocatedImage3D velocity_3D_texture[2]; //two for ping-ponging
+	Helpers::AllocatedImage3D velocity_3D_textures[2]; //two for ping-ponging
 	VkImageView velocity_3D_views[2];
 
-	void init_compute_pipeline();
+	void init_compute();
 	void init_fluid();
 	void update_fluid(float dt);
 

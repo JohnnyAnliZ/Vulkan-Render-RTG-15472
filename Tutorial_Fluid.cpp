@@ -6,14 +6,14 @@ void Tutorial::make_velocity_descriptor_sets(
     VkDescriptorSet *velocity_sets,
     VkDescriptorSetLayout const &layout
 ){
-    std::cout << "Allocating ping-pong velocity descriptor sets\n";
 
+    std::cout << "Allocating ping-pong velocity descriptor sets\n";
     // Allocate both sets at once
     std::array<VkDescriptorSetLayout,2> layouts{layout, layout};
     VkDescriptorSetAllocateInfo alloc_info{
         .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-        .descriptorPool = texture_descriptor_pool,
-        .descriptorSetCount = 2,
+        .descriptorPool = storage_descriptor_pool,
+        .descriptorSetCount = (uint32_t)layouts.size(),
         .pSetLayouts = layouts.data(), // same layout twice
     };
 
@@ -25,8 +25,7 @@ void Tutorial::make_velocity_descriptor_sets(
         uint32_t read  = i;
         uint32_t write = 1 - i;
 
-        VkDescriptorImageInfo infos[2]{};
-        std::array<VkDescriptorImageInfo, 2>{
+        std::array<VkDescriptorImageInfo, 2> infos{
             VkDescriptorImageInfo{
                 .sampler = texture_sampler,
                 .imageView = velocity_3D_views[read],
@@ -54,22 +53,21 @@ void Tutorial::make_velocity_descriptor_sets(
 
         vkUpdateDescriptorSets(rtg.device, 2, writes.data(), 0, nullptr);
     }
-    
-
-
 }
 
 
 void Tutorial::init_fluid(){
+    add_vector_sources_pipeline.create(rtg, VK_NULL_HANDLE, 0);
+
     //make the image, image view and sampler for the fluid 3d texture, allocate descriptor, 
-    velocity_3D_texture[0] = rtg.helpers.create_image_3D(
+    velocity_3D_textures[0] = rtg.helpers.create_image_3D(
         VkExtent3D{.width = 128, .height = 128, .depth = 128}, 
         VK_FORMAT_R32G32B32A32_SFLOAT, 
         VK_IMAGE_TILING_OPTIMAL, 
         VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
         VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT
     );
-    velocity_3D_texture[1] = rtg.helpers.create_image_3D(
+    velocity_3D_textures[1] = rtg.helpers.create_image_3D(
         VkExtent3D{.width = 128, .height = 128, .depth = 128}, 
         VK_FORMAT_R32G32B32A32_SFLOAT, 
         VK_IMAGE_TILING_OPTIMAL, 
@@ -77,13 +75,24 @@ void Tutorial::init_fluid(){
         VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT
     );
 
-    make_image_view_3D(velocity_3D_views[0], velocity_3D_texture[0]);
-    make_image_view_3D(velocity_3D_views[1], velocity_3D_texture[1]);
+    make_image_view_3D(velocity_3D_views[0], velocity_3D_textures[0]);
+    make_image_view_3D(velocity_3D_views[1], velocity_3D_textures[1]);
 
     //use the regular texture sampler
 
-    make_velocity_descriptor_sets(velocity_volume, add_vector_sources_pipeline.set0_velocity_volume);
 
+    //allocate the sampled descriptor set
+    {
+        VkDescriptorSetAllocateInfo alloc_info{
+            .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+            .descriptorPool = texture_descriptor_pool,
+            .descriptorSetCount = 1,
+            .pSetLayouts = &texture_debug_pipeline.set1_vel_vol,
+        };
+        vkAllocateDescriptorSets(rtg.device, &alloc_info, &velocity_tex);
+    }
+    
+    make_velocity_descriptor_sets(velocity_volumes, add_vector_sources_pipeline.set0_velocity_volume);
 
 
     //record:
@@ -100,7 +109,7 @@ void Tutorial::init_fluid(){
                 .dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
                 .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
                 .newLayout = VK_IMAGE_LAYOUT_GENERAL,
-                .image = velocity_3D_texture[i].handle,
+                .image = velocity_3D_textures[i].handle,
                 .subresourceRange = {
                     .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
                     .baseMipLevel = 0,
@@ -134,7 +143,7 @@ void Tutorial::init_fluid(){
         for (int i = 0; i < 2; i++) {
             vkCmdClearColorImage(
                 compute_cmd_buf,
-                velocity_3D_texture[i].handle,
+                velocity_3D_textures[i].handle,
                 VK_IMAGE_LAYOUT_GENERAL,
                 &zero,
                 1,
@@ -143,6 +152,16 @@ void Tutorial::init_fluid(){
         }
     }
     VK(vkEndCommandBuffer(compute_cmd_buf));
+
+    VkSubmitInfo submit{
+        .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+        .commandBufferCount = 1,
+        .pCommandBuffers = &compute_cmd_buf,
+    };
+
+    vkQueueSubmit(rtg.graphics_queue, 1, &submit, VK_NULL_HANDLE);
+    vkQueueWaitIdle(rtg.graphics_queue);
+    
 }
 
 void Tutorial::update_fluid(float dt){
@@ -160,7 +179,7 @@ void Tutorial::update_fluid(float dt){
             .dstAccessMask = VK_ACCESS_SHADER_READ_BIT,
             .oldLayout = VK_IMAGE_LAYOUT_GENERAL,
             .newLayout = VK_IMAGE_LAYOUT_GENERAL,
-            .image = velocity_3D_texture[1 - velocity_ind].handle, // written image
+            .image = velocity_3D_textures[1 - velocity_ind].handle, // written image
             .subresourceRange = {
                 .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
                 .levelCount = 1,
@@ -192,7 +211,7 @@ void Tutorial::update_fluid(float dt){
             add_vector_sources_pipeline.layout,
             0,
             1,
-            &velocity_volume[velocity_ind],
+            &velocity_volumes[velocity_ind],
             0,
             nullptr
         );
@@ -201,7 +220,7 @@ void Tutorial::update_fluid(float dt){
             .N = v_volume_side_length,
             .dt = dt,
         };
-        vkCmdPushConstants(compute_cmd_buf, add_vector_sources_pipeline.layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(push), &push);
+        vkCmdPushConstants(compute_cmd_buf, add_vector_sources_pipeline.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(push), &push);
 
         vkCmdDispatch(  
             compute_cmd_buf,

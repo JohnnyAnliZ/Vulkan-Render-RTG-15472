@@ -19,7 +19,7 @@ void main(){
     vec3 daySky = vec3(0.53, 0.81, 0.92);
     vec3 nightSky = vec3(0.01, 0.01, 0.03);
     
-    vec3 finalColor = mix(nightSky, daySky, cycle);
+    vec3 finalColor = mix(nightSky, daySky, 0.0f);
     
     outColor = vec4(finalColor, 1.0);
 }

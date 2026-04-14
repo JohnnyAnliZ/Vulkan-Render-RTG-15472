@@ -48,12 +48,12 @@ void main(){
 
             float z = float(i) / float(sliceCount - 1);
 
-            vec3 samplePos = vec3(localUV, z);
+            vec3 samplePos = vec3(localUV, z)/2;//0-1 on all axes
+
 
             vec3 vel = texture(VELOCITY_VOL, samplePos).xyz;
-            float mag = length(vel);
 
-            outColor = vec4(vec3(mag), 1.0);
+            outColor = vec4(vel, 1.0);
             return;
         }
     }

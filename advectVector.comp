@@ -1,0 +1,38 @@
+#version 450
+//this code is the self-advection of velocity values, CPU implementation from Jos Stam
+
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 8) in;
+
+layout(push_constant) uniform Push {
+    int N;
+    float dt;
+} pc;
+
+layout(rgba32f, set = 0, binding = 0) readonly uniform image3D SRC_VOL; // input
+layout(rgba32f, set = 0, binding = 1) writeonly uniform image3D DST_VOL; // output
+
+
+void main(){
+    ivec3 coord = ivec3(gl_GlobalInvocationID.xyz);
+    if (coord.x >= pc.N || coord.y >= pc.N || coord.z >= pc.N)
+    return;
+
+    int i, j, i0, j0, i1, j1, k0, k1;
+    float x, y, z, s0, t0, s1, t1, dt0;
+    dt0 = pc.dt * pc.N;
+
+    vec4 v = imageLoad(SRC_VOL, coord);
+    x = coord.x - dt0 * v.x; y = coord.y - dt0 * v.y; z = coord.z - dt0 * v.z; //get the coordinate of the back-traced point in floats
+    if (x<0.5) x=0.5; if (x>N-0.5) x=N - 0.5; i0=(int)x; i1=i0+1;
+    if (y<0.5) y=0.5; if (y>N-0.5) y=N - 0.5; j0=(int)y; j1=j0+1;
+    if (z<0.5) z=0.5; if (z>N-0.5) z=N - 0.5; j0=(int)z; k1=k0+1;
+
+    s1 = x-i0; s0 = 1-s1; t1 = y-j0; t0 = 1-t1;
+    d[IX(i,j)] = s0*(t0* imageLoad(SRC_VOL, coord + )+t1*d 0[IX(i0,j1)])+
+    s1*(t0*d0[IX(i1,j0)]+t1*d0[IX(i1,j1)]);
+
+    // write result
+    imageStore(DST_VOL, coord, v_0);
+
+}

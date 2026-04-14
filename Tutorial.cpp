@@ -191,6 +191,8 @@ Tutorial::~Tutorial()
 	texture_debug_pipeline.destroy(rtg);
 	
 	add_vector_sources_pipeline.destroy(rtg);
+	diffuse_vector_pipeline.destroy(rtg);
+	advect_vector_pipeline.destroy(rtg);
 
 	if (command_pool != VK_NULL_HANDLE)
 	{

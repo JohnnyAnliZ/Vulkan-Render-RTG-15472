@@ -1,0 +1,100 @@
+#version 450
+//this compute shader is written according to the cpu implementation of Jos Stam in his paper "Real-Time Fluid Dynamics for Games"
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 8) in;
+
+layout(push_constant) uniform Push {
+    int N;
+    float dt;
+    int color;
+} pc;
+
+layout(rgba32f, set = 0, binding = 0) readonly uniform image3D SRC_VOL; // input
+layout(rgba32f, set = 0, binding = 1) writeonly uniform image3D DST_VOL; // output
+
+
+bool is_boundary(ivec3 c) {
+    return (c.x == 0 || c.x == pc.N-1 ||
+            c.y == 0 || c.y == pc.N-1 ||
+            c.z == 0 || c.z == pc.N-1);
+}
+
+
+vec4 evaluate_boundary(ivec3 coord)
+{
+    vec4 sum = vec4(0.0);
+    int count = 0;
+
+    // X boundaries
+    if (coord.x == 0 || coord.x == pc.N - 1) {
+        ivec3 n = coord + ivec3(coord.x == 0 ? 1 : -1, 0, 0);
+        vec4 v = imageLoad(SRC_VOL, n);
+
+        v.x *= -1.0; // flip normal component (X wall)
+        sum += v;
+        count++;
+    }
+
+    // Y boundaries
+    if (coord.y == 0 || coord.y == pc.N - 1) {
+        ivec3 n = coord + ivec3(0, coord.y == 0 ? 1 : -1, 0);
+        vec4 v = imageLoad(SRC_VOL, n);
+
+        v.y *= -1.0;
+        sum += v;
+        count++;
+    }
+
+    // Z boundaries
+    if (coord.z == 0 || coord.z == pc.N - 1) {
+        ivec3 n = coord + ivec3(0, 0, coord.z == 0 ? 1 : -1);
+        vec4 v = imageLoad(SRC_VOL, n);
+
+        v.z *= -1.0;
+        sum += v;
+        count++;
+    }
+
+    // If corner/edge: average contributions
+    if (count > 0)
+        return sum / float(count);
+
+    return imageLoad(SRC_VOL, coord); // interior fallback
+}
+
+void main(){
+    ivec3 coord = ivec3(gl_GlobalInvocationID.xyz);
+    if (coord.x >= pc.N || coord.y >= pc.N || coord.z >= pc.N) return;
+
+    else if(is_boundary(coord)){//boundaries
+        imageStore(DST_VOL, coord, evaluate_boundary(coord));
+        return;
+    }
+
+    //red black gauss-seidel
+    int parity = (coord.x + coord.y + coord.z) & 1;
+    if(parity != pc.color){//just do bypass
+        vec4 v = imageLoad(SRC_VOL, coord);
+        imageStore(DST_VOL, coord, v);
+        return;
+    }
+    //now the actaully update
+    float diff = 50.0;
+    float a=pc.dt*diff*pc.N*pc.N;
+
+    vec4 v_0 = imageLoad(SRC_VOL, coord);
+    vec4 v_xp = imageLoad(SRC_VOL, coord + ivec3(1,0,0));
+    vec4 v_xn = imageLoad(SRC_VOL, coord + ivec3(-1,0,0));
+    vec4 v_yp = imageLoad(SRC_VOL, coord + ivec3(0,1,0));
+    vec4 v_yn = imageLoad(SRC_VOL, coord + ivec3(0,-1,0));
+    vec4 v_zp = imageLoad(SRC_VOL, coord + ivec3(0,0,1));
+    vec4 v_zn = imageLoad(SRC_VOL, coord + ivec3(0,0,-1));
+
+    vec4 sum = v_xp + v_xn + v_yp + v_yn + v_zp + v_zn;
+
+    vec4 v = (v_0 + a * sum) / (1.0 + 6.0 * a);
+    
+    // write result
+    imageStore(DST_VOL, coord, v);
+
+}

@@ -3,7 +3,7 @@
 #include "mat4.hpp"
 #include "RTG.hpp"
 
-struct AddVectorSourcesPipeline{
+struct DiffuseVectorPipeline{
     //descriptor set layouts
 
     VkDescriptorSetLayout set0_velocity_volume;
@@ -13,6 +13,7 @@ struct AddVectorSourcesPipeline{
     struct Push{
         uint32_t N;
         float dt;
+        uint32_t color;
     };
 
     VkPipelineLayout layout = VK_NULL_HANDLE;

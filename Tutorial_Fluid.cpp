@@ -57,7 +57,8 @@ void Tutorial::make_velocity_descriptor_sets(
 
 
 void Tutorial::init_fluid(){
-    add_vector_sources_pipeline.create(rtg, VK_NULL_HANDLE, 0);
+    add_vector_sources_pipeline.create(rtg);
+    diffuse_vector_pipeline.create(rtg);
 
     //make the image, image view and sampler for the fluid 3d texture, allocate descriptor, 
     velocity_3D_textures[0] = rtg.helpers.create_image_3D(
@@ -237,7 +238,65 @@ void Tutorial::update_fluid(float dt){
     }
 
     {//diffuse
+        const uint32_t ITERS = 20;
+        vkCmdBindPipeline(compute_cmd_buf, VK_PIPELINE_BIND_POINT_COMPUTE, diffuse_vector_pipeline.handle);
+        for(uint32_t i = 0; i < ITERS; i++){//red-black gauss-seidel method, red pass fills half buffer and the black pass reads from that 
+            //red pass
+            DiffuseVectorPipeline::Push push_red{
+                .N = v_volume_side_length,
+                .dt = dt,
+                .color = 0, 
+            };
+            vkCmdPushConstants(compute_cmd_buf, diffuse_vector_pipeline.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(push_red), &push_red);
+            vkCmdBindDescriptorSets(
+                compute_cmd_buf,
+                VK_PIPELINE_BIND_POINT_COMPUTE,
+                diffuse_vector_pipeline.layout,
+                0,
+                1,
+                &velocity_volumes[velocity_ind],
+                0,
+                nullptr
+            );
+            vkCmdDispatch(compute_cmd_buf,
+                v_volume_side_length/groupCounts[0],
+                v_volume_side_length/groupCounts[1],
+                v_volume_side_length/groupCounts[2]
+            );
 
+            //memory barrier
+            compute_shader_write_barrier();
+            //swap
+            velocity_ind = 1 - velocity_ind;
+
+            //black pass
+            DiffuseVectorPipeline::Push push_black{
+                .N = v_volume_side_length,
+                .dt = dt,
+                .color = 1, 
+            };
+            vkCmdPushConstants(compute_cmd_buf, diffuse_vector_pipeline.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(push_black), &push_black);
+            vkCmdBindDescriptorSets(
+                compute_cmd_buf,
+                VK_PIPELINE_BIND_POINT_COMPUTE,
+                diffuse_vector_pipeline.layout,
+                0,
+                1,
+                &velocity_volumes[velocity_ind],
+                0,
+                nullptr
+            );
+            vkCmdDispatch(compute_cmd_buf,
+                v_volume_side_length/groupCounts[0],
+                v_volume_side_length/groupCounts[1],
+                v_volume_side_length/groupCounts[2]
+            );
+
+            //memory barrier
+            compute_shader_write_barrier();
+            //swap
+            velocity_ind = 1 - velocity_ind;
+        }
     }
 
     {//project

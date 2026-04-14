@@ -119,3 +119,10 @@ Get some debug slices on the screen, make simple shader for add sources.
 Need to write shaders for TextureDebugPipeline and AddVectorSourcesPipeline!
 
 I need to understand the threads mapping thing with compute shaders
+
+4/13 
+Got the vulkan side of things working(for now), need to write some shader code for diffuse and advection step of the velocity
+
+Edit the code to account for boudary conditions
+
+Now need to do project and advection

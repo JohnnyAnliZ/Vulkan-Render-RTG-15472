@@ -16,6 +16,8 @@
 #include "ObjectPipelines.hpp"
 #include "Shadow2DPipeline.hpp"
 #include "AddVectorSourcesPipeline.hpp"
+#include "DiffuseVectorPipeline.hpp"
+#include "AdvectVectorPipeline.hpp"
 
 
 #include "RTG.hpp"
@@ -186,6 +188,8 @@ struct Tutorial : RTG::Application {
 	VkCommandPool compute_command_pool = VK_NULL_HANDLE;
 	VkCommandBuffer compute_cmd_buf = VK_NULL_HANDLE;
 	AddVectorSourcesPipeline add_vector_sources_pipeline;
+	DiffuseVectorPipeline diffuse_vector_pipeline;
+	AdvectVectorPipeline advect_vector_pipeline;
 
 	const uint32_t v_volume_side_length = 64; //side length of the velocity volume
 	const uint32_t groupCounts[3] = {8,8,8};

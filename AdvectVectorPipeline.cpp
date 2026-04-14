@@ -5,10 +5,10 @@
 
 
 static uint32_t comp_code[] = 
-#include "spv/addVectorSources.comp.inl"
+#include "spv/advectVector.comp.inl"
 ;
 
-void AddVectorSourcesPipeline::create(RTG &rtg){
+void AdvectVectorPipeline::create(RTG &rtg){
     VkShaderModule comp_module = rtg.helpers.create_shader_module(comp_code);
 
 
@@ -82,7 +82,7 @@ void AddVectorSourcesPipeline::create(RTG &rtg){
     vkDestroyShaderModule(rtg.device, comp_module, nullptr);
 }
 
-void AddVectorSourcesPipeline::destroy(RTG &rtg){
+void DiffuseVectorPipeline::destroy(RTG &rtg){
     if(layout != VK_NULL_HANDLE){
         vkDestroyPipelineLayout(rtg.device, layout, nullptr);
         layout = VK_NULL_HANDLE;

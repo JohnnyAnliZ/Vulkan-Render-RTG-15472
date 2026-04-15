@@ -92,9 +92,12 @@ const shadows2D_shaders = [
 const compute_shaders = [
 	maek.GLSLC('addVectorSources.comp'),
 	maek.GLSLC('diffuseVector.comp'),
+	maek.GLSLC('advectVector.comp'),
 ]
 main_objs.push( maek.CPP('AddVectorSourcesPipeline.cpp', undefined, { depends:[...compute_shaders] } ) );
 main_objs.push( maek.CPP('DiffuseVectorPipeline.cpp', undefined, { depends:[...compute_shaders] } ) );
+main_objs.push( maek.CPP('AdvectVectorPipeline.cpp', undefined, { depends:[...compute_shaders] } ) );
+
 
 
 main_objs.push( maek.CPP('LambertianObjectsPipeline.cpp', undefined, { depends:[...objects_shaders] } ) );

@@ -82,7 +82,7 @@ void AdvectVectorPipeline::create(RTG &rtg){
     vkDestroyShaderModule(rtg.device, comp_module, nullptr);
 }
 
-void DiffuseVectorPipeline::destroy(RTG &rtg){
+void AdvectVectorPipeline::destroy(RTG &rtg){
     if(layout != VK_NULL_HANDLE){
         vkDestroyPipelineLayout(rtg.device, layout, nullptr);
         layout = VK_NULL_HANDLE;

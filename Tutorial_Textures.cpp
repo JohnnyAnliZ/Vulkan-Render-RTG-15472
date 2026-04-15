@@ -409,7 +409,7 @@ void Tutorial::load_textures(){
 		uint32_t pbr_material_descriptors = 8;
 		
 		uint32_t volume_sampler_descriptors = 1;
-		std::array< VkDescriptorPoolSize, 2> pool_sizes{
+		std::array< VkDescriptorPoolSize, 1> pool_sizes{
 			VkDescriptorPoolSize{
 				.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
 				.descriptorCount = 
@@ -419,7 +419,7 @@ void Tutorial::load_textures(){
 					volume_sampler_descriptors
 			}
 		};
-		
+
 		VkDescriptorPoolCreateInfo create_info{
 			.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
 			.flags = 0, //because CREATE_FREE_DESCRIPTOR_SET_BIT isn't included, *can't* free individual descriptors allocated from this pool

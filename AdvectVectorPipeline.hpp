@@ -13,7 +13,6 @@ struct AdvectVectorPipeline{
     struct Push{
         uint32_t N;
         float dt;
-        uint32_t color;
     };
 
     VkPipelineLayout layout = VK_NULL_HANDLE;

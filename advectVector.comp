@@ -18,21 +18,44 @@ void main(){
     if (coord.x >= pc.N || coord.y >= pc.N || coord.z >= pc.N)
     return;
 
-    int i, j, i0, j0, i1, j1, k0, k1;
-    float x, y, z, s0, t0, s1, t1, dt0;
+    int i0, j0, k0, i1, j1, k1;
+    float x, y, z, s0, t0, u0, s1, t1, u1, dt0;
     dt0 = pc.dt * pc.N;
 
     vec4 v = imageLoad(SRC_VOL, coord);
     x = coord.x - dt0 * v.x; y = coord.y - dt0 * v.y; z = coord.z - dt0 * v.z; //get the coordinate of the back-traced point in floats
-    if (x<0.5) x=0.5; if (x>N-0.5) x=N - 0.5; i0=(int)x; i1=i0+1;
-    if (y<0.5) y=0.5; if (y>N-0.5) y=N - 0.5; j0=(int)y; j1=j0+1;
-    if (z<0.5) z=0.5; if (z>N-0.5) z=N - 0.5; j0=(int)z; k1=k0+1;
 
-    s1 = x-i0; s0 = 1-s1; t1 = y-j0; t0 = 1-t1;
-    d[IX(i,j)] = s0*(t0* imageLoad(SRC_VOL, coord + )+t1*d 0[IX(i0,j1)])+
-    s1*(t0*d0[IX(i1,j0)]+t1*d0[IX(i1,j1)]);
+    x = clamp(x, 0.5, float(pc.N) - 1.5);
+    y = clamp(y, 0.5, float(pc.N) - 1.5);
+    z = clamp(z, 0.5, float(pc.N) - 1.5);
+
+    i0 = int(floor(x)); i1 = i0 + 1;
+    j0 = int(floor(y)); j1 = j0 + 1;
+    k0 = int(floor(z)); k1 = k0 + 1;
+
+    //tri-linear interpolation
+    s1 = x-i0; s0 = 1-s1; 
+    t1 = y-j0; t0 = 1-t1;
+    u1 = z-k0; u0 = 1-u1;
+
+    vec4 c000 = imageLoad(SRC_VOL, ivec3(i0, j0, k0));
+    vec4 c100 = imageLoad(SRC_VOL, ivec3(i1, j0, k0));
+    vec4 c010 = imageLoad(SRC_VOL, ivec3(i0, j1, k0));
+    vec4 c110 = imageLoad(SRC_VOL, ivec3(i1, j1, k0));
+
+    vec4 c001 = imageLoad(SRC_VOL, ivec3(i0, j0, k1));
+    vec4 c101 = imageLoad(SRC_VOL, ivec3(i1, j0, k1));
+    vec4 c011 = imageLoad(SRC_VOL, ivec3(i0, j1, k1));
+    vec4 c111 = imageLoad(SRC_VOL, ivec3(i1, j1, k1));
+
+    // interpolate
+    vec4 v_out =
+        s0 * (t0 * (u0 * c000 + u1 * c001) +
+            t1 * (u0 * c010 + u1 * c011)) +
+        s1 * (t0 * (u0 * c100 + u1 * c101) +
+            t1 * (u0 * c110 + u1 * c111));
 
     // write result
-    imageStore(DST_VOL, coord, v_0);
+    imageStore(DST_VOL, coord, v_out);
 
 }

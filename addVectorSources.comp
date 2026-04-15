@@ -24,10 +24,10 @@ void main(){
 
     float dist = length(vec3(coord) - center);
 
-    float falloff = exp(-dist * dist / (radius * radius));
-    vec3 force = vec3(0.0, 5.0, 0.0) * falloff;
+    //float falloff = exp(-dist * dist / (radius * radius));
+    //vec3 force = (dist < radius) ? vec3(0.0, 5.0, 0.0) : vec3(0.0,0.0,0.0);
 
-    v_0.xyz += pc.dt * force;
+    v_0.xyz = vec3(-coord.y, coord.x, 0)/pc.N;
 
     // write result
     imageStore(DST_VOL, coord, v_0);

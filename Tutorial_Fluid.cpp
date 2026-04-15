@@ -59,6 +59,7 @@ void Tutorial::make_velocity_descriptor_sets(
 void Tutorial::init_fluid(){
     add_vector_sources_pipeline.create(rtg);
     diffuse_vector_pipeline.create(rtg);
+    advect_vector_pipeline.create(rtg);
 
     //make the image, image view and sampler for the fluid 3d texture, allocate descriptor, 
     velocity_3D_textures[0] = rtg.helpers.create_image_3D(
@@ -152,6 +153,69 @@ void Tutorial::init_fluid(){
             );
         }
     }
+
+    auto compute_shader_write_barrier = [&](){
+        VkImageMemoryBarrier barrier{
+            .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+            .srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT,
+            .dstAccessMask = VK_ACCESS_SHADER_READ_BIT,
+            .oldLayout = VK_IMAGE_LAYOUT_GENERAL,
+            .newLayout = VK_IMAGE_LAYOUT_GENERAL,
+            .image = velocity_3D_textures[1 - velocity_ind].handle, // written image
+            .subresourceRange = {
+                .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                .levelCount = 1,
+                .layerCount = 1
+            }
+        };
+        vkCmdPipelineBarrier(
+            compute_cmd_buf,
+            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+            0,
+            0, nullptr,
+            0, nullptr,
+            1, &barrier
+        );
+    };
+    {//add sources
+        vkCmdBindPipeline(
+            compute_cmd_buf,
+            VK_PIPELINE_BIND_POINT_COMPUTE,
+            add_vector_sources_pipeline.handle
+        );
+
+        vkCmdBindDescriptorSets(
+            compute_cmd_buf,
+            VK_PIPELINE_BIND_POINT_COMPUTE,
+            add_vector_sources_pipeline.layout,
+            0,
+            1,
+            &velocity_volumes[velocity_ind],
+            0,
+            nullptr
+        );
+
+        AddVectorSourcesPipeline::Push push{
+            .N = v_volume_side_length,
+            .dt = 0.1f,
+        };
+        vkCmdPushConstants(compute_cmd_buf, add_vector_sources_pipeline.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(push), &push);
+
+        vkCmdDispatch(  
+            compute_cmd_buf,
+            v_volume_side_length/groupCounts[0],
+            v_volume_side_length/groupCounts[1],
+            v_volume_side_length/groupCounts[2]
+        );  
+
+        //memory barrier
+        compute_shader_write_barrier();
+
+        //swap
+        velocity_ind = 1 - velocity_ind;
+    }
+
     VK(vkEndCommandBuffer(compute_cmd_buf));
 
     VkSubmitInfo submit{
@@ -198,8 +262,12 @@ void Tutorial::update_fluid(float dt){
         );
     };
 
+    const bool do_add_sources = false;
+    const bool do_diffuse = true;
+    const bool do_advect = true;
 
-    {//add sources
+
+    if(do_add_sources){//add sources
         vkCmdBindPipeline(
             compute_cmd_buf,
             VK_PIPELINE_BIND_POINT_COMPUTE,
@@ -237,7 +305,7 @@ void Tutorial::update_fluid(float dt){
         velocity_ind = 1 - velocity_ind;
     }
 
-    {//diffuse
+    if(do_diffuse){//diffuse
         const uint32_t ITERS = 20;
         vkCmdBindPipeline(compute_cmd_buf, VK_PIPELINE_BIND_POINT_COMPUTE, diffuse_vector_pipeline.handle);
         for(uint32_t i = 0; i < ITERS; i++){//red-black gauss-seidel method, red pass fills half buffer and the black pass reads from that 
@@ -303,7 +371,32 @@ void Tutorial::update_fluid(float dt){
 
     }
 
-    {//advect
+    if(do_advect){//advect
+        vkCmdBindPipeline(compute_cmd_buf, VK_PIPELINE_BIND_POINT_COMPUTE, advect_vector_pipeline.handle);
+        AdvectVectorPipeline::Push push{
+            .N = v_volume_side_length,
+            .dt = dt,
+        };
+        vkCmdPushConstants(compute_cmd_buf, advect_vector_pipeline.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(push), &push);
+        vkCmdBindDescriptorSets(
+            compute_cmd_buf,
+            VK_PIPELINE_BIND_POINT_COMPUTE,
+            advect_vector_pipeline.layout,
+            0,
+            1,
+            &velocity_volumes[velocity_ind],
+            0,
+            nullptr
+        );
+        vkCmdDispatch(compute_cmd_buf,
+            v_volume_side_length/groupCounts[0],
+            v_volume_side_length/groupCounts[1],
+            v_volume_side_length/groupCounts[2]
+        );
+        //memory barrier
+        compute_shader_write_barrier();
+        //swap
+        velocity_ind = 1 - velocity_ind;
 
     }
 

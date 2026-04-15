@@ -53,7 +53,7 @@ void main(){
 
             vec3 vel = texture(VELOCITY_VOL, samplePos).xyz;
 
-            outColor = vec4(vel, 1.0);
+            outColor = vec4(vel * 0.5 + 0.5, 1.0);
             return;
         }
     }

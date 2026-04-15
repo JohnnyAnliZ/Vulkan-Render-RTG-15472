@@ -263,7 +263,7 @@ void Tutorial::update_fluid(float dt){
     };
 
     const bool do_add_sources = false;
-    const bool do_diffuse = true;
+    const bool do_diffuse = false;
     const bool do_advect = true;
 
 

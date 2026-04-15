@@ -20,7 +20,7 @@ void main(){
 
     int i0, j0, k0, i1, j1, k1;
     float x, y, z, s0, t0, u0, s1, t1, u1, dt0;
-    dt0 = pc.dt * pc.N;
+    dt0 = pc.dt * pc.N * 0.1f;
 
     vec4 v = imageLoad(SRC_VOL, coord);
     x = coord.x - dt0 * v.x; y = coord.y - dt0 * v.y; z = coord.z - dt0 * v.z; //get the coordinate of the back-traced point in floats

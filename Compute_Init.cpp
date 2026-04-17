@@ -28,7 +28,9 @@ void Tutorial::init_compute(){
 
     {//make a descriptor pool
         //number of fluid 3d texture descriptors
-		uint32_t fluid_descriptors = 2 * 2; //two descriptor sets, each with two storage images for ping-ponging
+
+        //2 * 2 for velocity (read and write for each ping-pong pair), 2 * 2 for pressure, 1 for gradient subtract read/write
+		uint32_t fluid_descriptors = 2 * 2 + 2 * 2 + 1; 
         std::array<VkDescriptorPoolSize, 1> pool_sizes{
             VkDescriptorPoolSize{
                 .type = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
@@ -38,7 +40,7 @@ void Tutorial::init_compute(){
         VkDescriptorPoolCreateInfo create_info{
 			.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
 			.flags = 0, //because CREATE_FREE_DESCRIPTOR_SET_BIT isn't included, *can't* free individual descriptors allocated from this pool
-			.maxSets = 2, //lambertian and pbr have shadow map
+			.maxSets = 2 + 2 + 1,//two descriptor sets for velocity, two for pressure, one for gradient subtract
 			.poolSizeCount = uint32_t(pool_sizes.size()),
 			.pPoolSizes = pool_sizes.data(),
 		};

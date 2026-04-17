@@ -1,0 +1,87 @@
+// gradient_subtract, subtracts gradient of pressure field from velocity field, per specification of the Helmholtz decomposition
+#version 450
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 8) in;
+
+layout(push_constant) uniform Push {
+    int N;
+} pc;
+
+layout(rgba32f, set = 0, binding = 0) readonly uniform image3D VEL_SRC;  
+layout(rgba32f, set = 0, binding = 1) writeonly uniform image3D VEL_DST;      
+layout(r32f, set = 1, binding = 0)    readonly uniform image3D PRESHA;      
+
+bool is_boundary(ivec3 c) {
+    return (c.x == 0 || c.x == pc.N-1 ||
+            c.y == 0 || c.y == pc.N-1 ||
+            c.z == 0 || c.z == pc.N-1);
+}
+
+
+vec4 evaluate_boundary(ivec3 coord)
+{
+    vec4 sum = vec4(0.0);
+    int count = 0;
+
+    // X boundaries
+    if (coord.x == 0 || coord.x == pc.N - 1) {
+        ivec3 n = coord + ivec3(coord.x == 0 ? 1 : -1, 0, 0);
+        vec4 v = imageLoad(VEL_SRC, n);
+
+        v.x *= -1.0; // flip normal component (X wall)
+        sum += v;
+        count++;
+    }
+
+    // Y boundaries
+    if (coord.y == 0 || coord.y == pc.N - 1) {
+        ivec3 n = coord + ivec3(0, coord.y == 0 ? 1 : -1, 0);
+        vec4 v = imageLoad(VEL_SRC, n);
+
+        v.y *= -1.0;
+        sum += v;
+        count++;
+    }
+
+    // Z boundaries
+    if (coord.z == 0 || coord.z == pc.N - 1) {
+        ivec3 n = coord + ivec3(0, 0, coord.z == 0 ? 1 : -1);
+        vec4 v = imageLoad(VEL_SRC, n);
+
+        v.z *= -1.0;
+        sum += v;
+        count++;
+    }
+
+    // If corner/edge: average contributions
+    if (count > 0)
+        return sum / float(count);
+
+    return imageLoad(VEL_SRC, coord); // interior fallback
+}
+
+void main() {
+    ivec3 c = ivec3(gl_GlobalInvocationID.xyz);
+    if (is_boundary(c)) {
+        // velocity boundary: flip normal components
+        imageStore(VEL_DST, c, evaluate_boundary(c));
+        return;
+    }
+
+    float h = 1.0 / float(pc.N);
+
+    float pxp = imageLoad(PRESHA, c + ivec3(1,0,0)).r;
+    float pxn = imageLoad(PRESHA, c - ivec3(1,0,0)).r;
+    float pyp = imageLoad(PRESHA, c + ivec3(0,1,0)).r;
+    float pyn = imageLoad(PRESHA, c - ivec3(0,1,0)).r;
+    float pzp = imageLoad(PRESHA, c + ivec3(0,0,1)).r;
+    float pzn = imageLoad(PRESHA, c - ivec3(0,0,1)).r;
+
+    vec4 vel = imageLoad(VEL_SRC, c);
+
+    vel.x -= 0.5 * (pxp - pxn) / h;
+    vel.y -= 0.5 * (pyp - pyn) / h;
+    vel.z -= 0.5 * (pzp - pzn) / h;
+
+    imageStore(VEL_DST, c, vel);
+}

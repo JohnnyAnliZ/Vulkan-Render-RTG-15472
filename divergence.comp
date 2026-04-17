@@ -1,0 +1,36 @@
+//this shader clears pressure values to zero and computes for divergence
+#version 450
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 8) in;
+
+layout(push_constant) uniform Push {
+    int N;
+} pc;
+
+layout(rgba32f, set = 0, binding = 0) readonly uniform image3D VEL; // input
+layout(r32f, set = 1, binding = 1) writeonly uniform image3D PRES;
+layout(r32f, set = 2, binding = 0) writeonly uniform image3D DIV;
+
+
+void main() {
+    ivec3 c = ivec3(gl_GlobalInvocationID.xyz);
+    if (any(lessThan(c, ivec3(1))) || any(greaterThanEqual(c, ivec3(pc.N-1)))) return;
+
+    float h = 1.0 / float(pc.N);
+
+    vec4 vxp = imageLoad(VEL, c + ivec3(1,0,0));
+    vec4 vxn = imageLoad(VEL, c - ivec3(1,0,0));
+    vec4 vyp = imageLoad(VEL, c + ivec3(0,1,0));
+    vec4 vyn = imageLoad(VEL, c - ivec3(0,1,0));
+    vec4 vzp = imageLoad(VEL, c + ivec3(0,0,1));
+    vec4 vzn = imageLoad(VEL, c - ivec3(0,0,1));
+
+    float div = -0.5 * h * (
+        vxp.x - vxn.x +
+        vyp.y - vyn.y +
+        vzp.z - vzn.z
+    );
+
+    imageStore(DIV, c, vec4(div));
+    imageStore(PRES, c, vec4(0.0)); // zero pressure here
+}

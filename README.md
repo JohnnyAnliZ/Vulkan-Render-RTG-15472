@@ -9,8 +9,8 @@ $nmake -f makefile.windows
 Change the content of the .WINDOWS file to change settings of running the exporter python script located in scenes\exporters
 
 # go to the nakluV directory(For myself):
-cd C:\Users\zal17\Documents\RealTimeG\nakluV
-
+    cd C:\Users\zal17\Documents\RealTimeG\nakluV
+    
 run viewer with a scene:
 bin\main --scene scenes\examples\
 

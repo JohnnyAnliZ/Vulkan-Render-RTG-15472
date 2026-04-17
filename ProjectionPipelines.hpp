@@ -1,4 +1,5 @@
 #pragma once
+//these are the compute pipelines used for the Helmholtz Decomposition and projection to a mass-conserving velocity field
 
 #include "mat4.hpp"
 #include "RTG.hpp"

@@ -74,6 +74,12 @@ Tutorial::~Tutorial()
 		depth_texture_sampler = VK_NULL_HANDLE;
 	}
 
+	if(volume_sampler)
+	{
+		vkDestroySampler(rtg.device, volume_sampler, nullptr);
+		volume_sampler = VK_NULL_HANDLE;
+	}
+
 	for (VkImageView &view : texture_views)
 	{
 		vkDestroyImageView(rtg.device, view, nullptr);
@@ -106,6 +112,8 @@ Tutorial::~Tutorial()
 			vkDestroyImageView(rtg.device, p_view_3D, nullptr);
 			p_view_3D = VK_NULL_HANDLE;
 		}
+		vkDestroyImageView(rtg.device, divergence_3D_view, nullptr);
+		divergence_3D_view = VK_NULL_HANDLE;
 
 		//images
 		for (auto &v_image_3D : velocity_3D_textures){
@@ -114,6 +122,7 @@ Tutorial::~Tutorial()
 		for (auto &p_image_3D : pressure_3D_textures){
 			rtg.helpers.destroy_image_3D(std::move(p_image_3D));
 		}
+		rtg.helpers.destroy_image_3D(std::move(divergence_3D_texture));
 	}
 
 	for (Workspace &workspace : workspaces)
@@ -188,6 +197,12 @@ Tutorial::~Tutorial()
 		descriptor_pool = nullptr;
 		//(this also frees the descriptor sets allocated from the pool)
 	}
+	if(storage_descriptor_pool)
+	{
+		vkDestroyDescriptorPool(rtg.device, storage_descriptor_pool, nullptr);
+		storage_descriptor_pool = nullptr;
+	}
+
 
 	background_pipeline.destroy(rtg);
 	lines_pipeline.destroy(rtg);

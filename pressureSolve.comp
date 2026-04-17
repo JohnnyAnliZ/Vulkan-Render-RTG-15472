@@ -1,0 +1,63 @@
+#version 450
+//this shader solves for pressure using divergence values and a jacobi iterative method 
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 8) in;
+
+layout(push_constant) uniform Push {
+    int N;
+} pc;
+
+layout(r32f, set = 0, binding = 0) readonly uniform image3D DIV;   // binding 0: fixed divergence
+layout(r32f, set = 1, binding = 0) readonly uniform image3D P_SRC;     // binding 1: current pressure
+layout(r32f, set = 1, binding = 1) writeonly uniform image3D P_DST;     // binding 2: next pressure
+
+
+bool is_boundary(ivec3 c) {
+    return (c.x == 0 || c.x == pc.N-1 ||
+            c.y == 0 || c.y == pc.N-1 ||
+            c.z == 0 || c.z == pc.N-1);
+}
+
+
+vec4 evaluate_pressure_boundary(ivec3 coord)
+{
+    vec4 sum = vec4(0.0);
+    int count = 0;
+
+    if (coord.x == 0)      { sum += imageLoad(P_SRC, coord + ivec3(1,0,0));  count++; }
+    if (coord.x == pc.N-1) { sum += imageLoad(P_SRC, coord + ivec3(-1,0,0)); count++; }
+    if (coord.y == 0)      { sum += imageLoad(P_SRC, coord + ivec3(0,1,0));  count++; }
+    if (coord.y == pc.N-1) { sum += imageLoad(P_SRC, coord + ivec3(0,-1,0)); count++; }
+    if (coord.z == 0)      { sum += imageLoad(P_SRC, coord + ivec3(0,0,1));  count++; }
+    if (coord.z == pc.N-1) { sum += imageLoad(P_SRC, coord + ivec3(0,0,-1)); count++; }
+
+    return sum / float(count);
+}
+
+
+void main() {
+    ivec3 c = ivec3(gl_GlobalInvocationID.xyz);
+    if (is_boundary(c)) {
+        imageStore(P_DST, c, evaluate_pressure_boundary(c));
+        return;
+    }
+
+    float div  = imageLoad(DIV, c).r;
+
+    float pxp  = imageLoad(P_SRC, c + ivec3(1,0,0)).r;
+    float pxn  = imageLoad(P_SRC, c - ivec3(1,0,0)).r;
+    float pyp  = imageLoad(P_SRC, c + ivec3(0,1,0)).r;
+    float pyn  = imageLoad(P_SRC, c - ivec3(0,1,0)).r;
+    float pzp  = imageLoad(P_SRC, c + ivec3(0,0,1)).r;
+    float pzn  = imageLoad(P_SRC, c - ivec3(0,0,1)).r;
+
+    // Stam's pressure equation: p = (div + sum_neighbors) / 6
+    // (6 not 4, because 3D)
+
+    //having div equal to the laplacian of the pressure field, div>0 corresponds to pressure maxima, and vice versa
+    //this solves for a pressure field that corresponds physically to the velocity field
+    float p = (div + pxp + pxn + pyp + pyn + pzp + pzn) / 6.0;
+
+    imageStore(P_DST, c, vec4(p));
+}
+

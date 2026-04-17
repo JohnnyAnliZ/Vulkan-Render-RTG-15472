@@ -165,7 +165,7 @@ void Tutorial::project_velocity(){
         VK_PIPELINE_BIND_POINT_COMPUTE,
         divergence_pipeline.layout,
         0,
-        sets.size(),
+        (uint32_t)sets.size(),
         sets.data(),
         0,
         nullptr
@@ -219,7 +219,7 @@ void Tutorial::project_velocity(){
         velocity_volumes[velocity_ind],//read_write
         pressure_volumes[pressure_ind],//read
     };
-    vkCmdBindDescriptorSets(compute_cmd_buf, VK_PIPELINE_BIND_POINT_COMPUTE, gradient_subtract_pipeline.layout, 0, sets_gs.size(), sets_gs.data(), 0, nullptr);
+    vkCmdBindDescriptorSets(compute_cmd_buf, VK_PIPELINE_BIND_POINT_COMPUTE, gradient_subtract_pipeline.layout, 0, (uint32_t)sets_gs.size(), sets_gs.data(), 0, nullptr);
     vkCmdDispatch(compute_cmd_buf,
         v_volume_side_length/groupCounts[0],
         v_volume_side_length/groupCounts[1],
@@ -410,11 +410,38 @@ void Tutorial::init_fluid(){
         vkAllocateDescriptorSets(rtg.device, &alloc_info, &velocity_tex);
     }
     
-    std::cout<<"allocating ping-pong descriptor sets for Velocity";
+    std::cout<<"allocating ping-pong descriptor sets for Velocity"<<std::endl;
     make_ping_pong_descriptor_sets(velocity_volumes, add_vector_sources_pipeline.set0_velocity_volume, velocity_3D_views);
-    std::cout<<"allocating ping-pong descriptor sets for Pressure";
+    std::cout<<"allocating ping-pong descriptor sets for Pressure"<<std::endl;
     make_ping_pong_descriptor_sets(pressure_volumes, divergence_pipeline.set1_pressure_volume, pressure_3D_views);
-    
+    //make descriptor set for divergence volume and updated with the divergence image view
+    {
+        VkDescriptorSetAllocateInfo alloc_info{
+            .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+            .descriptorPool = storage_descriptor_pool,
+            .descriptorSetCount = 1,
+            .pSetLayouts = &divergence_pipeline.set2_divergence_volume,
+        };
+        vkAllocateDescriptorSets(rtg.device, &alloc_info, &divergence_volume);
+
+        VkDescriptorImageInfo info{
+            .sampler = volume_sampler,
+            .imageView = divergence_3D_view,
+            .imageLayout = VK_IMAGE_LAYOUT_GENERAL
+        };
+
+        VkWriteDescriptorSet write{
+            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+            .dstSet = divergence_volume,
+            .dstBinding = 0,
+            .descriptorCount = 1,
+            .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
+            .pImageInfo = &info
+        };
+
+        vkUpdateDescriptorSets(rtg.device, 1, &write, 0, nullptr);
+    }
+
 
     //record:
     VkCommandBufferBeginInfo begin_info{
@@ -450,6 +477,58 @@ void Tutorial::init_fluid(){
                 1, &barrier
             );
         }
+        for (int i = 0; i < 2; i++) {
+            VkImageMemoryBarrier barrier{
+                .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+                .srcAccessMask = 0,
+                .dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+                .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+                .newLayout = VK_IMAGE_LAYOUT_GENERAL,
+                .image = pressure_3D_textures[i].handle,
+                .subresourceRange = {
+                    .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                    .baseMipLevel = 0,
+                    .levelCount = 1,
+                    .baseArrayLayer = 0,
+                    .layerCount = 1
+                }
+            };
+
+            vkCmdPipelineBarrier(
+                compute_cmd_buf,
+                VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+                VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                0,
+                0, nullptr,
+                0, nullptr,
+                1, &barrier
+            );       
+        }
+        VkImageMemoryBarrier barrier{
+            .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+            .srcAccessMask = 0,
+            .dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+            .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+            .newLayout = VK_IMAGE_LAYOUT_GENERAL,
+            .image = divergence_3D_texture.handle,
+            .subresourceRange = {
+                .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                .baseMipLevel = 0,
+                .levelCount = 1,
+                .baseArrayLayer = 0,
+                .layerCount = 1
+            }
+        };
+
+        vkCmdPipelineBarrier(
+            compute_cmd_buf,
+            VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+            0,
+            0, nullptr,
+            0, nullptr,
+            1, &barrier
+        );
     }
 
     {//clear both volumes
@@ -499,8 +578,8 @@ void Tutorial::update_fluid(float dt){
     };
     VK(vkBeginCommandBuffer(compute_cmd_buf, &begin_info));
 
-    const bool do_add_sources = false;
-    const bool do_diffuse = false;
+    const bool do_add_sources = true;
+    const bool do_diffuse = true;
     const bool do_advect = true;
     const bool do_project = true;
 

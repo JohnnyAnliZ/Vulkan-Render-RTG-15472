@@ -98,14 +98,21 @@ Tutorial::~Tutorial()
 
 	{//fluid stuff
 		//image views
-		for (VkImageView &view_3D : velocity_3D_views){
-			vkDestroyImageView(rtg.device, view_3D, nullptr);
-			view_3D = VK_NULL_HANDLE;
+		for (VkImageView &v_view_3D : velocity_3D_views){
+			vkDestroyImageView(rtg.device, v_view_3D, nullptr);
+			v_view_3D = VK_NULL_HANDLE;
+		}
+		for (VkImageView &p_view_3D : pressure_3D_views){
+			vkDestroyImageView(rtg.device, p_view_3D, nullptr);
+			p_view_3D = VK_NULL_HANDLE;
 		}
 
 		//images
-		for (auto &image_3D : velocity_3D_textures){
-			rtg.helpers.destroy_image_3D(std::move(image_3D));
+		for (auto &v_image_3D : velocity_3D_textures){
+			rtg.helpers.destroy_image_3D(std::move(v_image_3D));
+		}
+		for (auto &p_image_3D : pressure_3D_textures){
+			rtg.helpers.destroy_image_3D(std::move(p_image_3D));
 		}
 	}
 
@@ -193,6 +200,9 @@ Tutorial::~Tutorial()
 	add_vector_sources_pipeline.destroy(rtg);
 	diffuse_vector_pipeline.destroy(rtg);
 	advect_vector_pipeline.destroy(rtg);
+	divergence_pipeline.destroy(rtg);
+	pressure_solve_pipeline.destroy(rtg);
+	gradient_subtract_pipeline.destroy(rtg);
 
 	if (command_pool != VK_NULL_HANDLE)
 	{

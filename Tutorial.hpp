@@ -18,6 +18,7 @@
 #include "AddVectorSourcesPipeline.hpp"
 #include "DiffuseVectorPipeline.hpp"
 #include "AdvectVectorPipeline.hpp"
+#include "ProjectionPipelines.hpp"
 
 
 #include "RTG.hpp"
@@ -190,15 +191,44 @@ struct Tutorial : RTG::Application {
 	AddVectorSourcesPipeline add_vector_sources_pipeline;
 	DiffuseVectorPipeline diffuse_vector_pipeline;
 	AdvectVectorPipeline advect_vector_pipeline;
+	//projection pipelines
+	DivergencePipeline divergence_pipeline;
+	PressureSolvePipeline pressure_solve_pipeline;
+	GradientSubtractPipeline gradient_subtract_pipeline;
 
 	const uint32_t v_volume_side_length = 64; //side length of the velocity volume
 	const uint32_t groupCounts[3] = {8,8,8};
+
+	VkSampler volume_sampler = VK_NULL_HANDLE;
+
+	void make_ping_pong_descriptor_sets(VkDescriptorSet *pressure_sets, VkDescriptorSetLayout const &layout, VkImageView *image_views);
+
+	void add_sources_velocity(float dt);
+	void diffuse_velocity(float dt);
+	void advect_velocity(float dt);
+	void project_velocity();
+
+
+	void velocity_barrier();
+	void pressure_barrier();
+
+	//velocity
 	uint32_t velocity_ind = 0; //this tracks which velocity volume descriptor set to use. When velocity_ind == 0, binding 0 is velocity_3D[0 , 1] 
 	VkDescriptorSet velocity_volumes[2]; //these two buffers each contain two bindings of the same image views in opposite order
 	VkDescriptorSet velocity_tex = VK_NULL_HANDLE; //this one is just for sampling;
-	VkDescriptorSet density_volume = VK_NULL_HANDLE;
 	Helpers::AllocatedImage3D velocity_3D_textures[2]; //two for ping-ponging
 	VkImageView velocity_3D_views[2];
+	//density
+	VkDescriptorSet density_volume = VK_NULL_HANDLE;
+	//pressure
+	uint32_t pressure_ind = 0;
+	VkDescriptorSet pressure_volumes[2];
+	Helpers::AllocatedImage3D pressure_3D_textures[2];
+	VkImageView pressure_3D_views[2];
+	//divergence (only need one since it's only written in the divergence pass and only read in the pressure solve pass, so no ping-ponging needed)
+	VkDescriptorSet divergence_volume = VK_NULL_HANDLE;
+	Helpers::AllocatedImage3D divergence_3D_texture;
+	VkImageView divergence_3D_view;
 
 	void init_compute();
 	void init_fluid();
@@ -256,7 +286,6 @@ struct Tutorial : RTG::Application {
 		PBR = 3,
 	};
 	void make_descriptor_set(std::string mat_name, MaterialType mat_type, Texture_Indices tex_inds);
-	void make_velocity_descriptor_sets(VkDescriptorSet *velocity_sets, VkDescriptorSetLayout const &layout);
 
 	
 

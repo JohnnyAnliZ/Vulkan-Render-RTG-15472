@@ -11,7 +11,6 @@ static uint32_t comp_code[] =
 void DiffuseVectorPipeline::create(RTG &rtg){
     VkShaderModule comp_module = rtg.helpers.create_shader_module(comp_code);
 
-
     { //the set0_vector_volume layout holds the vector_volume
 		std::array< VkDescriptorSetLayoutBinding, 2 > bindings{
 			VkDescriptorSetLayoutBinding{

@@ -96,11 +96,17 @@ const compute_shaders = [
 	maek.GLSLC('pressureSolve.comp'),
 	maek.GLSLC('divergence.comp'),
 	maek.GLSLC('gradientSubtract.comp'),
-]
+	maek.GLSLC('addScalarSources.comp'),
+	maek.GLSLC('diffuseScalar.comp'),
+	maek.GLSLC('advectDensity.comp'),
+];
+
+main_objs.push( maek.CPP('DensityPipelines.cpp', undefined, { depends:[...compute_shaders] } ) );
 main_objs.push( maek.CPP('AddVectorSourcesPipeline.cpp', undefined, { depends:[...compute_shaders] } ) );
 main_objs.push( maek.CPP('DiffuseVectorPipeline.cpp', undefined, { depends:[...compute_shaders] } ) );
 main_objs.push( maek.CPP('AdvectVectorPipeline.cpp', undefined, { depends:[...compute_shaders] } ) );
 main_objs.push( maek.CPP('ProjectionPipelines.cpp', undefined, { depends:[...compute_shaders] } ) );
+
 
 
 

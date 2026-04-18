@@ -53,10 +53,30 @@ void TextureDebugPipeline::create(RTG &rtg, VkRenderPass render_pass, uint32_t s
 		VK( vkCreateDescriptorSetLayout(rtg.device, &create_info, nullptr, &set1_vel_vol) );
 	}
 
+    { //the set2_dens_vol layout holds the 3D velocity volume
+		std::array< VkDescriptorSetLayoutBinding, 1 > bindings{
+			VkDescriptorSetLayoutBinding{
+				.binding = 0,
+				.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+				.descriptorCount = 1,
+				.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT
+			},
+		};
+		
+		VkDescriptorSetLayoutCreateInfo create_info{
+			.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+			.bindingCount = uint32_t(bindings.size()),
+			.pBindings = bindings.data(),
+		};
+
+		VK( vkCreateDescriptorSetLayout(rtg.device, &create_info, nullptr, &set2_dens_vol) );
+	}
+
     {//create pipeline layout
-        std::array< VkDescriptorSetLayout, 2 > layouts{
+        std::array< VkDescriptorSetLayout, 3 > layouts{
 			set0_shadow_atlas,
-            set1_vel_vol
+            set1_vel_vol,
+            set2_dens_vol
 		};
 
         VkPipelineLayoutCreateInfo create_info{

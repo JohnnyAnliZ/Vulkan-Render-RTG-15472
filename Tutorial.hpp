@@ -19,6 +19,7 @@
 #include "DiffuseVectorPipeline.hpp"
 #include "AdvectVectorPipeline.hpp"
 #include "ProjectionPipelines.hpp"
+#include "DensityPipelines.hpp"
 
 
 #include "RTG.hpp"
@@ -188,6 +189,11 @@ struct Tutorial : RTG::Application {
 	VkDescriptorPool storage_descriptor_pool = VK_NULL_HANDLE;
 	VkCommandPool compute_command_pool = VK_NULL_HANDLE;
 	VkCommandBuffer compute_cmd_buf = VK_NULL_HANDLE;
+	//scalar(for fluid density)
+	AddScalarSourcesPipeline add_scalar_sources_pipeline;
+	DiffuseScalarPipeline diffuse_scalar_pipeline;
+	AdvectDensityPipeline advect_density_pipeline;
+	//vectors(for fluid velocity)
 	AddVectorSourcesPipeline add_vector_sources_pipeline;
 	DiffuseVectorPipeline diffuse_vector_pipeline;
 	AdvectVectorPipeline advect_vector_pipeline;
@@ -196,12 +202,16 @@ struct Tutorial : RTG::Application {
 	PressureSolvePipeline pressure_solve_pipeline;
 	GradientSubtractPipeline gradient_subtract_pipeline;
 
-	const uint32_t v_volume_side_length = 64; //side length of the velocity volume
+	const uint32_t v_volume_side_length = 192; //side length of the velocity volume
 	const uint32_t groupCounts[3] = {8,8,8};
 
 	VkSampler volume_sampler = VK_NULL_HANDLE;
 
 	void make_ping_pong_descriptor_sets(VkDescriptorSet *pressure_sets, VkDescriptorSetLayout const &layout, VkImageView *image_views);
+
+	void add_sources_density(float dt);
+	void diffuse_density(float dt);
+	void advect_density(float dt);
 
 	void add_sources_velocity(float dt);
 	void diffuse_velocity(float dt);
@@ -209,17 +219,20 @@ struct Tutorial : RTG::Application {
 	void project_velocity();
 
 
-	void velocity_barrier();
-	void pressure_barrier();
+	void ping_pong_barrier(VkCommandBuffer cmd, VkImage &img);
 
-	//velocity
+	//velocity 
 	uint32_t velocity_ind = 0; //this tracks which velocity volume descriptor set to use. When velocity_ind == 0, binding 0 is velocity_3D[0 , 1] 
 	VkDescriptorSet velocity_volumes[2]; //these two buffers each contain two bindings of the same image views in opposite order
 	VkDescriptorSet velocity_tex = VK_NULL_HANDLE; //this one is just for sampling;
 	Helpers::AllocatedImage3D velocity_3D_textures[2]; //two for ping-ponging
 	VkImageView velocity_3D_views[2];
 	//density
-	VkDescriptorSet density_volume = VK_NULL_HANDLE;
+	uint32_t density_ind = 0;
+	VkDescriptorSet density_volumes[2];
+	VkDescriptorSet density_tex = VK_NULL_HANDLE;//for sampling
+	Helpers::AllocatedImage3D density_3D_textures[2];
+	VkImageView density_3D_views[2];
 	//pressure
 	uint32_t pressure_ind = 0;
 	VkDescriptorSet pressure_volumes[2];

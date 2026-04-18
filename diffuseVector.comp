@@ -79,7 +79,7 @@ void main(){
         return;
     }
     //now the actaully update
-    float diff = 0.01f;
+    float diff = 0.00001f;
     float a=pc.dt*diff*pc.N*pc.N;
 
     vec4 v_0 = imageLoad(SRC_VOL, coord);

@@ -212,6 +212,10 @@ Tutorial::~Tutorial()
 	shadow_2D_pipeline.destroy(rtg);
 	texture_debug_pipeline.destroy(rtg);
 	
+	add_scalar_sources_pipeline.destroy(rtg);
+	diffuse_scalar_pipeline.destroy(rtg);
+	advect_density_pipeline.destroy(rtg);
+
 	add_vector_sources_pipeline.destroy(rtg);
 	diffuse_vector_pipeline.destroy(rtg);
 	advect_vector_pipeline.destroy(rtg);
@@ -978,6 +982,9 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params)
 			vkCmdBindDescriptorSets(workspace.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, texture_debug_pipeline.layout,
 			1, 1, &velocity_tex, 0, nullptr);
 
+			vkCmdBindDescriptorSets(workspace.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, texture_debug_pipeline.layout,
+			2, 1, &density_tex, 0, nullptr);
+
 			vkCmdDraw(workspace.command_buffer, 3, 1, 0, 0);
 
 		}
@@ -1156,6 +1163,7 @@ void Tutorial::update(float dt)
 		});
 	}
 
+	
 	update_fluid(dt);
 
 }

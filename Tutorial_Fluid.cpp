@@ -3,14 +3,14 @@
 #include "VK.hpp"
 
 //this function make sure the written image is available for reading in the next dispatch, by inserting a memory barrier for the written image
-void Tutorial::velocity_barrier(){
+void Tutorial::ping_pong_barrier(VkCommandBuffer cmd, VkImage &img){
     VkImageMemoryBarrier barrier{
         .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
         .srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT,
         .dstAccessMask = VK_ACCESS_SHADER_READ_BIT,
         .oldLayout = VK_IMAGE_LAYOUT_GENERAL,
         .newLayout = VK_IMAGE_LAYOUT_GENERAL,
-        .image = velocity_3D_textures[1 - velocity_ind].handle, // written image
+        .image = img, // written image
         .subresourceRange = {
             .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
             .levelCount = 1,
@@ -18,7 +18,7 @@ void Tutorial::velocity_barrier(){
         }
     };
     vkCmdPipelineBarrier(
-        compute_cmd_buf,
+        cmd,
         VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
         VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
         0,
@@ -27,33 +27,6 @@ void Tutorial::velocity_barrier(){
         1, &barrier
     );
 }
-
-
-void Tutorial::pressure_barrier(){
-    VkImageMemoryBarrier barrier{
-        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
-        .srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT,
-        .dstAccessMask = VK_ACCESS_SHADER_READ_BIT,
-        .oldLayout = VK_IMAGE_LAYOUT_GENERAL,
-        .newLayout = VK_IMAGE_LAYOUT_GENERAL,
-        .image = pressure_3D_textures[1 - pressure_ind].handle, // written image
-        .subresourceRange = {
-            .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-            .levelCount = 1,
-            .layerCount = 1
-        }
-    };
-    vkCmdPipelineBarrier(
-        compute_cmd_buf,
-        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-        0,
-        0, nullptr,
-        0, nullptr,
-        1, &barrier
-    );
-}
-
 
 void Tutorial::make_ping_pong_descriptor_sets(
     VkDescriptorSet *pressure_sets,
@@ -109,6 +82,140 @@ void Tutorial::make_ping_pong_descriptor_sets(
 }
 
 
+
+void Tutorial::add_sources_density(float dt){
+    vkCmdBindPipeline(
+        compute_cmd_buf,
+        VK_PIPELINE_BIND_POINT_COMPUTE,
+        add_scalar_sources_pipeline.handle
+    );
+
+    vkCmdBindDescriptorSets(
+        compute_cmd_buf,
+        VK_PIPELINE_BIND_POINT_COMPUTE,
+        add_scalar_sources_pipeline.layout,
+        0,
+        1,
+        &density_volumes[density_ind],
+        0,
+        nullptr
+    );
+
+    AddScalarSourcesPipeline::Push push{
+        .N = v_volume_side_length,
+        .dt = dt,
+    };
+    vkCmdPushConstants(compute_cmd_buf, add_scalar_sources_pipeline.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(push), &push);
+
+    vkCmdDispatch(
+        compute_cmd_buf,
+        v_volume_side_length/groupCounts[0],
+        v_volume_side_length/groupCounts[1],
+        v_volume_side_length/groupCounts[2]
+    );  
+
+    //memory barrier
+    ping_pong_barrier(compute_cmd_buf, density_3D_textures[1 - density_ind].handle);
+
+    //swap
+    density_ind = 1 - density_ind;
+}
+
+
+void Tutorial::diffuse_density(float dt){
+    const uint32_t ITERS = 14;
+    vkCmdBindPipeline(compute_cmd_buf, VK_PIPELINE_BIND_POINT_COMPUTE, diffuse_scalar_pipeline.handle);
+    for(uint32_t i = 0; i < ITERS; i++){//red-black gauss-seidel method, red pass fills half buffer and the black pass reads from that 
+        //red pass
+        DiffuseScalarPipeline::Push push_red{
+            .N = v_volume_side_length,
+            .dt = dt,
+            .color = 0, 
+        };
+        vkCmdPushConstants(compute_cmd_buf, diffuse_scalar_pipeline.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(push_red), &push_red);
+        vkCmdBindDescriptorSets(
+            compute_cmd_buf,
+            VK_PIPELINE_BIND_POINT_COMPUTE,
+            diffuse_scalar_pipeline.layout,
+            0,
+            1,
+            &density_volumes[density_ind],
+            0,
+            nullptr
+        );
+        vkCmdDispatch(compute_cmd_buf,
+            v_volume_side_length/groupCounts[0],
+            v_volume_side_length/groupCounts[1],
+            v_volume_side_length/groupCounts[2]
+        );
+
+        //memory barrier
+        ping_pong_barrier(compute_cmd_buf, density_3D_textures[1 - density_ind].handle);
+        //swap
+        density_ind = 1 - density_ind;
+
+        //black pass
+        DiffuseScalarPipeline::Push push_black{
+            .N = v_volume_side_length,
+            .dt = dt,
+            .color = 1, 
+        };
+        vkCmdPushConstants(compute_cmd_buf, diffuse_scalar_pipeline.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(push_black), &push_black);
+        vkCmdBindDescriptorSets(
+            compute_cmd_buf,
+            VK_PIPELINE_BIND_POINT_COMPUTE,
+            diffuse_scalar_pipeline.layout,
+            0,
+            1,
+            &density_volumes[density_ind],
+            0,
+            nullptr
+        );
+        vkCmdDispatch(compute_cmd_buf,
+            v_volume_side_length/groupCounts[0],
+            v_volume_side_length/groupCounts[1],
+            v_volume_side_length/groupCounts[2]
+        );
+
+        //memory barrier
+        ping_pong_barrier(compute_cmd_buf, density_3D_textures[1 - density_ind].handle);
+        //swap
+        density_ind = 1 - density_ind;
+    }
+}
+
+void Tutorial::advect_density(float dt){
+    vkCmdBindPipeline(compute_cmd_buf, VK_PIPELINE_BIND_POINT_COMPUTE, advect_density_pipeline.handle);
+    AdvectDensityPipeline::Push push{
+        .N = v_volume_side_length,
+        .dt = dt,
+    };
+    vkCmdPushConstants(compute_cmd_buf, advect_density_pipeline.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(push), &push);
+    std::array<VkDescriptorSet, 2> sets{
+        density_volumes[density_ind],//read_write
+        velocity_volumes[velocity_ind],//read
+    };
+    vkCmdBindDescriptorSets(
+        compute_cmd_buf,
+        VK_PIPELINE_BIND_POINT_COMPUTE,
+        advect_density_pipeline.layout,
+        0,
+        (uint32_t)sets.size(),
+        sets.data(),
+        0,
+        nullptr
+    );
+    vkCmdDispatch(compute_cmd_buf,
+        v_volume_side_length/groupCounts[0],
+        v_volume_side_length/groupCounts[1],
+        v_volume_side_length/groupCounts[2]
+    );
+    //memory barrier
+    ping_pong_barrier(compute_cmd_buf, density_3D_textures[1 - density_ind].handle);
+    //swap
+    density_ind = 1 - density_ind;
+}
+
 void Tutorial::add_sources_velocity(float dt){
     vkCmdBindPipeline(
         compute_cmd_buf,
@@ -141,7 +248,7 @@ void Tutorial::add_sources_velocity(float dt){
     );  
 
     //memory barrier
-    velocity_barrier();
+    ping_pong_barrier(compute_cmd_buf, velocity_3D_textures[1 - velocity_ind].handle);
 
     //swap
     velocity_ind = 1 - velocity_ind;
@@ -197,7 +304,7 @@ void Tutorial::project_velocity(){
     };
     vkCmdPushConstants(compute_cmd_buf, pressure_solve_pipeline.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(push_ps), &push_ps);
     vkCmdBindDescriptorSets(compute_cmd_buf, VK_PIPELINE_BIND_POINT_COMPUTE, pressure_solve_pipeline.layout, 0, 1, &divergence_volume, 0, nullptr);
-    const uint32_t ITERS = 20;
+    const uint32_t ITERS = 25;
     for(uint32_t i = 0; i < ITERS; i++){//jacobi    
         vkCmdBindDescriptorSets(compute_cmd_buf, VK_PIPELINE_BIND_POINT_COMPUTE, pressure_solve_pipeline.layout, 1, 1, &pressure_volumes[pressure_ind], 0, nullptr);
         vkCmdDispatch(compute_cmd_buf,
@@ -205,7 +312,7 @@ void Tutorial::project_velocity(){
             v_volume_side_length/groupCounts[1],
             v_volume_side_length/groupCounts[2]
         );
-        pressure_barrier();
+        ping_pong_barrier(compute_cmd_buf, velocity_3D_textures[1 - velocity_ind].handle);
         pressure_ind = 1 - pressure_ind;//ping-pong
     }
 
@@ -225,13 +332,13 @@ void Tutorial::project_velocity(){
         v_volume_side_length/groupCounts[1],
         v_volume_side_length/groupCounts[2]
     );
-    velocity_barrier();
+    ping_pong_barrier(compute_cmd_buf, velocity_3D_textures[1 -velocity_ind].handle);
     velocity_ind = 1 - velocity_ind;//ping-pong
 
 }
 
 void Tutorial::diffuse_velocity(float dt){
-    const uint32_t ITERS = 20;
+    const uint32_t ITERS = 14;
     vkCmdBindPipeline(compute_cmd_buf, VK_PIPELINE_BIND_POINT_COMPUTE, diffuse_vector_pipeline.handle);
     for(uint32_t i = 0; i < ITERS; i++){//red-black gauss-seidel method, red pass fills half buffer and the black pass reads from that 
         //red pass
@@ -258,7 +365,7 @@ void Tutorial::diffuse_velocity(float dt){
         );
 
         //memory barrier
-        velocity_barrier();
+        ping_pong_barrier(compute_cmd_buf, velocity_3D_textures[1- velocity_ind].handle);
         //swap
         velocity_ind = 1 - velocity_ind;
 
@@ -286,7 +393,7 @@ void Tutorial::diffuse_velocity(float dt){
         );
 
         //memory barrier
-        velocity_barrier();
+        ping_pong_barrier(compute_cmd_buf, velocity_3D_textures[1- velocity_ind].handle);
         //swap
         velocity_ind = 1 - velocity_ind;
     }
@@ -315,12 +422,15 @@ void Tutorial::advect_velocity(float dt){
         v_volume_side_length/groupCounts[2]
     );
     //memory barrier
-    velocity_barrier();
+    ping_pong_barrier(compute_cmd_buf, velocity_3D_textures[1- velocity_ind].handle);
     //swap
     velocity_ind = 1 - velocity_ind;
 }
 
 void Tutorial::init_fluid(){
+    add_scalar_sources_pipeline.create(rtg);
+    diffuse_scalar_pipeline.create(rtg);
+    advect_density_pipeline.create(rtg);
     add_vector_sources_pipeline.create(rtg);
     diffuse_vector_pipeline.create(rtg);
     advect_vector_pipeline.create(rtg);
@@ -331,15 +441,32 @@ void Tutorial::init_fluid(){
 
     //make the image, image view and sampler for the fluid 3d texture, allocate descriptor, 
     {
+        density_3D_textures[0] = rtg.helpers.create_image_3D(
+            VkExtent3D{.width = v_volume_side_length, .height = v_volume_side_length, .depth = v_volume_side_length}, 
+            VK_FORMAT_R32_SFLOAT, 
+            VK_IMAGE_TILING_OPTIMAL, 
+            VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
+            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT
+        );
+        density_3D_textures[1] = rtg.helpers.create_image_3D(
+            VkExtent3D{.width = v_volume_side_length, .height = v_volume_side_length, .depth = v_volume_side_length}, 
+            VK_FORMAT_R32_SFLOAT, 
+            VK_IMAGE_TILING_OPTIMAL, 
+            VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
+            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT
+        );
+        make_image_view_3D(density_3D_views[0], density_3D_textures[0]);
+        make_image_view_3D(density_3D_views[1], density_3D_textures[1]);
+        
         velocity_3D_textures[0] = rtg.helpers.create_image_3D(
-            VkExtent3D{.width = 128, .height = 128, .depth = 128}, 
+            VkExtent3D{.width = v_volume_side_length, .height = v_volume_side_length, .depth = v_volume_side_length}, 
             VK_FORMAT_R32G32B32A32_SFLOAT, 
             VK_IMAGE_TILING_OPTIMAL, 
             VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
             VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT
         );
         velocity_3D_textures[1] = rtg.helpers.create_image_3D(
-            VkExtent3D{.width = 128, .height = 128, .depth = 128}, 
+            VkExtent3D{.width = v_volume_side_length, .height = v_volume_side_length, .depth = v_volume_side_length}, 
             VK_FORMAT_R32G32B32A32_SFLOAT, 
             VK_IMAGE_TILING_OPTIMAL, 
             VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
@@ -349,14 +476,14 @@ void Tutorial::init_fluid(){
         make_image_view_3D(velocity_3D_views[1], velocity_3D_textures[1]);
 
         pressure_3D_textures[0] = rtg.helpers.create_image_3D(
-            VkExtent3D{.width = 128, .height = 128, .depth = 128}, 
+            VkExtent3D{.width = v_volume_side_length, .height = v_volume_side_length, .depth = v_volume_side_length}, 
             VK_FORMAT_R32_SFLOAT, 
             VK_IMAGE_TILING_OPTIMAL, 
             VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
             VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT
         );
         pressure_3D_textures[1] = rtg.helpers.create_image_3D(
-            VkExtent3D{.width = 128, .height = 128, .depth = 128}, 
+            VkExtent3D{.width = v_volume_side_length, .height = v_volume_side_length, .depth = v_volume_side_length}, 
             VK_FORMAT_R32_SFLOAT, 
             VK_IMAGE_TILING_OPTIMAL, 
             VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
@@ -366,7 +493,7 @@ void Tutorial::init_fluid(){
         make_image_view_3D(pressure_3D_views[1], pressure_3D_textures[1]);
 
         divergence_3D_texture = rtg.helpers.create_image_3D(
-            VkExtent3D{.width = 128, .height = 128, .depth = 128}, 
+            VkExtent3D{.width = v_volume_side_length, .height = v_volume_side_length, .depth = v_volume_side_length}, 
             VK_FORMAT_R32_SFLOAT, 
             VK_IMAGE_TILING_OPTIMAL, 
             VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
@@ -399,17 +526,27 @@ void Tutorial::init_fluid(){
 		VK( vkCreateSampler(rtg.device, &create_info, nullptr, &volume_sampler) );
 	}
 
-    //allocate the sampled descriptor set
+    //allocate the sampled descriptor sets
     {
-        VkDescriptorSetAllocateInfo alloc_info{
+        VkDescriptorSetAllocateInfo alloc_info_v{
             .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
             .descriptorPool = texture_descriptor_pool,
             .descriptorSetCount = 1,
             .pSetLayouts = &texture_debug_pipeline.set1_vel_vol,
         };
-        vkAllocateDescriptorSets(rtg.device, &alloc_info, &velocity_tex);
+        vkAllocateDescriptorSets(rtg.device, &alloc_info_v, &velocity_tex);
+
+        VkDescriptorSetAllocateInfo alloc_info_d{
+            .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+            .descriptorPool = texture_descriptor_pool,
+            .descriptorSetCount = 1,
+            .pSetLayouts = &texture_debug_pipeline.set2_dens_vol,
+        };
+        vkAllocateDescriptorSets(rtg.device, &alloc_info_d, &density_tex);
     }
-    
+
+    std::cout<<"allocating ping-pong descriptor sets for Density"<<std::endl;
+    make_ping_pong_descriptor_sets(density_volumes, add_scalar_sources_pipeline.set0_density_volume, density_3D_views);   
     std::cout<<"allocating ping-pong descriptor sets for Velocity"<<std::endl;
     make_ping_pong_descriptor_sets(velocity_volumes, add_vector_sources_pipeline.set0_velocity_volume, velocity_3D_views);
     std::cout<<"allocating ping-pong descriptor sets for Pressure"<<std::endl;
@@ -450,14 +587,14 @@ void Tutorial::init_fluid(){
     };
     VK(vkBeginCommandBuffer(compute_cmd_buf, &begin_info));
     {//image layout transition
-        for (int i = 0; i < 2; i++) {
+        auto layout_transition = [](VkCommandBuffer cmd_buf, Helpers::AllocatedImage3D &image){
             VkImageMemoryBarrier barrier{
                 .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
                 .srcAccessMask = 0,
                 .dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
                 .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
                 .newLayout = VK_IMAGE_LAYOUT_GENERAL,
-                .image = velocity_3D_textures[i].handle,
+                .image = image.handle,
                 .subresourceRange = {
                     .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
                     .baseMipLevel = 0,
@@ -467,68 +604,16 @@ void Tutorial::init_fluid(){
                 }
             };
 
-            vkCmdPipelineBarrier(
-                compute_cmd_buf,
-                VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-                VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                0,
-                0, nullptr,
-                0, nullptr,
-                1, &barrier
-            );
-        }
-        for (int i = 0; i < 2; i++) {
-            VkImageMemoryBarrier barrier{
-                .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
-                .srcAccessMask = 0,
-                .dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
-                .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-                .newLayout = VK_IMAGE_LAYOUT_GENERAL,
-                .image = pressure_3D_textures[i].handle,
-                .subresourceRange = {
-                    .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-                    .baseMipLevel = 0,
-                    .levelCount = 1,
-                    .baseArrayLayer = 0,
-                    .layerCount = 1
-                }
-            };
-
-            vkCmdPipelineBarrier(
-                compute_cmd_buf,
-                VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-                VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                0,
-                0, nullptr,
-                0, nullptr,
-                1, &barrier
-            );       
-        }
-        VkImageMemoryBarrier barrier{
-            .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
-            .srcAccessMask = 0,
-            .dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
-            .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-            .newLayout = VK_IMAGE_LAYOUT_GENERAL,
-            .image = divergence_3D_texture.handle,
-            .subresourceRange = {
-                .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-                .baseMipLevel = 0,
-                .levelCount = 1,
-                .baseArrayLayer = 0,
-                .layerCount = 1
-            }
+            vkCmdPipelineBarrier( cmd_buf, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1, &barrier);
         };
 
-        vkCmdPipelineBarrier(
-            compute_cmd_buf,
-            VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-            0,
-            0, nullptr,
-            0, nullptr,
-            1, &barrier
-        );
+        for (int i = 0; i < 2; i++) {
+            
+            layout_transition(compute_cmd_buf, density_3D_textures[i]);
+            layout_transition(compute_cmd_buf, velocity_3D_textures[i]);
+            layout_transition(compute_cmd_buf, pressure_3D_textures[i]);
+        }
+        layout_transition(compute_cmd_buf, divergence_3D_texture);
     }
 
     {//clear both volumes
@@ -541,17 +626,12 @@ void Tutorial::init_fluid(){
             .layerCount = 1,
         };
         for (int i = 0; i < 2; i++) {
-            vkCmdClearColorImage(
-                compute_cmd_buf,
-                velocity_3D_textures[i].handle,
-                VK_IMAGE_LAYOUT_GENERAL,
-                &zero,
-                1,
-                &range
-            );
+            vkCmdClearColorImage(compute_cmd_buf, velocity_3D_textures[i].handle, VK_IMAGE_LAYOUT_GENERAL, &zero, 1, &range);
+            vkCmdClearColorImage( compute_cmd_buf, density_3D_textures[i].handle, VK_IMAGE_LAYOUT_GENERAL, &zero, 1, &range);
         }
     }
 
+    
     //add sources
     add_sources_velocity(0.5f);
 
@@ -578,31 +658,49 @@ void Tutorial::update_fluid(float dt){
     };
     VK(vkBeginCommandBuffer(compute_cmd_buf, &begin_info));
 
-    const bool do_add_sources = true;
-    const bool do_diffuse = true;
-    const bool do_advect = true;
-    const bool do_project = true;
+    {//velocity
+        const bool do_add_sources = true;
+        const bool do_diffuse = true;
+        const bool do_advect = true;
+        const bool do_project = true;
 
-    if(do_add_sources){//add sources
-        add_sources_velocity(dt);
+        if(do_add_sources){//add sources
+            add_sources_velocity(dt);
+        }
+
+        if(do_diffuse){//diffuse
+            diffuse_velocity(dt);
+        }
+
+        if(do_project){//project
+            project_velocity();
+        }
+
+        if(do_advect){//advect
+            advect_velocity(dt);
+        }
+
+        if(do_project){//project
+            project_velocity();
+        }
     }
 
-    if(do_diffuse){//diffuse
-        diffuse_velocity(dt);
+    {//density
+        const bool do_add_sources = true;
+        const bool do_diffuse = false;
+        const bool do_advect = true;
+        
+        if(do_add_sources){//add sources
+            add_sources_density(dt);
+        }
+        if(do_diffuse){//diffuse
+            diffuse_density(dt);
+        }
+        if(do_advect){//advect
+            advect_density(dt);
+        }
     }
 
-    if(do_project){//project
-        project_velocity();
-    }
-
-    if(do_advect){//advect
-        advect_velocity(dt);
-    }
-
-    if(do_project){//project
-        project_velocity();
-    }
-    
     {//submit compute work
         VK(vkEndCommandBuffer(compute_cmd_buf));
 
@@ -618,22 +716,31 @@ void Tutorial::update_fluid(float dt){
 
     
     {//update descriptor sets for the two sampled images
-        VkDescriptorImageInfo image_info{
-            .sampler = texture_sampler,
-            .imageView = velocity_3D_views[velocity_ind],
-            .imageLayout = VK_IMAGE_LAYOUT_GENERAL,
+        std::array<VkDescriptorImageInfo, 2> image_infos{
+            VkDescriptorImageInfo{ .sampler = texture_sampler, .imageView = velocity_3D_views[velocity_ind], .imageLayout = VK_IMAGE_LAYOUT_GENERAL },
+            VkDescriptorImageInfo{ .sampler = texture_sampler, .imageView = density_3D_views[density_ind], .imageLayout = VK_IMAGE_LAYOUT_GENERAL },
         };
 
-        VkWriteDescriptorSet write{
-            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-            .dstSet = velocity_tex,
-            .dstBinding = 0,
-            .descriptorCount = 1,
-            .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-            .pImageInfo = &image_info,
+        std::array<VkWriteDescriptorSet, 2> writes{
+            VkWriteDescriptorSet{
+                .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .dstSet = velocity_tex,
+                .dstBinding = 0,
+                .descriptorCount = 1,
+                .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                .pImageInfo = &image_infos[0],
+            },
+            VkWriteDescriptorSet{
+                .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .dstSet = density_tex,
+                .dstBinding = 0,
+                .descriptorCount = 1,
+                .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                .pImageInfo = &image_infos[1],
+            },
         };
 
-        vkUpdateDescriptorSets(rtg.device, 1, &write, 0, nullptr);
+        vkUpdateDescriptorSets(rtg.device, (uint32_t)writes.size(), writes.data(), 0, nullptr);
     }
 
 

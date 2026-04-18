@@ -1,0 +1,63 @@
+#version 450
+//this code is the advection of density sampling velocity values, CPU implementation from Jos Stam
+
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 8) in;
+
+layout(push_constant) uniform Push {
+    int N;
+    float dt;
+} pc;
+
+layout(r32f, set = 0, binding = 0) readonly uniform image3D SRC_DEN; // input
+layout(r32f, set = 0, binding = 1) writeonly uniform image3D DST_DEN; // output
+layout(rgba32f, set = 1, binding = 0) readonly uniform image3D SRC_VEL; // input
+
+
+
+void main(){
+    ivec3 coord = ivec3(gl_GlobalInvocationID.xyz);
+    if (coord.x >= pc.N || coord.y >= pc.N || coord.z >= pc.N)
+    return;
+
+    int i0, j0, k0, i1, j1, k1;
+    float x, y, z, s0, t0, u0, s1, t1, u1, dt0;
+    dt0 = pc.dt * pc.N ;
+
+    vec4 v = imageLoad(SRC_VEL, coord);
+    x = coord.x - dt0 * v.x; y = coord.y - dt0 * v.y; z = coord.z - dt0 * v.z; //get the coordinate of the back-traced point in floats
+
+    x = clamp(x, 0.5, float(pc.N) - 1.5);
+    y = clamp(y, 0.5, float(pc.N) - 1.5);
+    z = clamp(z, 0.5, float(pc.N) - 1.5);
+
+    i0 = int(floor(x)); i1 = i0 + 1;
+    j0 = int(floor(y)); j1 = j0 + 1;
+    k0 = int(floor(z)); k1 = k0 + 1;
+
+    //tri-linear interpolation
+    s1 = x-i0; s0 = 1-s1; 
+    t1 = y-j0; t0 = 1-t1;
+    u1 = z-k0; u0 = 1-u1;
+
+    vec4 c000 = imageLoad(SRC_DEN, ivec3(i0, j0, k0));
+    vec4 c100 = imageLoad(SRC_DEN, ivec3(i1, j0, k0));
+    vec4 c010 = imageLoad(SRC_DEN, ivec3(i0, j1, k0));
+    vec4 c110 = imageLoad(SRC_DEN, ivec3(i1, j1, k0));
+
+    vec4 c001 = imageLoad(SRC_DEN, ivec3(i0, j0, k1));
+    vec4 c101 = imageLoad(SRC_DEN, ivec3(i1, j0, k1));
+    vec4 c011 = imageLoad(SRC_DEN, ivec3(i0, j1, k1));
+    vec4 c111 = imageLoad(SRC_DEN, ivec3(i1, j1, k1));
+
+    // interpolate
+    vec4 d_out =
+        s0 * (t0 * (u0 * c000 + u1 * c001) +
+            t1 * (u0 * c010 + u1 * c011)) +
+        s1 * (t0 * (u0 * c100 + u1 * c101) +
+            t1 * (u0 * c110 + u1 * c111));
+
+    // write result
+    imageStore(DST_DEN, coord, d_out);
+
+}

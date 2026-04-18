@@ -408,7 +408,7 @@ void Tutorial::load_textures(){
 		uint32_t env_mirror_material_descriptors = 2;
 		uint32_t pbr_material_descriptors = 8;
 		
-		uint32_t volume_sampler_descriptors = 1;
+		uint32_t volume_sampler_descriptors = 2;
 		std::array< VkDescriptorPoolSize, 1> pool_sizes{
 			VkDescriptorPoolSize{
 				.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,

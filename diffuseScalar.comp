@@ -1,0 +1,73 @@
+#version 450
+//this compute shader is written according to the cpu implementation of Jos Stam in his paper "Real-Time Fluid Dynamics for Games"
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 8) in;
+
+layout(push_constant) uniform Push {
+    int N;
+    float dt;
+    int color;
+} pc;
+
+layout(r32f, set = 0, binding = 0) readonly uniform image3D SRC_DEN; // input
+layout(r32f, set = 0, binding = 1) writeonly uniform image3D DST_DEN; // output
+
+
+bool is_boundary(ivec3 c) {
+    return (c.x == 0 || c.x == pc.N-1 ||
+            c.y == 0 || c.y == pc.N-1 ||
+            c.z == 0 || c.z == pc.N-1);
+}
+
+
+vec4 evaluate_density_boundary(ivec3 coord)
+{
+    vec4 sum = vec4(0.0);
+    int count = 0;
+
+    if (coord.x == 0)      { sum += imageLoad(SRC_DEN, coord + ivec3(1,0,0));  count++; }
+    if (coord.x == pc.N-1) { sum += imageLoad(SRC_DEN, coord + ivec3(-1,0,0)); count++; }
+    if (coord.y == 0)      { sum += imageLoad(SRC_DEN, coord + ivec3(0,1,0));  count++; }
+    if (coord.y == pc.N-1) { sum += imageLoad(SRC_DEN, coord + ivec3(0,-1,0)); count++; }
+    if (coord.z == 0)      { sum += imageLoad(SRC_DEN, coord + ivec3(0,0,1));  count++; }
+    if (coord.z == pc.N-1) { sum += imageLoad(SRC_DEN, coord + ivec3(0,0,-1)); count++; }
+    return sum / float(count);
+}
+
+
+void main(){
+    ivec3 coord = ivec3(gl_GlobalInvocationID.xyz);
+    if (coord.x >= pc.N || coord.y >= pc.N || coord.z >= pc.N) return;
+
+    else if(is_boundary(coord)){//boundaries
+        imageStore(DST_DEN, coord, evaluate_density_boundary(coord));
+        return;
+    }
+
+    //red black gauss-seidel
+    int parity = (coord.x + coord.y + coord.z) & 1;
+    if(parity != pc.color){//just do bypass
+        vec4 d = imageLoad(SRC_DEN, coord);
+        imageStore(DST_DEN, coord, d);
+        return;
+    }
+    //now the actaully update
+    float diff = 0.01f;
+    float a=pc.dt*diff*pc.N*pc.N;
+
+    vec4 d_0 = imageLoad(SRC_DEN, coord);
+    vec4 d_xp = imageLoad(SRC_DEN, coord + ivec3(1,0,0));
+    vec4 d_xn = imageLoad(SRC_DEN, coord + ivec3(-1,0,0));
+    vec4 d_yp = imageLoad(SRC_DEN, coord + ivec3(0,1,0));
+    vec4 d_yn = imageLoad(SRC_DEN, coord + ivec3(0,-1,0));
+    vec4 d_zp = imageLoad(SRC_DEN, coord + ivec3(0,0,1));
+    vec4 d_zn = imageLoad(SRC_DEN, coord + ivec3(0,0,-1));
+
+    vec4 sum = d_xp + d_xn + d_yp + d_yn + d_zp + d_zn;
+
+    vec4 v = (d_0 + a * sum) / (1.0 + 6.0 * a);
+    
+    // write result
+    imageStore(DST_DEN, coord, v);
+
+}

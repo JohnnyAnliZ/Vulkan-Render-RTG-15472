@@ -64,9 +64,12 @@ const overlay_shaders = [
 	maek.GLSLC('background.vert'),
 	maek.GLSLC('background.frag'),
 	maek.GLSLC('textureDebug.frag'),
+	maek.GLSLC('rayMarchSmoke.frag')
 ];
 main_objs.push( maek.CPP('Tutorial-BackgroundPipeline.cpp', undefined, { depends:[...overlay_shaders] } ) );
 main_objs.push( maek.CPP('TextureDebugPipeline.cpp', undefined, { depends:[...overlay_shaders] } ) );
+main_objs.push( maek.CPP('RayMarchSmokeVolume.cpp', undefined, { depends:[...overlay_shaders] } ) );
+
 
 //build lines shaders and pipeline:
 const lines_shaders = [

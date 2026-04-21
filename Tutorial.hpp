@@ -20,6 +20,7 @@
 #include "AdvectVectorPipeline.hpp"
 #include "ProjectionPipelines.hpp"
 #include "DensityPipelines.hpp"
+#include "RayMarchSmokeVolume.hpp"
 
 
 #include "RTG.hpp"
@@ -46,6 +47,7 @@ struct Tutorial : RTG::Application {
 	//Pipelines:
 	BackgroundPipeline background_pipeline;
 	TextureDebugPipeline texture_debug_pipeline;
+	RayMarchSmokeVolumePipeline ray_march_smoke_volume_pipeline;
 	LinesPipeline lines_pipeline;
 
 	LambertianObjectsPipeline lambertian_objects_pipeline;
@@ -374,6 +376,9 @@ struct Tutorial : RTG::Application {
 		mat4 clip_from_world(){
 			return perspective(vfov,aspect,near,far) * look_at_free(eye,dir,up);
 		}
+		mat4 world_from_clip(){
+			return clip_from_world().inverse();
+		}
 		// Returns the 8 corners of the view frustum in world space
 		// Order: near plane (bottom-left, bottom-right, top-right, top-left),
 		//        far plane (bottom-left, bottom-right, top-right, top-left)
@@ -397,6 +402,10 @@ struct Tutorial : RTG::Application {
 			near, //near
 			far //far
 			) * orbit(target, azimuth, elevation, radius);
+		}
+
+		mat4 world_from_clip(float aspect){
+			return clip_from_world(aspect).inverse();
 		}
 
 		vec3 get_eye()const;

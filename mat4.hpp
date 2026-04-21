@@ -8,7 +8,7 @@
 #include <assert.h>
 #include <string>
 #include <iostream>
-
+#include <string>
 
 struct mat4;
 struct mat3;
@@ -279,6 +279,13 @@ struct mat4 {
 
 	//this is taken from https://graphics.stanford.edu/~mdfisher/Code/Engine/Matrix4.cpp.html
 	mat4 inverse();
+
+	void print(const std::string &str) const {
+		std::cout<<str<<std::endl;
+		for(int i=0;i<4;i++){
+			std::cout<<data[0*4 + i]<<" "<<data[1*4 + i]<<" "<<data[2*4 + i]<<" "<<data[3*4 + i]<<std::endl;
+		}
+	}
 
 };
 static_assert(sizeof(mat4) == 16 * 4 );

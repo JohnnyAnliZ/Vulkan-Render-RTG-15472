@@ -147,7 +147,7 @@ void DivergencePipeline::destroy(RTG &rtg){
 		vkDestroyDescriptorSetLayout(rtg.device, set2_divergence_volume, nullptr);
 		set2_divergence_volume = VK_NULL_HANDLE;
 	}
-    
+	
 }
 
 

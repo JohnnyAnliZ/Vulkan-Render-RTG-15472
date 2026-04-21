@@ -211,7 +211,8 @@ Tutorial::~Tutorial()
 	pbr_objects_pipeline.destroy(rtg);
 	shadow_2D_pipeline.destroy(rtg);
 	texture_debug_pipeline.destroy(rtg);
-	
+	ray_march_smoke_volume_pipeline.destroy(rtg);
+
 	add_scalar_sources_pipeline.destroy(rtg);
 	diffuse_scalar_pipeline.destroy(rtg);
 	advect_density_pipeline.destroy(rtg);
@@ -223,6 +224,7 @@ Tutorial::~Tutorial()
 	pressure_solve_pipeline.destroy(rtg);
 	gradient_subtract_pipeline.destroy(rtg);
 
+	
 	if (command_pool != VK_NULL_HANDLE)
 	{
 		vkDestroyCommandPool(rtg.device, command_pool, nullptr);
@@ -973,6 +975,23 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params)
 			index_offset += (uint32_t)pbr_object_instances.size(); // update index_offset for the next batch of instances
 		}
 
+		{//draw with the ray march smoke volume pipeline
+			vkCmdBindPipeline(workspace.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, ray_march_smoke_volume_pipeline.handle);
+			vkCmdBindDescriptorSets(workspace.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, ray_march_smoke_volume_pipeline.layout,
+										0, 1, &density_tex, 0, nullptr);
+
+			mat4 WORLD_FROM_CLIP = CLIP_FROM_WORLD.inverse();
+			(WORLD_FROM_CLIP *CLIP_FROM_WORLD ).print("Supposedly I: ");
+			RayMarchSmokeVolumePipeline::Push push{
+				.WORLD_FROM_CLIP = WORLD_FROM_CLIP,
+				.eye = vec4(EYE.x, EYE.y, EYE.z, 0.0f),
+				.volume_center = vec4(0.0, 0.0, 10.0f,0.1f),//hard coded position, no scene representation yet, last bit stores cell size in world space
+				.N = v_volume_side_length,
+			};
+			vkCmdPushConstants(workspace.command_buffer, ray_march_smoke_volume_pipeline.layout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(push), &push);
+			vkCmdDraw(workspace.command_buffer, 3, 1, 0, 0);
+		}
+
 		{// draw with TextureDebugPipeline
 			vkCmdBindPipeline(workspace.command_buffer,VK_PIPELINE_BIND_POINT_GRAPHICS, texture_debug_pipeline.handle);
 
@@ -986,8 +1005,8 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params)
 			2, 1, &density_tex, 0, nullptr);
 
 			vkCmdDraw(workspace.command_buffer, 3, 1, 0, 0);
-
 		}
+
 
 		vkCmdEndRenderPass(workspace.command_buffer);
 	}

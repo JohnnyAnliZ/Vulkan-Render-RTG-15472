@@ -25,7 +25,7 @@ void main(){
     float dist = length(vec3(coord) - center);
 
     float falloff = exp(-dist * dist / (radius * radius));
-    float density = (dist < radius) ? 0.02 : 0.0;
+    float density = (dist < radius) ? 0.002 : 0.0;
 
     d_0.x += density;
 

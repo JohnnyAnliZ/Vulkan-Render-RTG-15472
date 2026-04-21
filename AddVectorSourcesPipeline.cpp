@@ -96,3 +96,4 @@ void AddVectorSourcesPipeline::destroy(RTG &rtg){
 		set0_velocity_volume = VK_NULL_HANDLE;
 	}
 }
+

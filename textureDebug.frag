@@ -51,7 +51,7 @@ void main(){
             float z = float(i) / float(sliceCount - 1);
 
             vec3 samplePos = vec3(localUV, z);//0-1 on all axes
-   
+        
             vec3 vel = texture(VELOCITY_VOL, samplePos).xyz;
 
             outColor = vec4(vel * 0.5 + 0.5, 1.0);

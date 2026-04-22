@@ -123,7 +123,7 @@ void Tutorial::add_sources_density(float dt){
 
 
 void Tutorial::diffuse_density(float dt){
-    const uint32_t ITERS = 14;
+    const uint32_t ITERS = 5;
     vkCmdBindPipeline(compute_cmd_buf, VK_PIPELINE_BIND_POINT_COMPUTE, diffuse_scalar_pipeline.handle);
     for(uint32_t i = 0; i < ITERS; i++){//red-black gauss-seidel method, red pass fills half buffer and the black pass reads from that 
         //red pass
@@ -304,7 +304,7 @@ void Tutorial::project_velocity(){
     };
     vkCmdPushConstants(compute_cmd_buf, pressure_solve_pipeline.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(push_ps), &push_ps);
     vkCmdBindDescriptorSets(compute_cmd_buf, VK_PIPELINE_BIND_POINT_COMPUTE, pressure_solve_pipeline.layout, 0, 1, &divergence_volume, 0, nullptr);
-    const uint32_t ITERS = 25;
+    const uint32_t ITERS = 10;
     for(uint32_t i = 0; i < ITERS; i++){//jacobi    
         vkCmdBindDescriptorSets(compute_cmd_buf, VK_PIPELINE_BIND_POINT_COMPUTE, pressure_solve_pipeline.layout, 1, 1, &pressure_volumes[pressure_ind], 0, nullptr);
         vkCmdDispatch(compute_cmd_buf,
@@ -338,7 +338,7 @@ void Tutorial::project_velocity(){
 }
 
 void Tutorial::diffuse_velocity(float dt){
-    const uint32_t ITERS = 14;
+    const uint32_t ITERS = 5;
     vkCmdBindPipeline(compute_cmd_buf, VK_PIPELINE_BIND_POINT_COMPUTE, diffuse_vector_pipeline.handle);
     for(uint32_t i = 0; i < ITERS; i++){//red-black gauss-seidel method, red pass fills half buffer and the black pass reads from that 
         //red pass
@@ -660,7 +660,7 @@ void Tutorial::update_fluid(float dt){
 
     {//velocity
         const bool do_add_sources = true;
-        const bool do_diffuse = true;
+        const bool do_diffuse = false;
         const bool do_advect = true;
         const bool do_project = true;
 
@@ -687,7 +687,7 @@ void Tutorial::update_fluid(float dt){
 
     {//density
         const bool do_add_sources = true;
-        const bool do_diffuse = false;
+        const bool do_diffuse = true;
         const bool do_advect = true;
         
         if(do_add_sources){//add sources

@@ -25,10 +25,11 @@ void main(){
     float dist = length(vec3(coord) - center);
 
     float falloff = exp(-dist * dist / (radius * radius));
-    float density = (dist < radius) ? 0.002 : 0.0;
+    float density = (dist < radius) ? 0.001 : 0.0;
 
-    d_0.x += density;
-
+    
+    d_0.x += density;//option 2
+    
     // write result
     imageStore(DST_DEN, coord, d_0);
 

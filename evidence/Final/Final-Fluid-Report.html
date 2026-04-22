@@ -1,0 +1,285 @@
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>15-472-s26: Final - Fluid Sim</title>
+<style>
+/* feel free to style your report in a fancier way! */
+
+@import url('https://fonts.googleapis.com/css2?family=Quicksand:wght@300;400;700&Anonymous+Pro&display=swap');
+
+html {
+	background:#505055;
+}
+
+body {
+	font-family: 'Quicksand', sans-serif;
+	color:#000;
+	background:#eeeee8;
+	font-size:15px;
+	margin: 1em auto 50vh auto;
+	padding: 1em 2em 1em 2em;
+	max-width:45em;
+	border-radius:4px;
+	box-shadow:0 0 10px #0008;
+}
+
+.answer{
+	color:rgb(32, 136, 0);
+	font-style:oblique;
+}
+
+h1 { font-size: 20px; font-weight: 700; }
+h2 { font-size: 16px; font-weight: 700; }
+h3 { font-size: 16px; font-weight: 400; }
+h4 { font-size: 14px; font-weight: 400; }
+
+h1, h2, h3, h4 {
+	margin: 15px 0 0 -10px;
+}
+
+p {
+	margin: 5px 0 0 0;
+}
+
+figure {
+	margin: 10px -2em;
+	padding: 10px 2em;
+	width:100%;
+	background:#e8e8e8;
+}
+
+figcaption {
+	font-size:14px;
+	font-style:italic;
+}
+
+.subtitle {
+	display:block;
+	font-size:16px;
+	font-weight:400;
+}
+
+.placeholder {
+	color:#800;
+	font-style:italic;
+}
+
+kbd {
+	display:inline-block;
+	background:#ccc;
+	color:#444;
+	font-style:normal;
+	font-weight:700;
+	border-radius:8px;
+	padding:1px 6px;
+	margin:1px;
+	border:1.5px solid #aaa;
+}
+
+code {
+	font-family: 'Anonymous Pro', monospace;
+	background: #222;
+	color:#fff;
+	border-radius:4px;
+	padding:2px 4px;
+	margin:1px;
+}
+
+code var {
+	color:#ef5;
+	font-style:italic;
+}
+
+.atag {
+	font-family: 'Calistoga', serif;
+	font-size:90%;
+	color:#000;
+	background:#e17dcd;
+
+	display:inline-block;
+	padding:1px 4px;
+	border-radius: 4px;
+	line-height:120%;
+}
+.atag:before {
+	content:'»';
+}
+.atag.extra {
+	background:#c6aff8;
+}
+.atag.creative {
+	background:linear-gradient(0.35turn, #fcacff, #f9ab93, #76a1e4, #20953d);
+}
+
+</style>
+<!-- Load Chart.js for creating charts (documentation https://www.chartjs.org/docs/latest/ ) -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+<h1>Final: Eulerian fluid simulation
+<span class="subtitle">by <span class="placeholder">Johnny Zhang (anliz)</span></span>
+</h1>
+
+<!-- of course, delete these class="placeholder" notes in your report: -->
+
+
+
+<p class="body">
+To start this project, I had to learn a bit about fluid dynamics and the navier-stokes equation, which took some time for me to understand it
+on a surface level enough to gain intuition about how <a href="https://graphics.cs.cmu.edu/nsp/course/15-464/Fall09/papers/StamFluidforGames.pdf">Jos Stam's paper</a>  
+works, discretizing the velocity field into grid cells. I also learned about iterative numerical algorithms to solve linear systems like the Gauss-Seidel method and 
+the Jacobi method. I implemented all the necessary steps to model the fluid velocity volume: add sources, diffuse(for viscous fluids), advect and project, 
+which is an operation that does the Helmhotz decomposition to (try to) make the velocity field divergence free. 
+</p>
+
+<p class="body">
+I also learned about working with compute shaders. Specifically, the ping-pong technique and how Gauss-Seidel could be parallelized/approximated using a Red-Black
+Gauss-Seidel method. The compute pipeline is surprisingly quite a bit simpler to set up compared to the graphics pipeline, since it's just computation.
+</p>
+
+
+<h2>Visualization</h2>
+<p class="body">
+In all the video demos showcased in this report, two methods are used to visualize fluid dynamics. First one is the quads on the top and 
+bottom of the screen. They are slices of the 3D volume for density and velocity, in the velocity volume, grey is no velocity, and variations in r,g,b,
+correspond x,y,and z components of the velocities. For density it's simply white times density.
+</p>
+
+<p class="body">
+In the middle is the ray-marched 3D volume in which fluids are flowing, the density is ray-marched naively without account for lighting or alpha compositing(for now).  
+</p>
+
+<h2>Demos <span class="atag creative">Creative</span></h2>
+
+<video width="640" height="339" controls>
+<source src="Fire.mp4" type="video/mp4" />
+</video>
+
+<p class="body">
+The fire is made by setting the raymarch accumulated density to multiply by an orange color. The diffusion step for velocity is omitted
+to make fluid less viscous(little velocity diffusion);
+Velocity is added each frame to the fire source region
+The density is not added each frame to the fire source region but set to a fixed value for the region, so that the density doesn't fill the whole volume
+</p>
+
+<video width="640" height="339" controls>
+<source src="Swrils.mp4" type="video/mp4" />
+</video>
+<p class="body">
+Here, the fluid is viscous(the velocity field changes less rapidly) and flow starts off being non-turbulent. Swrils could be seen.
+</p>
+
+
+<h3>Command-line Arguments (Viewer)</h3>
+
+<ul>
+<li class="body"><code>--scene <var>scene.s72</var></code> -- required -- load scene from <code><var>scene.s72</var></code></li>
+<li class="body"><code>--nocull </code> -- optional -- disable culling</li>
+<li class="body"><code>--camera <var>CAMERA_NAME</var></code> -- optional -- select camera named <code><var>CAMERA_NAME</var></code></li>
+<li class="body"><code>--drawing-size <var>width</var> <var>height</var></code> -- optional -- specify window size </li>
+<li class="body"><code>--headless </code> -- optional -- run in headless mode </li>
+<li class="body"><code>--exposure <var>e</var></code> -- optional -- change exposure of tone mapping, default is 0 </li>
+<li class="body"><code>--tone-map <var>type</var></code> -- optional -- change curve of tone mapping, default is linear </li>
+
+
+</ul>
+
+<h2>Evidence</h2>
+
+<h3>Creation of flow, density<span class="atag">Add Sources</span></h3> 
+
+<p class="body">
+This part is simple, although I didn't have time to implement any interactive mechanisms to do this part. 
+I experimented with two ways of adding sources, first one is actually adding a certain amount to a region every frame, the other is to set a certain 
+region to always be a certain value. I found out that, for velocity, the first option leads to turbulent flow over time because the velocity flow would fill the volume
+and kind of run back into itself due to the project step later, which preserves the curl of the field.
+</p>
+<p class="body">
+With density, if we use the first option, it almost always fill up the whole space and the whole space would converge to a homogenous density. But with the second
+option, the densities seem to stay mostly local, and would dissipate before it could go out and fill the whole volume.
+</p>
+
+
+<h3>Diffusion<span class="atag">Diffuse</span></h3>
+
+<p class="body">
+Diffusion happens also for both density and velocity. Jos Stam's paper proposes that, in order for this eulerian fluid dynmics to be stable, i.e. not have oscillitor
+behavior due to update steps over shooting, is to solve diffusion backwards, resulting in a linear system of equations, which he solved on the CPU using Gauss-Seidel 
+method. I watched Sebastian's <a href = "https://www.youtube.com/watch?v=Q78wvrQ9xsU&t=783s"> coding adventure video</a> to learn that you could do a red-black Gauss-Seidel
+thing to parallelize it on the GPU. 
+</p>
+
+<p class="body">
+Below are some demonstation of effects of differnt diff values in the diffusion shader for density, since the flow is due to velocity advection, they look 
+pretty much similar, but it's apparent that in high diff values, the aliasing artifact is more reduced.
+</p>
+
+<video width="640" height="339" controls>
+<source src="DensityDiffusion0.0000000001.mp4" type="video/mp4" />
+</video>
+<p class="body">
+diff = 0.0000000001
+</p>
+
+<video width="640" height="339" controls>
+<source src="DensityDiffusion0.1.mp4" type="video/mp4" />
+</video>
+<p class="body">	
+diff = 0.1
+</p>
+
+<video width="640" height="339" controls>
+<source src="DensityDiffusion1000.0.mp4" type="video/mp4" />
+</video>
+<p class="body">	
+diff = 1000
+</p>
+
+
+
+<h3>Evolving through the velocity field<span class="atag">Advect</span></h3>
+
+<p class="body">
+Advection also uses a backwards approach, outlined in Stam's paper. The effect of advection depends on the velocity field itself, so it's less
+parameterizeable. 
+</p>
+
+<h3>Correcting divergence<span class="atag">Project</span></h3>
+<p class="body">
+Divergence in the velocity field happens when the velocity field is not mass-conserving. The project step makes the field more mass-conserving, after diffuse
+and advect, which might break mass-conservation. Projection (to me), is the most crucial for creating realistic fluid flow; It creates swirls because it forces the 
+whole velocity volume to become consistend with itself, creating a sense of "flow".
+</p>
+
+<video width="640" height="339" controls>
+<source src="DensityDiffusion1000.0NoProjection.mp4" type="video/mp4" />
+</video>
+<p class="body">	
+diff = 1000, no projection, no "flow"
+</p>
+
+<h2>Performance</h2>
+<body>
+All the videos are simulated on a 192 x 192 x 192 3D volume. Which runs at a 38ms frame time, which I thought is a passable frame rate for the sake of high resolution
+fluids. At 256 x 256 x 256, a 80ms frame time. But at 128 x 128 x 128, the frame rate is consistently 60 fps.
+</body>
+
+<body>
+I watched <a href = "https://www.youtube.com/watch?v=dDgyBKkSf7A&t=464s"> a video on the wind simulation in God of War</a>, which was one of the main inspirations for 
+this project. In the video, it's mentioned that, for their 16 x 32 x 32 wind volume, the compute passes take 107 microseconds, which is a result of some optimizations 
+they did. Also, the video mentions that in the game, 107 microseconds is a suitable amount of frame budget for the wind simulation, which is only a small part of
+what's running each frame.
+</body>
+
+<body>
+My implementation is somewhat more complicated than God of War's: I simulate density in addition to velocity; also, I added the projection step, which is multi-iteration 
+process. I tried to match their volume with 32 x 32 x 32 (twice as large) and got compute time of 1362 microseconds. This number could be further reduced if I want to
+use the velocity volume as wind simulation since, firstly, as the resolution is not high enough for fluid phenomena like swirls, the projection step could be get rid of, and 
+secondly, density wouldn't need to be simulated at all. 
+</body>
+
+<img src="ComputeTime.PNG" width="500" height="333">
+<figcaption>Compute time captured in renderdoc</figcaption>
+
+</body>
+</html>

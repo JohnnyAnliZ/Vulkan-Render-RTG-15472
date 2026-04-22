@@ -981,11 +981,11 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params)
 										0, 1, &density_tex, 0, nullptr);
 
 			mat4 WORLD_FROM_CLIP = CLIP_FROM_WORLD.inverse();
-			(WORLD_FROM_CLIP *CLIP_FROM_WORLD ).print("Supposedly I: ");
+
 			RayMarchSmokeVolumePipeline::Push push{
 				.WORLD_FROM_CLIP = WORLD_FROM_CLIP,
 				.eye = vec4(EYE.x, EYE.y, EYE.z, 0.0f),
-				.volume_center = vec4(0.0, 0.0, 10.0f,0.1f),//hard coded position, no scene representation yet, last bit stores cell size in world space
+				.volume_center = vec4(0.0, 0.0, 10.0f,10.0f),//hard coded position, no scene representation yet, last bit stores cell size in world space
 				.N = v_volume_side_length,
 			};
 			vkCmdPushConstants(workspace.command_buffer, ray_march_smoke_volume_pipeline.layout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(push), &push);
@@ -1183,7 +1183,7 @@ void Tutorial::update(float dt)
 	}
 
 	
-	update_fluid(dt);
+	if(fluid_unpaused)update_fluid(dt);
 
 }
 
@@ -1224,7 +1224,11 @@ void Tutorial::on_input(InputEvent const &evt)
 		return;
 	}
 	// general controls
-
+	if (evt.type == InputEvent::KeyDown && evt.key.key == GLFW_KEY_F)
+	{
+		fluid_unpaused = !fluid_unpaused;
+		std::cout << "Switching fluid unpaused:" << fluid_unpaused << std::endl;
+	}
 	if (evt.type == InputEvent::KeyDown && evt.key.key == GLFW_KEY_M)
 	{
 		shadows_on = !shadows_on;

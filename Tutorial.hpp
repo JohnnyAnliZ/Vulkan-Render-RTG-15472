@@ -188,6 +188,7 @@ struct Tutorial : RTG::Application {
 	void update_scene(float dt);
 
 	//------Fluid Simulation stuff-----
+	bool fluid_unpaused = false;
 	VkDescriptorPool storage_descriptor_pool = VK_NULL_HANDLE;
 	VkCommandPool compute_command_pool = VK_NULL_HANDLE;
 	VkCommandBuffer compute_cmd_buf = VK_NULL_HANDLE;
@@ -204,7 +205,7 @@ struct Tutorial : RTG::Application {
 	PressureSolvePipeline pressure_solve_pipeline;
 	GradientSubtractPipeline gradient_subtract_pipeline;
 
-	const uint32_t v_volume_side_length = 192; //side length of the velocity volume
+	const uint32_t v_volume_side_length = 128; //side length of the velocity volume
 	const uint32_t groupCounts[3] = {8,8,8};
 
 	VkSampler volume_sampler = VK_NULL_HANDLE;

@@ -37,11 +37,11 @@ bool intersectAABB(
 void main() {
     vec3 eye = pc.EYE.xyz;
 
-    float cellSize = pc.volume_center_step.w;
+    float cellSize = pc.volume_center_step.w / float(pc.N);
     float stepSize = cellSize * 0.5;   // good default
 
     // Volume bounds:
-    float size = float(pc.N) * cellSize;
+    float size = pc.volume_center_step.w;
     vec3 halfSize = vec3(size * 0.5);
 
     vec3 center = pc.volume_center_step.xyz;
@@ -102,7 +102,8 @@ void main() {
     float value = accum;
 
 
-    outColor = vec4(vec3(value), 1.0);
+
+    outColor = vec4(value * vec3(1.0, 1.0, 1.0), 1.0);
 }
 
 

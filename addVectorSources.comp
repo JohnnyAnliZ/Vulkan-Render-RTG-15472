@@ -5,6 +5,10 @@ layout(local_size_x = 8, local_size_y = 8, local_size_z = 8) in;
 layout(push_constant) uniform Push {
     int N;
     float dt;
+    uint motor_active;
+    float motor_radius;
+    vec4 cam_pos_grid; // xyz = camera position in grid space
+    vec4 cam_dir;      // xyz = camera forward direction
 } pc;
 
 layout(rgba32f, set = 0, binding = 0) readonly uniform image3D SRC_VOL; // input
@@ -18,18 +22,23 @@ void main(){
 
     vec4 v_0 = imageLoad(SRC_VOL, coord);
 
-    
+    // gentle upward buoyancy
     vec3 center = vec3(pc.N*0.5, 0.2, pc.N*0.5);
-    float radius = pc.N * 0.3;
-
     float dist = length(vec3(coord) - center);
+    if (dist < pc.N * 0.3) v_0.xyz += vec3(0.0, 0.1, 0.0);
 
+    // wind motor: cylindrical jet along camera ray
+    if (pc.motor_active != 0u) {
+        vec3 cam_to_cell = vec3(coord) - pc.cam_pos_grid.xyz;
+        float along_ray  = dot(cam_to_cell, pc.cam_dir.xyz);
+        vec3  perp       = cam_to_cell - along_ray * pc.cam_dir.xyz;
+        float perp_dist  = length(perp);
 
-    vec3 force = (dist < radius) ? vec3(0.0, 0.5, 0.0) : vec3(0.0,0.0,0.0);
+        if (along_ray > 0.0 && perp_dist < pc.motor_radius) {
+            float falloff = 1.0 - (perp_dist / pc.motor_radius);
+            v_0.xyz += pc.cam_dir.xyz * falloff * 3.0;
+        }
+    }
 
-    v_0.xyz += force;
-
-    // write result
     imageStore(DST_VOL, coord, v_0);
-
 }

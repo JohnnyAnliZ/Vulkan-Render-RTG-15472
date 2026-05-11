@@ -985,7 +985,7 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params)
 			RayMarchSmokeVolumePipeline::Push push{
 				.WORLD_FROM_CLIP = WORLD_FROM_CLIP,
 				.eye = vec4(EYE.x, EYE.y, EYE.z, 0.0f),
-				.volume_center = vec4(0.0, 0.0, 10.0f,10.0f),//hard coded position, no scene representation yet, last bit stores cell size in world space
+				.volume_center = vec4(0.0, 0.0, 10.0f,cell_size_ws),//hard coded position, no scene representation yet, last bit stores cell size in world space
 				.N = v_volume_side_length,
 			};
 			vkCmdPushConstants(workspace.command_buffer, ray_march_smoke_volume_pipeline.layout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(push), &push);
@@ -1037,7 +1037,7 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params)
 			.pSignalSemaphores = signal_semaphores.data(),
 		};
 		VK(vkQueueSubmit(rtg.graphics_queue, 1, &submit_info, render_params.workspace_available));
-	}
+	}	
 	
 	if(shadow_dump){ // now read the debug buffer and output it
 		vkQueueWaitIdle(rtg.graphics_queue);
@@ -1097,24 +1097,28 @@ void Tutorial::update(float dt)
 									  vec3(0.0f, 0.0f, 1.0f)									// up
 								  );
 				EYE = vec3(13.0f * std::cos(ang), 13.0f * std::sin(ang), 5.0f);
+				CAM_DIR = normalized(vec3(0.0f, 0.0f, 5.0f) - EYE);
 			}
 			else
 			{ // fixed, potentially keyframed camera that is loaded from s72 file
 
 				CLIP_FROM_WORLD = current_camera->second.clip_from_world();
 				EYE = current_camera->second.eye;
+				CAM_DIR = normalized(current_camera->second.dir);
 			}
 		}
 		else if (camera_mode == CameraMode::Free)
 		{
 			CLIP_FROM_WORLD = free_camera.clip_from_world(rtg.swapchain_extent.width / float(rtg.swapchain_extent.height)); // aspect passed in
 			EYE = free_camera.get_eye();
+			CAM_DIR = normalized(free_camera.target - EYE);
 		}
 		else if (camera_mode == CameraMode::Debug)
 		{
-			
+
 			CLIP_FROM_WORLD = debug_camera.clip_from_world(rtg.swapchain_extent.width / float(rtg.swapchain_extent.height)); // aspect passed in
 			EYE = debug_camera.get_eye();
+			CAM_DIR = normalized(debug_camera.target - EYE);
 			// draw frustrum for previous camera
 			add_debug_lines_frustrum();
 			
@@ -1278,6 +1282,12 @@ void Tutorial::on_input(InputEvent const &evt)
 		growing = !growing;
 		return;
 	}
+
+	// wind motor: hold left mouse button to blow smoke in camera direction
+	if (evt.type == InputEvent::MouseButtonDown && evt.button.button == GLFW_MOUSE_BUTTON_RIGHT)
+		wind_motor_active = true;
+	if (evt.type == InputEvent::MouseButtonUp && evt.button.button == GLFW_MOUSE_BUTTON_RIGHT)
+		wind_motor_active = false;
 
 	// free camera controls
 	if (camera_mode == CameraMode::Free)

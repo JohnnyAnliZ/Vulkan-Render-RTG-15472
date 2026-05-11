@@ -207,6 +207,7 @@ struct Tutorial : RTG::Application {
 
 	const uint32_t v_volume_side_length = 128; //side length of the velocity volume
 	const uint32_t groupCounts[3] = {8,8,8};
+	float cell_size_ws = 100.0f;//size of a cell in world space, used for calculating sampling positions in the shaders
 
 	VkSampler volume_sampler = VK_NULL_HANDLE;
 
@@ -429,8 +430,11 @@ struct Tutorial : RTG::Application {
 	void add_debug_lines_bbox(AABB &bbox, mat4 WORLD_FROM_LOCAL);
 	void add_cuboid_from_corners(std::array<vec3, 8> const &box_corners, uint8_t r, uint8_t g, uint8_t b);
 
-	mat4 CLIP_FROM_WORLD;//The CLIP_FROM_WORLD matrix for the camera currently used 
-	vec3 EYE = vec3(0,0,0); 
+	mat4 CLIP_FROM_WORLD;//The CLIP_FROM_WORLD matrix for the camera currently used
+	vec3 EYE = vec3(0,0,0);
+	vec3 CAM_DIR = vec3(0,0,-1);
+
+	bool wind_motor_active = false;
 
 	//camera loaded in from s72 files
 	std::unordered_map<std::string, BasicCamera> loaded_cameras;

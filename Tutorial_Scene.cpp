@@ -19,9 +19,6 @@
 
 
 
-
-
-
 void Tutorial::load_scene() {
     // the BFS traversal, mesh loading, etc.
     //load the scene file

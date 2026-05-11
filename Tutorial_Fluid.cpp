@@ -234,9 +234,18 @@ void Tutorial::add_sources_velocity(float dt){
         nullptr
     );
 
+    vec3 volume_center = vec3(0.0f, 0.0f, 10.0f);
+    float volume_size  = cell_size_ws;
+    vec3 volume_min    = volume_center - vec3(volume_size * 0.5f);
+    vec3 cam_grid      = (EYE - volume_min) / volume_size * float(v_volume_side_length);
+
     AddVectorSourcesPipeline::Push push{
         .N = v_volume_side_length,
         .dt = dt,
+        .motor_active = wind_motor_active ? 1u : 0u,
+        .motor_radius = float(v_volume_side_length) * 0.08f,
+        .cam_pos_grid = vec4(cam_grid.x, cam_grid.y, cam_grid.z, 0.0f),
+        .cam_dir      = vec4(CAM_DIR.x, CAM_DIR.y, CAM_DIR.z, 0.0f),
     };
     vkCmdPushConstants(compute_cmd_buf, add_vector_sources_pipeline.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(push), &push);
 
@@ -660,7 +669,7 @@ void Tutorial::update_fluid(float dt){
 
     {//velocity
         const bool do_add_sources = true;
-        const bool do_diffuse = false;
+        const bool do_diffuse = true;
         const bool do_advect = true;
         const bool do_project = true;
 
@@ -687,7 +696,7 @@ void Tutorial::update_fluid(float dt){
 
     {//density
         const bool do_add_sources = true;
-        const bool do_diffuse = true;
+        const bool do_diffuse = false;
         const bool do_advect = true;
         
         if(do_add_sources){//add sources

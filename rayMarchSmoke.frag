@@ -77,14 +77,18 @@ void main() {
     }
 
     // --- Accumulation ---
-    float accum = 0.0;
+    const float extinction = 30.0;
+    const vec3  smoke_color = vec3(0.8, 0.9, 1.0);
+
+    float transmittance = 1.0;
+    vec3  color         = vec3(0.0);
 
     const int MAX_STEPS = 512;
 
     float t = tStart;
 
     for (int i = 0; i < MAX_STEPS; ++i) {
-        if (t >= tEnd) break;
+        if (t >= tEnd || transmittance < 0.001) break;
 
         vec3 p_ws = rayOrigin + t * rayDir;
 
@@ -93,17 +97,16 @@ void main() {
 
         float density = texture(DENSITY_VOL, uvw).x;
 
-        accum += density * stepSize;
+        if (density > 0.0001) {
+            float step_T    = exp(-extinction * density * (stepSize/size));
+            color          += transmittance * (1.0 - step_T) * smoke_color;
+            transmittance  *= step_T;
+        }
 
         t += stepSize;
     }
 
-    // simple visualization
-    float value = accum;
-
-
-
-    outColor = vec4(value * vec3(1.0, 1.0, 1.0), 1.0);
+    outColor = vec4(color, 1.0 - transmittance);
 }
 
 

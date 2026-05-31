@@ -51,7 +51,7 @@ void Tutorial::load_scene() {
 				}
 				assert(!node->camera->projection.valueless_by_exception());
 				std::cout<<"loading camera: "<<node->camera->name<<std::endl;;
-				S72::Camera::Perspective perspective = get<S72::Camera::Perspective>(node->camera->projection);
+				S72::Camera::Perspective perspective = std::get<S72::Camera::Perspective>(node->camera->projection);
 				loaded_cameras[node->camera->name] = BasicCamera{
 					.eye = world_from_local.translation(),
 					.dir = (world_from_local * vec4{0,0,-1,0}).xyz(),
@@ -292,7 +292,7 @@ void Tutorial::update_scene(float dt) {
 									.WORLD_FROM_LOCAL_NORMAL = mat4(normal_matrix),//normal matrix
 								},
 								//if the scenefile doesn't specify material just use the 0 debug material
-								.texture = (node->mesh->material == nullptr) ? 0 : material_texture_descriptor_set_table.at(node->mesh->material->name),
+								.texture = (node->mesh->material == nullptr) ? 0 : material_system.material_texture_descriptor_set_table.at(node->mesh->material->name),
 							}
 						);
 					}
@@ -306,7 +306,7 @@ void Tutorial::update_scene(float dt) {
 									.WORLD_FROM_LOCAL_NORMAL = mat4(normal_matrix),//normal matrix
 								},
 								//if the scenefile doesn't specify material just use the 0 debug material
-								.texture = (node->mesh->material == nullptr) ? 0 : material_texture_descriptor_set_table.at(node->mesh->material->name),
+								.texture = (node->mesh->material == nullptr) ? 0 : material_system.material_texture_descriptor_set_table.at(node->mesh->material->name),
 								.is_env = _is_env ? 1 : 0,
 							}
 						);
@@ -320,7 +320,7 @@ void Tutorial::update_scene(float dt) {
 									.WORLD_FROM_LOCAL = world_from_local,
 									.WORLD_FROM_LOCAL_NORMAL = mat4(normal_matrix),//normal matrix	
 								},
-								.texture = (node->mesh->material == nullptr) ? 0 : material_texture_descriptor_set_table.at(node->mesh->material->name),
+								.texture = (node->mesh->material == nullptr) ? 0 : material_system.material_texture_descriptor_set_table.at(node->mesh->material->name),
 							}
 						);
 					}
@@ -337,7 +337,7 @@ void Tutorial::update_scene(float dt) {
 				
 				assert(loaded_cameras.find(node->camera->name) != loaded_cameras.end());
 
-				S72::Camera::Perspective perspective = get<S72::Camera::Perspective>(node->camera->projection);
+				S72::Camera::Perspective perspective = std::get<S72::Camera::Perspective>(node->camera->projection);
 				loaded_cameras[node->camera->name] = BasicCamera{
 					.eye = world_from_local.translation(),
 					.dir = (world_from_local * vec4{0,0,-1,0}).xyz(),
@@ -360,7 +360,7 @@ void Tutorial::update_scene(float dt) {
 				uint32_t faces = 0;
 				if(std::holds_alternative<S72::Light::Sun>(v)){
 					default_world_lights = false;
-					S72::Light::Sun &sun = get<S72::Light::Sun>(v);
+					S72::Light::Sun &sun = std::get<S72::Light::Sun>(v);
 					lights.emplace_back(Light{
 						.color = color,
 						.direction = world_dir,
@@ -373,7 +373,7 @@ void Tutorial::update_scene(float dt) {
 				else if(std::holds_alternative<S72::Light::Sphere>(v)){
 
 					default_world_lights = false;
-					S72::Light::Sphere &sphere = get<S72::Light::Sphere>(v);
+					S72::Light::Sphere &sphere = std::get<S72::Light::Sphere>(v);
 					const int duplicates = 1;
 					for(uint32_t i = 0; i < duplicates; i++){
 						lights.emplace_back(Light{
@@ -390,7 +390,7 @@ void Tutorial::update_scene(float dt) {
 				}
 				else if(std::holds_alternative<S72::Light::Spot>(v)){
 					default_world_lights = false;
-					S72::Light::Spot &spot = get<S72::Light::Spot>(v);
+					S72::Light::Spot &spot = std::get<S72::Light::Spot>(v);
 					lights.emplace_back(Light{
 						.color = color,
 						.position = world_trans,

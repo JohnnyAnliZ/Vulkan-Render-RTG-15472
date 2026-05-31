@@ -19,7 +19,12 @@ unsigned long long seed = std::chrono::system_clock::now().time_since_epoch().co
 std::mt19937 engine((unsigned int)seed);
 std::uniform_real_distribution<float> dist(-1.0f, 1.0f);
 
-Tutorial::Tutorial(RTG &rtg_) : rtg(rtg_)
+Tutorial::Tutorial(RTG &rtg_)
+	: rtg(rtg_),
+	  material_system(rtg_, scene72,
+	                  lambertian_objects_pipeline,
+	                  env_mirror_objects_pipeline,
+	                  pbr_objects_pipeline)
 {
 	// command pool, descriptor pool,
 	init_tutorial();
@@ -30,8 +35,9 @@ Tutorial::Tutorial(RTG &rtg_) : rtg(rtg_)
 	// set up loaded cameras, put mesh data into the object_vertices buffer
 	load_scene();
 
-	// load textures into texture_descriptor_sets
-	load_textures();
+	// load textures then build material descriptor sets
+	material_system.load_textures();
+	material_system.load_materials();
 
 	std::cout<<"INITIALIZING fluid"<<std::endl;
 	init_fluid();	
@@ -53,45 +59,12 @@ Tutorial::~Tutorial()
 		std::cerr << "Failed to vkDeviceWaitIdle in Tutorial::~Tutorial [" << string_VkResult(result) << "]; continuing anyway." << std::endl;
 	}
 
-	// freeing texture
-	if (texture_descriptor_pool)
-	{
-		vkDestroyDescriptorPool(rtg.device, texture_descriptor_pool, nullptr);
-		texture_descriptor_pool = nullptr;
-		// this also frees the descriptor sets allocated from the pool:
-		texture_descriptor_sets.clear();
-	}
-
-	if (texture_sampler)
-	{
-		vkDestroySampler(rtg.device, texture_sampler, nullptr);
-		texture_sampler = VK_NULL_HANDLE;
-	}
-
-	if (depth_texture_sampler)
-	{
-		vkDestroySampler(rtg.device, depth_texture_sampler, nullptr);
-		depth_texture_sampler = VK_NULL_HANDLE;
-	}
-
 	if(volume_sampler)
 	{
 		vkDestroySampler(rtg.device, volume_sampler, nullptr);
 		volume_sampler = VK_NULL_HANDLE;
 	}
-
-	for (VkImageView &view : texture_views)
-	{
-		vkDestroyImageView(rtg.device, view, nullptr);
-		view = VK_NULL_HANDLE;
-	}
-	texture_views.clear();
-
-	for (auto &texture : textures)
-	{
-		rtg.helpers.destroy_image(std::move(texture));
-	}
-	textures.clear();
+	// texture/material cleanup is handled by material_system destructor
 
 	// freeing static buffers
 	rtg.helpers.destroy_buffer(std::move(object_vertices));
@@ -884,7 +857,7 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params)
 						workspace.command_buffer,
 						VK_PIPELINE_BIND_POINT_GRAPHICS,
 						lambertian_objects_pipeline.layout,
-						3, 1, &texture_descriptor_sets[inst.texture],
+						3, 1, &material_system.texture_descriptor_sets[inst.texture],
 						0, nullptr);
 					vkCmdDraw(workspace.command_buffer, inst.vertices.count, 1, inst.vertices.first, index + index_offset);
 				}
@@ -913,7 +886,7 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params)
 						workspace.command_buffer,
 						VK_PIPELINE_BIND_POINT_GRAPHICS,
 						env_mirror_objects_pipeline.layout,
-						2, 1, &texture_descriptor_sets[inst.texture],
+						2, 1, &material_system.texture_descriptor_sets[inst.texture],
 						0, nullptr);
 
 					{ // push constant to determine whether it's mirror or environment
@@ -966,7 +939,7 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params)
 						workspace.command_buffer,
 						VK_PIPELINE_BIND_POINT_GRAPHICS,
 						pbr_objects_pipeline.layout,
-						2, 1, &texture_descriptor_sets[inst.texture],
+						2, 1, &material_system.texture_descriptor_sets[inst.texture],
 						0, nullptr);
 
 					vkCmdDraw(workspace.command_buffer, inst.vertices.count, 1, inst.vertices.first, index + index_offset);
@@ -1511,7 +1484,7 @@ void Tutorial::add_debug_lines_bbox(AABB &bbox, mat4 WORLD_FROM_LOCAL)
 	add_cuboid_from_corners(bbox_corners, 0, 255, 0);
 }
 
-std::array<vec3, 8> Tutorial::BasicCamera::get_frustum_corners() const
+std::array<vec3, 8> BasicCamera::get_frustum_corners() const
 {
 	std::array<vec3, 8> corners;
 
@@ -1547,7 +1520,7 @@ std::array<vec3, 8> Tutorial::BasicCamera::get_frustum_corners() const
 	return corners;
 }
 
-vec3 Tutorial::OrbitCamera::get_eye() const
+vec3 OrbitCamera::get_eye() const
 {
 	// Calculate camera position and orientation from orbit camera parameters
 	float cos_elev = std::cos(elevation);
@@ -1565,7 +1538,7 @@ vec3 Tutorial::OrbitCamera::get_eye() const
 
 
 
-std::array<vec3, 8> Tutorial::Light::get_frustum_corners() const
+std::array<vec3, 8> Light::get_frustum_corners() const
 { // only use this on spotlights, where a frustum is defined
 	assert(type == 2);
 	std::array<vec3, 8> corners;
@@ -1607,7 +1580,7 @@ std::array<vec3, 8> Tutorial::Light::get_frustum_corners() const
 	return corners;
 }
 
-std::array<vec3, 8> Tutorial::OrbitCamera::get_frustum_corners(float aspect) const
+std::array<vec3, 8> OrbitCamera::get_frustum_corners(float aspect) const
 {
 	std::array<vec3, 8> corners;
 
@@ -1718,7 +1691,7 @@ bool Tutorial::do_cull(std::array<vec3, 8> const &frustrum_corners, std::array<v
 	return false; // none of the SATs work
 }
 
-void Tutorial::AABB::get_box_corners(mat4 WORLD_FROM_LOCAL, std::array<vec3, 8> &box_corners)
+void AABB::get_box_corners(mat4 WORLD_FROM_LOCAL, std::array<vec3, 8> &box_corners)
 {
 	box_corners[0] = vec3{min.x, min.y, min.z};
 	box_corners[1] = vec3{max.x, min.y, min.z};

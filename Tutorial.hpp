@@ -2,10 +2,15 @@
 
 #include "mat4.hpp"
 #include "GeometryGen.hpp"
+#include "Light.hpp"
+#include "Camera.hpp"
+#include "Transform.hpp"
+#include "RenderWorkspace.hpp"
+#include "MaterialSystem.hpp"
 
 #include "PosNorTexVertex.hpp"
 #include "PosNorTanTexVertex.hpp"
-#include "InputEvent.hpp" 
+#include "InputEvent.hpp"
 #include "S72.hpp"
 #include "stb_image_write.h"
 #include <iostream>
@@ -21,7 +26,6 @@
 #include "ProjectionPipelines.hpp"
 #include "DensityPipelines.hpp"
 #include "RayMarchSmokeVolume.hpp"
-
 
 #include "RTG.hpp"
 #include <corecrt_math_defines.h>
@@ -49,115 +53,22 @@ struct Tutorial : RTG::Application {
 	TextureDebugPipeline texture_debug_pipeline;
 	RayMarchSmokeVolumePipeline ray_march_smoke_volume_pipeline;
 	LinesPipeline lines_pipeline;
-
 	LambertianObjectsPipeline lambertian_objects_pipeline;
 	EnvMirrorObjectsPipeline env_mirror_objects_pipeline;
 	PbrObjectsPipeline pbr_objects_pipeline;
-
-
-	struct Transform{
-		mat4 CLIP_FROM_LOCAL;
-		mat4 WORLD_FROM_LOCAL;
-		mat4 WORLD_FROM_LOCAL_NORMAL;
-	};
-	static_assert(sizeof(Transform) == 16*4 + 16*4 + 16*4 , "Transform structure is packed");
-
-	struct Light {
-		vec4 color;
-		vec4 position;
-		vec4 direction;
-		int type;//0 - sun ; 1 - sphere ; 2 - spot
-		float limit;
-		//sphere 
-		float radius;
-		float power;
-		//sun
-		float angle;
-		float strength;
-		//spot light only
-		float fov;
-		float blend;
-		vec4 shadow_atlases[6];// (offset.x, offset.y, scale.x, scale.y)
-		mat4 CLIP_FROM_WORLD[6];
-
-		void compute_clip_from_world_spot(){
-			assert(type == 2);
-			vec3 up;
-			if (abs(dot(direction.xyz(), vec3(0,1,0))) > 0.99f) {
-				// too parallel to Y axis → switch
-				up = vec3(0,0,1);
-			} else {
-				up = vec3(0,1,0);
-			}
-			up = vec3(0,1,0);
-			
-			CLIP_FROM_WORLD[0] = perspective(fov, 1.0f, 1.0f, limit) * look_at_free(position.xyz(), vec3(0.0f)+direction.xyz(), up);
-		}
-		
-		void compute_clip_from_world_sphere(){
-			assert(type == 1);
-			mat4 views[6];
-			views[0] = look_at_free(position.xyz(), vec3(1,0,0), vec3(0,-1,0));
-			views[1] = look_at_free(position.xyz(), vec3(-1,0,0), vec3(0,-1,0));
-			views[2] = look_at_free(position.xyz(), vec3(0,1,0), vec3(0,0,1));
-			views[3] = look_at_free(position.xyz(), vec3(0,-1,0), vec3(0,0,-1));
-			views[4] = look_at_free(position.xyz(), vec3(0,0,1), vec3(0,-1,0));
-			views[5] = look_at_free(position.xyz(), vec3(0,0,-1), vec3(0,-1,0));
-			for(uint32_t i = 0; i < 6; i++)
-			CLIP_FROM_WORLD[i] = perspective((float)M_PI / 2.0f, 1.0f, 0.1f, limit) * views[i];
-		}
-
-		std::array<vec3, 8> get_corners() const;
-		std::array<vec3, 8> get_frustum_corners() const;
-	};
-	static_assert(sizeof(Light) == 3*4*4 + 8*4 + 4 * 4 * 6 + 6 * 16 * 4, "Light structure is packed");    
-	
 
 	void init_tutorial();
 	//pools from which per-workspace things are allocated:
 	VkCommandPool command_pool = VK_NULL_HANDLE;
 	VkDescriptorPool descriptor_pool = VK_NULL_HANDLE;
-
-	//workspaces hold per-render resources:
-	struct Workspace {
-		VkCommandBuffer command_buffer = VK_NULL_HANDLE; //from the command pool above; reset at the start of every render.
-
-		//location for lines data
-		Helpers::AllocatedBuffer lines_vertices_src;//host coherent, mapped
-		Helpers::AllocatedBuffer lines_vertices;//device-local
-
-		//location for LinesPipeline::Camera data: (streamed to GPU per-frame)
-		Helpers::AllocatedBuffer Camera_src; //host coherent; mapped
-		Helpers::AllocatedBuffer Camera; //device-local
-		VkDescriptorSet Camera_descriptors; //references Camera
-
-		//location for Eye data: (streamed to GPU per-frame)
-		Helpers::AllocatedBuffer Eye_src; //host coherent; mapped
-		Helpers::AllocatedBuffer Eye; //device-local
-		VkDescriptorSet Eye_descriptors; //references Camera
-		
-		//location for Lights data: (streamed to GPU per-frame)
-		Helpers::AllocatedBuffer Lights_src; //host coherent; mapped
-		Helpers::AllocatedBuffer Lights; //device-local
-		VkDescriptorSet Lights_descriptors; //references World
-
-		//location for Transform data: (streamed to GPU per-frame)
-		Helpers::AllocatedBuffer Transforms_src;
-		Helpers::AllocatedBuffer Transforms;
-		VkDescriptorSet Transforms_descriptors;
-
-		//location for Shadow_Atlas data
-		Helpers::AllocatedImage Shadow_Atlas;
-		VkImageView Shadow_Atlas_view;
-		VkFramebuffer Shadow_Atlas_FB = VK_NULL_HANDLE;
-		VkDescriptorSet Shadow_Atlas_descriptors;
-		Helpers::AllocatedBuffer debug_buffer;
-	};
-	std::vector< Workspace > workspaces;
+	std::vector<Workspace> workspaces;
 
 	//-------------------------------------------------------------------
+
 	//loading s72
 	S72 scene72 = S72();
+	MaterialSystem material_system;
+
 	struct Item {
 		S72::Node* node;
 		mat4 parentWorld;
@@ -169,15 +80,9 @@ struct Tutorial : RTG::Application {
 		uint32_t first = 0;
 		uint32_t count = 0;
 	};
-	ObjectVertices fruit_vertices;//these vertices are hard coded 
+	ObjectVertices fruit_vertices;//these vertices are hard coded
 
 	//Mesh contains stats of a unique mesh asset
-
-	struct AABB{
-		vec3 max = vec3{-INFINITY,-INFINITY,-INFINITY};
-		vec3 min = vec3{INFINITY,INFINITY,INFINITY};
-		void get_box_corners(mat4 WORLD_FROM_LOCAL, std::array<vec3, 8> &box_corners);
-	};
 	struct Mesh{
 		ObjectVertices verts;
 		AABB bbox;
@@ -225,8 +130,8 @@ struct Tutorial : RTG::Application {
 
 	void ping_pong_barrier(VkCommandBuffer cmd, VkImage &img);
 
-	//velocity 
-	uint32_t velocity_ind = 0; //this tracks which velocity volume descriptor set to use. When velocity_ind == 0, binding 0 is velocity_3D[0 , 1] 
+	//velocity
+	uint32_t velocity_ind = 0; //this tracks which velocity volume descriptor set to use. When velocity_ind == 0, binding 0 is velocity_3D[0 , 1]
 	VkDescriptorSet velocity_volumes[2]; //these two buffers each contain two bindings of the same image views in opposite order
 	VkDescriptorSet velocity_tex = VK_NULL_HANDLE; //this one is just for sampling;
 	Helpers::AllocatedImage3D velocity_3D_textures[2]; //two for ping-ponging
@@ -251,70 +156,6 @@ struct Tutorial : RTG::Application {
 	void init_fluid();
 	void update_fluid(float dt);
 
-	//------Texture stuff------
-	struct Texture_Indices{
-		int normal_index = -1;
-		int displacement_index = -1;
-		int albedo_index = -1;
-		int roughness_index = -1;
-		int metalness_index = -1;
-		int environment_index = -1;	
-		int brdf_lut_index = -1;
-		int diffuse_irradiance_index = -1;
-	};
-
-	//default texture indices 
-	int normal_default = -1;
-	int disp_default = -1;
-
-	//name for luts
-	std::string brdf_lut_name;
-	std::string lambertian_irradiance_lut_name;
-	std::string environment_name;
-
-	//maps name of the loaded texture to indices into the texture_descriptor_sets array
-	std::unordered_map<std::string, uint32_t> material_texture_descriptor_set_table;
-
-	//memorization so that materials that use the same texture again don't remake the same image
-	std::unordered_map<std::string, uint32_t> textures_name_to_index;
-
-	void load_textures();
-	//helpers 
-	void make_flat_image(S72::Texture const &texture);
-	void make_cube_image(S72::Texture const &texture);
-	void make_image_view(VkImageView &image_view, Helpers::AllocatedImage const & image);
-	void make_image_view_3D(VkImageView &image_view, Helpers::AllocatedImage3D const & image);
-
-	enum class TextureType{
-		ALBEDO = 1,
-		ROUGHNESS = 2,
-		METALNESS = 3,
-		NORMAL = 4,
-		ENV = 5,//cubemap with one mip level
-		ENV_MIP = 6,//cubemap with multiple mip levels
-		BRDF_LUT = 7,
-	};
-	void make_one_off_texture(TextureType t_type, std::variant<vec3, float> value);
-
-
-	enum class MaterialType{
-		LAMBERTIAN = 1,
-		ENVMIRROR = 2,
-		PBR = 3,
-	};
-	void make_descriptor_set(std::string mat_name, MaterialType mat_type, Texture_Indices tex_inds);
-
-	
-
-	//textures, texture_views, and texture_descriptors are all indexed the same
-	std::vector<Helpers::AllocatedImage> textures;
-	std::vector<VkImageView> texture_views;
-	VkSampler texture_sampler = VK_NULL_HANDLE;
-	VkSampler depth_texture_sampler = VK_NULL_HANDLE;
-	VkDescriptorPool texture_descriptor_pool = VK_NULL_HANDLE;
-	std::vector<VkDescriptorSet> texture_descriptor_sets;//allocated from texture descriptor pool
-
-
 	//------shadow stuff-------
 	bool shadows_on = true;
 	bool shadow_dump = false;
@@ -322,7 +163,7 @@ struct Tutorial : RTG::Application {
 	void init_shadow_mapping();
 	//draw all objects with shadow2DPipeline from light's perspective into shadow_atlas
 	void draw_all_objects(VkCommandBuffer const &cmd, mat4 const &LIGHTS_CLIP_FROM_WORLD, vec4 const &_shadow_atlas);
-	
+
 	//--------------------------------------------------------------------
 	//Resources that change when the swapchain is resized:
 
@@ -352,74 +193,19 @@ struct Tutorial : RTG::Application {
 
 	bool animating = true;
 
-	
 
-	
+
 	//-----camera stuff-----
-	//for selecting between cameras:
-	enum class CameraMode {
-		Scene = 0,
-		Free = 1,
-		Debug = 2,
-	} camera_mode = CameraMode::Scene;
-
+	CameraMode camera_mode     = CameraMode::Scene;
 	CameraMode prev_camera_mode = CameraMode::Debug;
 
-	//generic camera type with the bare minimum to construct a CLIP from World
-	struct BasicCamera{
-		vec3 eye;//translation of the world transform
-		vec3 dir;//local -z axis in world space
-		vec3 up;//local +y axis in world space
-		float aspect;
-		float vfov;
-		float near;
-		float far = std::numeric_limits< float >::infinity(); //optional, if not specified will be set to infinity
-		
-		mat4 clip_from_world(){
-			return perspective(vfov,aspect,near,far) * look_at_free(eye,dir,up);
-		}
-		mat4 world_from_clip(){
-			return clip_from_world().inverse();
-		}
-		// Returns the 8 corners of the view frustum in world space
-		// Order: near plane (bottom-left, bottom-right, top-right, top-left),
-		//        far plane (bottom-left, bottom-right, top-right, top-left)
-		std::array<vec3, 8> get_frustum_corners()const;
-	};
-
-	//used when camera_mode == CameraMode::Free:
-	struct OrbitCamera{
-		vec3 target = vec3();
-		float radius = 5.0f;//distance from camera to target
-		float azimuth = 0.0f;//counterclockwise angle around z axis between x axis and camera direction (radians)
-		float elevation = 0.25 * float(M_PI);//angle up from xy plane to camera direction (radians)
-		float fov = 60.0f / 180.0f * float(M_PI); //vertical field of view (radians)
-		float near = 0.1f; //near clipping plane
-		float far = 1000.0f; //far clipping plane
-
-		mat4 clip_from_world(float aspect){
-			return perspective(
-			60.0f * float(M_PI) / 180.0f, //vfov
-			aspect, //aspect
-			near, //near
-			far //far
-			) * orbit(target, azimuth, elevation, radius);
-		}
-
-		mat4 world_from_clip(float aspect){
-			return clip_from_world(aspect).inverse();
-		}
-
-		vec3 get_eye()const;
-		std::array<vec3, 8> get_frustum_corners(float aspect)const;
-		
-	} free_camera;
+	OrbitCamera free_camera;
 
 
 	//----Culling----
 
 	//takes in corners of both boxes in world space, returns true if the box could be culled
-	bool do_cull(std::array<vec3, 8> const &frustrum_corners, 
+	bool do_cull(std::array<vec3, 8> const &frustrum_corners,
 				std::array<vec3, 8> const &box_corners
 	);
 
@@ -438,7 +224,7 @@ struct Tutorial : RTG::Application {
 
 	//camera loaded in from s72 files
 	std::unordered_map<std::string, BasicCamera> loaded_cameras;
-	//the camera currently in use 
+	//the camera currently in use
 	std::unordered_map<std::string, BasicCamera>::iterator current_camera;
 
 	std::vector<LinesPipeline::Vertex>lines_vertices;
@@ -466,7 +252,7 @@ struct Tutorial : RTG::Application {
 	bool default_world_lights = true;//if this is true that means there hasn't been any lights loaded
 
 
-	//----objects of different materials 
+	//----objects of different materials
 	struct LambertianObjectInstance{
 		ObjectVertices vertices;
 		Transform transform;
@@ -487,8 +273,6 @@ struct Tutorial : RTG::Application {
 	std::vector<LambertianObjectInstance> lambertian_object_instances;
 	std::vector<EnvMirrorObjectInstance> env_mirror_object_instances;
 	std::vector<PbrObjectInstance> pbr_object_instances;
-
-
 
 
 	//stuff for tree generation

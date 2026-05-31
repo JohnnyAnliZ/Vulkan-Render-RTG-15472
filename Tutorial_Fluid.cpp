@@ -321,7 +321,7 @@ void Tutorial::project_velocity(){
             v_volume_side_length/groupCounts[1],
             v_volume_side_length/groupCounts[2]
         );
-        ping_pong_barrier(compute_cmd_buf, velocity_3D_textures[1 - velocity_ind].handle);
+        ping_pong_barrier(compute_cmd_buf, pressure_3D_textures[1 - pressure_ind].handle);
         pressure_ind = 1 - pressure_ind;//ping-pong
     }
 
@@ -464,8 +464,8 @@ void Tutorial::init_fluid(){
             VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
             VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT
         );
-        make_image_view_3D(density_3D_views[0], density_3D_textures[0]);
-        make_image_view_3D(density_3D_views[1], density_3D_textures[1]);
+        material_system.make_image_view_3D(density_3D_views[0], density_3D_textures[0]);
+        material_system.make_image_view_3D(density_3D_views[1], density_3D_textures[1]);
         
         velocity_3D_textures[0] = rtg.helpers.create_image_3D(
             VkExtent3D{.width = v_volume_side_length, .height = v_volume_side_length, .depth = v_volume_side_length}, 
@@ -481,8 +481,8 @@ void Tutorial::init_fluid(){
             VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
             VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT
         );
-        make_image_view_3D(velocity_3D_views[0], velocity_3D_textures[0]);
-        make_image_view_3D(velocity_3D_views[1], velocity_3D_textures[1]);
+        material_system.make_image_view_3D(velocity_3D_views[0], velocity_3D_textures[0]);
+        material_system.make_image_view_3D(velocity_3D_views[1], velocity_3D_textures[1]);
 
         pressure_3D_textures[0] = rtg.helpers.create_image_3D(
             VkExtent3D{.width = v_volume_side_length, .height = v_volume_side_length, .depth = v_volume_side_length}, 
@@ -498,8 +498,8 @@ void Tutorial::init_fluid(){
             VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
             VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT
         );
-        make_image_view_3D(pressure_3D_views[0], pressure_3D_textures[0]);
-        make_image_view_3D(pressure_3D_views[1], pressure_3D_textures[1]);
+        material_system.make_image_view_3D(pressure_3D_views[0], pressure_3D_textures[0]);
+        material_system.make_image_view_3D(pressure_3D_views[1], pressure_3D_textures[1]);
 
         divergence_3D_texture = rtg.helpers.create_image_3D(
             VkExtent3D{.width = v_volume_side_length, .height = v_volume_side_length, .depth = v_volume_side_length}, 
@@ -508,7 +508,7 @@ void Tutorial::init_fluid(){
             VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
             VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT
         );
-        make_image_view_3D(divergence_3D_view, divergence_3D_texture);
+        material_system.make_image_view_3D(divergence_3D_view, divergence_3D_texture);
     }
 
 
@@ -539,7 +539,7 @@ void Tutorial::init_fluid(){
     {
         VkDescriptorSetAllocateInfo alloc_info_v{
             .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-            .descriptorPool = texture_descriptor_pool,
+            .descriptorPool = material_system.texture_descriptor_pool,
             .descriptorSetCount = 1,
             .pSetLayouts = &texture_debug_pipeline.set1_vel_vol,
         };
@@ -547,7 +547,7 @@ void Tutorial::init_fluid(){
 
         VkDescriptorSetAllocateInfo alloc_info_d{
             .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-            .descriptorPool = texture_descriptor_pool,
+            .descriptorPool = material_system.texture_descriptor_pool,
             .descriptorSetCount = 1,
             .pSetLayouts = &texture_debug_pipeline.set2_dens_vol,
         };
@@ -726,8 +726,8 @@ void Tutorial::update_fluid(float dt){
     
     {//update descriptor sets for the two sampled images
         std::array<VkDescriptorImageInfo, 2> image_infos{
-            VkDescriptorImageInfo{ .sampler = texture_sampler, .imageView = velocity_3D_views[velocity_ind], .imageLayout = VK_IMAGE_LAYOUT_GENERAL },
-            VkDescriptorImageInfo{ .sampler = texture_sampler, .imageView = density_3D_views[density_ind], .imageLayout = VK_IMAGE_LAYOUT_GENERAL },
+            VkDescriptorImageInfo{ .sampler = material_system.texture_sampler, .imageView = velocity_3D_views[velocity_ind], .imageLayout = VK_IMAGE_LAYOUT_GENERAL },
+            VkDescriptorImageInfo{ .sampler = material_system.texture_sampler, .imageView = density_3D_views[density_ind], .imageLayout = VK_IMAGE_LAYOUT_GENERAL },
         };
 
         std::array<VkWriteDescriptorSet, 2> writes{

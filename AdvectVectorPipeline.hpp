@@ -4,7 +4,7 @@
 #include "RTG.hpp"
 
 struct AdvectVectorPipeline{
-    //descriptor set layouts
+    //descriptor set layoutsP
 
     VkDescriptorSetLayout set0_velocity_volume;
 

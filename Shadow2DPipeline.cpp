@@ -97,15 +97,15 @@ void Tutorial::init_shadow_mapping(){
 
 				uint32_t faces = 0;
 				if(std::holds_alternative<S72::Light::Sun>(v)){
-					S72::Light::Sun &sun = get<S72::Light::Sun>(v);
+					S72::Light::Sun &sun = std::get<S72::Light::Sun>(v);
 					faces = sun.shadow_map_num;
 				}
 				else if(std::holds_alternative<S72::Light::Sphere>(v)){
-					S72::Light::Sphere &sphere = get<S72::Light::Sphere>(v);
+					S72::Light::Sphere &sphere = std::get<S72::Light::Sphere>(v);
 					faces = sphere.shadow_map_num;
 				}
 				else if(std::holds_alternative<S72::Light::Spot>(v)){
-					S72::Light::Spot &spot = get<S72::Light::Spot>(v);
+					S72::Light::Spot &spot = std::get<S72::Light::Spot>(v);
 					faces = spot.shadow_map_num;
 				}
 
@@ -179,13 +179,13 @@ void Tutorial::init_shadow_mapping(){
                 .compareEnable = VK_TRUE,
                 .compareOp = VK_COMPARE_OP_LESS_OR_EQUAL,
             };
-            VK( vkCreateSampler(rtg.device, &sampler_info, nullptr, &depth_texture_sampler) );
+            VK( vkCreateSampler(rtg.device, &sampler_info, nullptr, &material_system.depth_texture_sampler) );
         }
 
 		{//allocate descriptor set for Shadow Atlas descriptor
 			VkDescriptorSetAllocateInfo alloc_info{
 				.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-				.descriptorPool = texture_descriptor_pool,
+				.descriptorPool = material_system.texture_descriptor_pool,
 				.descriptorSetCount = 1,
 				.pSetLayouts = &lambertian_objects_pipeline.set2_Shadows,
 			};
@@ -195,7 +195,7 @@ void Tutorial::init_shadow_mapping(){
 
         {//update the descriptor set for this mtfk
             VkDescriptorImageInfo Shadow_Atlas_info{
-				.sampler = depth_texture_sampler,
+				.sampler = material_system.depth_texture_sampler,
                 .imageView = workspace.Shadow_Atlas_view,
                 .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
 			};

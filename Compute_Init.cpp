@@ -37,10 +37,15 @@ void Tutorial::init_compute(){
                 .descriptorCount = fluid_descriptors
             },
         };
+
+        uint32_t fluid_sets = 2 + 2 + 2 + 1;
+        //two descriptor sets for velocity, two for density, two for pressure, one for gradient subtract
+
+        uint32_t leaf_descriptors = 1 + 1;//one for leaf buffer, one for heightmap for piling 
         VkDescriptorPoolCreateInfo create_info{
 			.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
 			.flags = 0, //because CREATE_FREE_DESCRIPTOR_SET_BIT isn't included, *can't* free individual descriptors allocated from this pool
-			.maxSets = 2 + 2 + 2 + 1,//two descriptor sets for velocity, two for density, two for pressure, one for gradient subtract
+			.maxSets = fluid_sets + leaf_descriptors,
 			.poolSizeCount = uint32_t(pool_sizes.size()),
 			.pPoolSizes = pool_sizes.data(),
 		};

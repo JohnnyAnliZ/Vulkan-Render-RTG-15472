@@ -8,12 +8,7 @@
 
 //general initializing 
 void Tutorial::init_tutorial(){
-    {//preallocate some space on the lines buffer
-		lines_vertices.clear();
-		constexpr size_t lines_vert_count = 4096;
-		lines_vertices.reserve(lines_vert_count);
-		starts.reserve(512);
-	}
+
 
 	//select a depth format:
 	//  (at least one of these two must be supported, according to the spec; but neither are required)

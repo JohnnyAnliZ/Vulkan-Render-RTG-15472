@@ -15,16 +15,15 @@
 #include <random>
 #include <chrono>
 
-unsigned long long seed = std::chrono::system_clock::now().time_since_epoch().count();
-std::mt19937 engine((unsigned int)seed);
-std::uniform_real_distribution<float> dist(-1.0f, 1.0f);
+
 
 Tutorial::Tutorial(RTG &rtg_)
 	: rtg(rtg_),
 	  material_system(rtg_, scene72,
 	                  lambertian_objects_pipeline,
 	                  env_mirror_objects_pipeline,
-	                  pbr_objects_pipeline)
+	                  pbr_objects_pipeline),
+	  scene_system(rtg_, scene72, material_system)
 {
 	// command pool, descriptor pool,
 	init_tutorial();
@@ -32,8 +31,8 @@ Tutorial::Tutorial(RTG &rtg_)
 	init_compute();
 	std::cout << "LOADING SCENE" << std::endl;
 
-	// set up loaded cameras, put mesh data into the object_vertices buffer
-	load_scene();
+	// set up loaded cameras, put mesh data into the GPU vertex buffer
+	scene_system.load_scene();
 
 	// load textures then build material descriptor sets
 	material_system.load_textures();
@@ -66,8 +65,7 @@ Tutorial::~Tutorial()
 	}
 	// texture/material cleanup is handled by material_system destructor
 
-	// freeing static buffers
-	rtg.helpers.destroy_buffer(std::move(object_vertices));
+	// scene_system destructor frees object_vertices buffer
 
 	if (swapchain_depth_image.handle != VK_NULL_HANDLE)
 	{
@@ -314,10 +312,10 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params)
 		VK(vkBeginCommandBuffer(workspace.command_buffer, &begin_info));
 	}
 	// upload vertices
-	if (!lines_vertices.empty())
+	if (!scene_system.lines_vertices.empty())
 	{
 		// allocate or reallocate line buffer as needed
-		size_t needed_bytes = lines_vertices.size() * sizeof(lines_vertices[0]);
+		size_t needed_bytes = scene_system.lines_vertices.size() * sizeof(scene_system.lines_vertices[0]);
 		if (workspace.lines_vertices_src.handle == VK_NULL_HANDLE || workspace.lines_vertices_src.size < needed_bytes)
 		{
 			// resize rounding up to 4k
@@ -348,7 +346,7 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params)
 		assert(workspace.lines_vertices_src.size >= needed_bytes);
 		// host side: copy cpu memory into staging buffer lines_vertices_src
 		assert(workspace.lines_vertices_src.allocation.mapped);
-		std::memcpy(workspace.lines_vertices_src.allocation.data(), lines_vertices.data(), needed_bytes);
+		std::memcpy(workspace.lines_vertices_src.allocation.data(), scene_system.lines_vertices.data(), needed_bytes);
 
 		// copy device memory to GPU memory
 		VkBufferCopy copy_region{
@@ -361,7 +359,7 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params)
 
 	{ // upload camera info:
 		LinesPipeline::Camera camera{
-			.CLIP_FROM_WORLD = CLIP_FROM_WORLD,
+			.CLIP_FROM_WORLD = scene_system.CLIP_FROM_WORLD,
 		};
 		assert(workspace.Camera_src.size == sizeof(camera));
 
@@ -378,23 +376,23 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params)
 		vkCmdCopyBuffer(workspace.command_buffer, workspace.Camera_src.handle, workspace.Camera.handle, 1, &copy_region);
 	}
 
-	{ // upload lights info:
+	{ // upload scene_system.lights info:
 		if (workspace.Lights_src.handle == VK_NULL_HANDLE)
 		{
-			std::cout << "allocating the buffer for " << lights.size() << "lights" << std::endl;
+			std::cout << "allocating the buffer for " << scene_system.lights.size() << "scene_system.lights" << std::endl;
 			// allocate the buffers
 			workspace.Lights_src = rtg.helpers.create_buffer(
-				sizeof(Light) * lights.size(),
+				sizeof(Light) * scene_system.lights.size(),
 				VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
 				VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
 				Helpers::Mapped);
 			workspace.Lights = rtg.helpers.create_buffer(
-				sizeof(Light) * lights.size(),
+				sizeof(Light) * scene_system.lights.size(),
 				// going to use as storage buffer, also going to have GPU into this memory
 				VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
 				VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
 				Helpers::Unmapped);
-			assert(workspace.Lights_src.size == lights.size() * sizeof(Light));
+			assert(workspace.Lights_src.size == scene_system.lights.size() * sizeof(Light));
 
 			// update descriptor set
 			VkDescriptorBufferInfo Lights_info{
@@ -416,7 +414,7 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params)
 			vkUpdateDescriptorSets(rtg.device, uint32_t(writes.size()), writes.data(), 0, nullptr);
 		}
 		// host-side copy into Lights_src:
-		memcpy(workspace.Lights_src.allocation.data(), lights.data(), lights.size() * sizeof(Light));
+		memcpy(workspace.Lights_src.allocation.data(), scene_system.lights.data(), scene_system.lights.size() * sizeof(Light));
 
 		// add device-side copy from Lights_src -> Lights:
 		assert(workspace.Lights_src.size == workspace.Lights.size);
@@ -431,7 +429,7 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params)
 	{ // upload eye info:
 
 		// host-side copy into Eye_src:
-		memcpy(workspace.Eye_src.allocation.data(), &EYE, sizeof(EYE));
+		memcpy(workspace.Eye_src.allocation.data(), &scene_system.EYE, sizeof(scene_system.EYE));
 
 		// add device-side copy from Eye_src -> Eye:
 		assert(workspace.Eye_src.size == workspace.Eye.size);
@@ -444,10 +442,10 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params)
 	}
 
 	// upload object transforms
-	if (!lambertian_object_instances.empty() || !env_mirror_object_instances.empty() || !pbr_object_instances.empty())
+	if (!scene_system.lambertian_object_instances.empty() || !scene_system.env_mirror_object_instances.empty() || !scene_system.pbr_object_instances.empty())
 	{ // upload object transforms
 		// allocate or reallocate transforms buffer as needed
-		size_t needed_bytes = (lambertian_object_instances.size() + env_mirror_object_instances.size() + pbr_object_instances.size()) * sizeof(Transform);
+		size_t needed_bytes = (scene_system.lambertian_object_instances.size() + scene_system.env_mirror_object_instances.size() + scene_system.pbr_object_instances.size()) * sizeof(Transform);
 		if (workspace.Transforms_src.handle == VK_NULL_HANDLE || workspace.Transforms_src.size < needed_bytes)
 		{
 			// resize rounding up to 4k
@@ -500,17 +498,17 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params)
 			assert(workspace.Transforms_src.allocation.mapped);
 			// Strict aliasing violation, but it doesn't matter
 			Transform *out = reinterpret_cast<Transform *>(workspace.Transforms_src.allocation.data());
-			for (LambertianObjectInstance const &inst : lambertian_object_instances)
+			for (SceneSystem::LambertianObjectInstance const &inst : scene_system.lambertian_object_instances)
 			{
 				*out = inst.transform;
 				++out;
 			}
-			for (EnvMirrorObjectInstance const &inst : env_mirror_object_instances)
+			for (SceneSystem::EnvMirrorObjectInstance const &inst : scene_system.env_mirror_object_instances)
 			{
 				*out = inst.transform;
 				++out;
 			}
-			for (PbrObjectInstance const &inst : pbr_object_instances)
+			for (SceneSystem::PbrObjectInstance const &inst : scene_system.pbr_object_instances)
 			{
 				*out = inst.transform;
 				++out;
@@ -541,7 +539,7 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params)
 							 0, nullptr);
 	}
 
-	if(shadows_on){ // shadow pass
+	if(scene_system.shadows_on){ // shadow pass
 		std::array<VkClearValue, 1> clear_values{
 			VkClearValue{.depthStencil{.depth = 1.0f, .stencil = 0}},
 		};
@@ -552,7 +550,7 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params)
 			.framebuffer = workspace.Shadow_Atlas_FB,
 			.renderArea{
 				.offset = {.x = 0, .y = 0},
-				.extent = {.width = atlas_size, .height = atlas_size},
+				.extent = {.width = scene_system.atlas_size, .height = scene_system.atlas_size},
 			},
 			.clearValueCount = uint32_t(clear_values.size()),
 			.pClearValues = clear_values.data(),
@@ -562,8 +560,8 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params)
 		{ // draw with the shadow map pipeline
 			vkCmdBindPipeline(workspace.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, shadow_2D_pipeline.handle);
 
-			{ // use object_vertices (offset 0) as vertex buffer binding 0: they all share vertex buffer
-				std::array<VkBuffer, 1> vertex_buffers{object_vertices.handle};
+			{ // use scene_system.object_vertices (offset 0) as vertex buffer binding 0: they all share vertex buffer
+				std::array<VkBuffer, 1> vertex_buffers{scene_system.object_vertices.handle};
 				std::array<VkDeviceSize, 1> offsets{0};
 				vkCmdBindVertexBuffers(workspace.command_buffer, 0, uint32_t(vertex_buffers.size()), vertex_buffers.data(), offsets.data());
 			}
@@ -576,29 +574,29 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params)
 										0, uint32_t(descriptor_sets.size()), descriptor_sets.data(), 0, nullptr);
 			}
 
-			for (uint32_t i = 0; i < lights.size(); i++)
+			for (uint32_t i = 0; i < scene_system.lights.size(); i++)
 			{
-				if (lights[i].shadow_atlases[0].z == 0.0f)
+				if (scene_system.lights[i].shadow_atlases[0].z == 0.0f)
 				{
 					continue;
 				}
-				// get the light's CLIP_FROM_WORLD and draw all the objects for each light
-				if (lights[i].type == 0)
+				// get the light's scene_system.CLIP_FROM_WORLD and draw all the objects for each light
+				if (scene_system.lights[i].type == 0)
 				{ // sun
 					// TODO: do some shadow cascade thingy
 				}
-				else if (lights[i].type == 1)
+				else if (scene_system.lights[i].type == 1)
 				{ // sphere
 
 					for (uint32_t j = 0; j < 6; j++)
 					{	
-						draw_all_objects(workspace.command_buffer, lights[i].CLIP_FROM_WORLD[j], lights[i].shadow_atlases[j]);
+						scene_system.draw_all_objects(workspace.command_buffer, scene_system.lights[i].CLIP_FROM_WORLD[j], scene_system.lights[i].shadow_atlases[j]);
 					}
 				}
 				else
 				{ // spot
-					// std::cout<<"computing CLIP_FROM_WORLD for: fov "<< lights[i].fov << "direction: "<<lights[i].direction.convert_to_string()<<std::endl;
-					draw_all_objects(workspace.command_buffer, lights[i].CLIP_FROM_WORLD[0], lights[i].shadow_atlases[0]);
+					// std::cout<<"computing scene_system.CLIP_FROM_WORLD for: fov "<< scene_system.lights[i].fov << "direction: "<<scene_system.lights[i].direction.convert_to_string()<<std::endl;
+					scene_system.draw_all_objects(workspace.command_buffer, scene_system.lights[i].CLIP_FROM_WORLD[0], scene_system.lights[i].shadow_atlases[0]);
 				}
 			}
 		}
@@ -607,12 +605,12 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params)
 
 	
 	
-	if(shadow_dump){ // transfer shadow_atlas to debug buffer
+	if(scene_system.shadow_dump){ // transfer shadow_atlas to debug buffer
 		VkImageMemoryBarrier barrier{
 			.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
 			.srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT, // or DEPTH_WRITE if just rendered
 			.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT,
-			.oldLayout = shadows_on ? VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+			.oldLayout = scene_system.shadows_on ? VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
 			.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
 			.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
 			.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
@@ -639,7 +637,7 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params)
 				VK_IMAGE_ASPECT_DEPTH_BIT,
 				0, 0, 1},
 			.imageOffset = {0, 0, 0},
-			.imageExtent = {atlas_size, atlas_size, 1}};
+			.imageExtent = {scene_system.atlas_size, scene_system.atlas_size, 1}};
 
 		vkCmdCopyImageToBuffer(
 			workspace.command_buffer,
@@ -693,7 +691,7 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params)
 			0, nullptr,
 			1, &barrier2);
 	}
-	else if(shadows_on){
+	else if(scene_system.shadows_on){
 		VkImageMemoryBarrier barrier2{
 			.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
 			.srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT, // or DEPTH_WRITE if just rendered
@@ -795,7 +793,7 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params)
 			}
 			vkCmdDraw(workspace.command_buffer, 3, 1, 0, 0);
 		}
-		if (!lines_vertices.empty() && workspace.lines_vertices.handle != VK_NULL_HANDLE)
+		if (!scene_system.lines_vertices.empty() && workspace.lines_vertices.handle != VK_NULL_HANDLE)
 		{ // draw with the lines pipeline
 			vkCmdBindPipeline(workspace.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, lines_pipeline.handle);
 			{ // bind vertex buffer at buffer binding 0 using line_vertices
@@ -815,18 +813,18 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params)
 										0, uint32_t(descriptor_sets.size()), descriptor_sets.data(), 0, nullptr);
 			}
 			// draw lines vertices
-			vkCmdDraw(workspace.command_buffer, uint32_t(lines_vertices.size()), 1, 0, 0);
+			vkCmdDraw(workspace.command_buffer, uint32_t(scene_system.lines_vertices.size()), 1, 0, 0);
 		}
 
-		{ // use object_vertices (offset 0) as vertex buffer binding 0: they all share vertex buffer
-			std::array<VkBuffer, 1> vertex_buffers{object_vertices.handle};
+		{ // use scene_system.object_vertices (offset 0) as vertex buffer binding 0: they all share vertex buffer
+			std::array<VkBuffer, 1> vertex_buffers{scene_system.object_vertices.handle};
 			std::array<VkDeviceSize, 1> offsets{0};
 			vkCmdBindVertexBuffers(workspace.command_buffer, 0, uint32_t(vertex_buffers.size()), vertex_buffers.data(), offsets.data());
 		}
 
 		{// draw with the different materialed objects' pipelines
 			uint32_t index_offset = 0; // since they all share the same transforms descriptor as well, an offset for indexing the transforms is needed
-			if (!lambertian_object_instances.empty())
+			if (!scene_system.lambertian_object_instances.empty())
 			{ // draw the lambertian object instances
 				vkCmdBindPipeline(workspace.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, lambertian_objects_pipeline.handle);
 
@@ -842,15 +840,15 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params)
 
 				{ // push constant for lambertian pipeline
 					LambertianObjectsPipeline::Push push{
-						.light_count = (uint32_t)lights.size(),
+						.light_count = (uint32_t)scene_system.lights.size(),
 					};
 					vkCmdPushConstants(workspace.command_buffer, lambertian_objects_pipeline.layout, VK_SHADER_STAGE_FRAGMENT_BIT,
 									   0, sizeof(push), &push);
 				}
 				// draw dat ting
-				for (LambertianObjectInstance const &inst : lambertian_object_instances)
+				for (SceneSystem::LambertianObjectInstance const &inst : scene_system.lambertian_object_instances)
 				{
-					uint32_t index = uint32_t(&inst - &lambertian_object_instances[0]);
+					uint32_t index = uint32_t(&inst - &scene_system.lambertian_object_instances[0]);
 
 					// bind texture descriptor set
 					vkCmdBindDescriptorSets(
@@ -862,9 +860,9 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params)
 					vkCmdDraw(workspace.command_buffer, inst.vertices.count, 1, inst.vertices.first, index + index_offset);
 				}
 			}
-			index_offset = (uint32_t)lambertian_object_instances.size(); // update index_offset for the next batch of instances
+			index_offset = (uint32_t)scene_system.lambertian_object_instances.size(); // update index_offset for the next batch of instances
 
-			if (!env_mirror_object_instances.empty())
+			if (!scene_system.env_mirror_object_instances.empty())
 			{ // draw the env_mirror object instances
 				vkCmdBindPipeline(workspace.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, env_mirror_objects_pipeline.handle);
 				{ ////bind Lights and Transforms descriptor sets: (shared by env_mirror and pbr objects)
@@ -877,9 +875,9 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params)
 											0, uint32_t(descriptor_sets.size()), descriptor_sets.data(), 0, nullptr);
 				}
 				// draw dat ting
-				for (EnvMirrorObjectInstance const &inst : env_mirror_object_instances)
+				for (SceneSystem::EnvMirrorObjectInstance const &inst : scene_system.env_mirror_object_instances)
 				{
-					uint32_t index = uint32_t(&inst - &env_mirror_object_instances[0]);
+					uint32_t index = uint32_t(&inst - &scene_system.env_mirror_object_instances[0]);
 
 					// bind texture descriptor set
 					vkCmdBindDescriptorSets(
@@ -901,9 +899,9 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params)
 					vkCmdDraw(workspace.command_buffer, inst.vertices.count, 1, inst.vertices.first, index + index_offset);
 				}
 			}
-			index_offset += (uint32_t)env_mirror_object_instances.size(); // update index_offset for the next batch of instances
+			index_offset += (uint32_t)scene_system.env_mirror_object_instances.size(); // update index_offset for the next batch of instances
 
-			if (!pbr_object_instances.empty())
+			if (!scene_system.pbr_object_instances.empty())
 			{ // draw the env_mirror object instances
 				vkCmdBindPipeline(workspace.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pbr_objects_pipeline.handle);
 				{ ////bind Lights and Transforms descriptor sets: (shared by env_mirror and pbr objects)
@@ -925,15 +923,15 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params)
 					PbrObjectsPipeline::Push push{
 						.exposure = (float)rtg.configuration.exposure,
 						.tone_map_op = (uint32_t)rtg.configuration.tone_map_op,
-						.light_count = (uint32_t)lights.size(),
+						.light_count = (uint32_t)scene_system.lights.size(),
 					};
 					vkCmdPushConstants(workspace.command_buffer, pbr_objects_pipeline.layout, VK_SHADER_STAGE_FRAGMENT_BIT,
 									   0, sizeof(push), &push);
 				}
 				// draw dat ting
-				for (PbrObjectInstance const &inst : pbr_object_instances)
+				for (SceneSystem::PbrObjectInstance const &inst : scene_system.pbr_object_instances)
 				{
-					uint32_t index = uint32_t(&inst - &pbr_object_instances[0]);
+					uint32_t index = uint32_t(&inst - &scene_system.pbr_object_instances[0]);
 					// bind texture descriptor set
 					vkCmdBindDescriptorSets(
 						workspace.command_buffer,
@@ -945,7 +943,7 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params)
 					vkCmdDraw(workspace.command_buffer, inst.vertices.count, 1, inst.vertices.first, index + index_offset);
 				}
 			}
-			index_offset += (uint32_t)pbr_object_instances.size(); // update index_offset for the next batch of instances
+			index_offset += (uint32_t)scene_system.pbr_object_instances.size(); // update index_offset for the next batch of instances
 		}
 
 		{//draw with the ray march smoke volume pipeline
@@ -953,11 +951,11 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params)
 			vkCmdBindDescriptorSets(workspace.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, ray_march_smoke_volume_pipeline.layout,
 										0, 1, &density_tex, 0, nullptr);
 
-			mat4 WORLD_FROM_CLIP = CLIP_FROM_WORLD.inverse();
+			mat4 WORLD_FROM_CLIP = scene_system.CLIP_FROM_WORLD.inverse();
 
 			RayMarchSmokeVolumePipeline::Push push{
 				.WORLD_FROM_CLIP = WORLD_FROM_CLIP,
-				.eye = vec4(EYE.x, EYE.y, EYE.z, 0.0f),
+				.eye = vec4(scene_system.EYE.x, scene_system.EYE.y, scene_system.EYE.z, 0.0f),
 				.volume_center = vec4(0.0, 0.0, 10.0f,cell_size_ws),//hard coded position, no scene representation yet, last bit stores cell size in world space
 				.N = v_volume_side_length,
 			};
@@ -1012,20 +1010,20 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params)
 		VK(vkQueueSubmit(rtg.graphics_queue, 1, &submit_info, render_params.workspace_available));
 	}	
 	
-	if(shadow_dump){ // now read the debug buffer and output it
+	if(scene_system.shadow_dump){ // now read the debug buffer and output it
 		vkQueueWaitIdle(rtg.graphics_queue);
 		std::vector<char> shadow_map_output;
-		shadow_map_output.resize(atlas_size * atlas_size);
+		shadow_map_output.resize(scene_system.atlas_size * scene_system.atlas_size);
 		if (workspace.debug_buffer.allocation.mapped == nullptr)
 			std::cout << "mapped is fucking null" << std::endl;
 		float *floats = reinterpret_cast<float *>(workspace.debug_buffer.allocation.data());
-		for (uint32_t i = 0; i < atlas_size * atlas_size; i++)
+		for (uint32_t i = 0; i < scene_system.atlas_size * scene_system.atlas_size; i++)
 		{
 			shadow_map_output[i] = static_cast<unsigned char>(floats[i] * 255.0f);
 		}
-		stbi_write_png("debug/shadow_map_debug.png", atlas_size, atlas_size, 1, shadow_map_output.data(), atlas_size);
+		stbi_write_png("debug/shadow_map_debug.png", scene_system.atlas_size, scene_system.atlas_size, 1, shadow_map_output.data(), scene_system.atlas_size);
 		std::cout<<"dumped a shadow map"<<std::endl;
-		shadow_dump = false;
+		scene_system.shadow_dump = false;
 	}
 
 }
@@ -1047,78 +1045,18 @@ void Tutorial::update(float dt)
 
 	time = std::fmod(time + dt, 5.0f);
 
-	//--update_scene
-	lines_vertices.clear();//this gets cleared always because 	
-	if(animating)update_scene(dt);
-
-	//----Update camera----
-	{ // compute CLIP_FROM_WORLD based on what camera mode it is now
-		if (camera_mode == CameraMode::Scene)
-		{ // unresponsive camera orbiting the origin
-			if (current_camera == loaded_cameras.end())
-			{ // hard coded scene camera that rotates around target
-				float ang = float(M_PI) * 2.0f * (time / 5.0f);
-				CLIP_FROM_WORLD = perspective(
-									  60.0f * float(M_PI) / 180.0f,									   // vfov
-									  rtg.swapchain_extent.width / float(rtg.swapchain_extent.height), // aspect
-									  0.1f,															   // near
-									  1000.0f														   // far
-									  ) *
-								  look_at(
-									  vec3(13.0f * std::cos(ang), 13.0f * std::sin(ang), 5.0f), // eye
-									  vec3(0.0f, 0.0f, 5.0f),									// target
-									  vec3(0.0f, 0.0f, 1.0f)									// up
-								  );
-				EYE = vec3(13.0f * std::cos(ang), 13.0f * std::sin(ang), 5.0f);
-				CAM_DIR = normalized(vec3(0.0f, 0.0f, 5.0f) - EYE);
-			}
-			else
-			{ // fixed, potentially keyframed camera that is loaded from s72 file
-
-				CLIP_FROM_WORLD = current_camera->second.clip_from_world();
-				EYE = current_camera->second.eye;
-				CAM_DIR = normalized(current_camera->second.dir);
-			}
-		}
-		else if (camera_mode == CameraMode::Free)
-		{
-			CLIP_FROM_WORLD = free_camera.clip_from_world(rtg.swapchain_extent.width / float(rtg.swapchain_extent.height)); // aspect passed in
-			EYE = free_camera.get_eye();
-			CAM_DIR = normalized(free_camera.target - EYE);
-		}
-		else if (camera_mode == CameraMode::Debug)
-		{
-
-			CLIP_FROM_WORLD = debug_camera.clip_from_world(rtg.swapchain_extent.width / float(rtg.swapchain_extent.height)); // aspect passed in
-			EYE = debug_camera.get_eye();
-			CAM_DIR = normalized(debug_camera.target - EYE);
-			// draw frustrum for previous camera
-			add_debug_lines_frustrum();
-			
-			//change debug camera to be spotlight
-			// lights[2].compute_clip_from_world_sphere();
-			// CLIP_FROM_WORLD = lights[2].CLIP_FROM_WORLD[0];
-			// EYE = lights[2].position.xyz();
-
-			// add debug lines for lights
-			//add_cuboid_from_corners(lights[0].get_frustum_corners(), 155, 22, 56);
-		}
-		else
-		{
-			assert(0 && "only three camera modes");
-		}
-	}
+	if (animating) scene_system.update_scene(dt);
 
 	//---compute CLIP_FROM_LOCAL for all instances---
-	for(auto & lamb_inst : lambertian_object_instances) 
-		lamb_inst.transform.CLIP_FROM_LOCAL = CLIP_FROM_WORLD * lamb_inst.transform.WORLD_FROM_LOCAL;
-	for(auto & env_mirror_inst : env_mirror_object_instances) 
-		env_mirror_inst.transform.CLIP_FROM_LOCAL = CLIP_FROM_WORLD * env_mirror_inst.transform.WORLD_FROM_LOCAL;
-	for(auto & pbr_inst : pbr_object_instances) pbr_inst.transform.CLIP_FROM_LOCAL = CLIP_FROM_WORLD * pbr_inst.transform.WORLD_FROM_LOCAL;
+	for(auto & lamb_inst : scene_system.lambertian_object_instances) 
+		lamb_inst.transform.CLIP_FROM_LOCAL = scene_system.CLIP_FROM_WORLD * lamb_inst.transform.WORLD_FROM_LOCAL;
+	for(auto & env_mirror_inst : scene_system.env_mirror_object_instances) 
+		env_mirror_inst.transform.CLIP_FROM_LOCAL = scene_system.CLIP_FROM_WORLD * env_mirror_inst.transform.WORLD_FROM_LOCAL;
+	for(auto & pbr_inst : scene_system.pbr_object_instances) pbr_inst.transform.CLIP_FROM_LOCAL = scene_system.CLIP_FROM_WORLD * pbr_inst.transform.WORLD_FROM_LOCAL;
 	
 
-	//backup lights for when there's no lights
-	if (default_world_lights)
+	//backup scene_system.lights for when there's no scene_system.lights
+	if (scene_system.default_world_lights)
 	{ // moving sun and sky:
 		float cycle = (sin(6.28f * time / 5.0f) + 0.8f) / 1.8f;
 		vec4 dir;
@@ -1132,7 +1070,7 @@ void Tutorial::update(float dt)
 		color.y = sin(6.28f * time / 5.0f) - 0.3f;
 		color.z = 0.2f;
 
-		lights.emplace_back(Light{
+		scene_system.lights.emplace_back(Light{
 			.color = vec4(color.x, color.y, color.z, 0),
 			.direction = dir,
 			.type = 0, // 0 indicates SUN
@@ -1150,7 +1088,7 @@ void Tutorial::update(float dt)
 		sun_color.x = cycle;
 		sun_color.y = cycle;
 		sun_color.z = cycle;
-		lights.emplace_back(Light{
+		scene_system.lights.emplace_back(Light{
 			.color = vec4(sun_color.x, sun_color.y, sun_color.z, 0),
 			.direction = sun_dir,
 			.type = 0, // 0 indicates SUN
@@ -1166,31 +1104,7 @@ void Tutorial::update(float dt)
 
 // helper functions
 
-vec3 Tutorial::emplace_random_line(vec3 start, uint32_t iter)
-{
-	// do some approximation of tree growing based on current iteration number and height
 
-	float length_modifier = powf(0.9f, (float)iter); // length gets smaller
-
-	float up_modifier = powf(0.3f, (float)iter); // tree grows less and less "up"
-
-	vec3 growth = vec3(dist(engine), dist(engine), up_modifier + std::abs(dist(engine)));
-
-	vec3 new_location = start + length_modifier * normalized(growth);
-	float color_key = (dist(engine) + 1.0f) / 2;
-	uint8_t r = (static_cast<uint8_t>(std::floor(color_key * 256.0f)));
-	uint8_t g = (static_cast<uint8_t>(std::floor(color_key * 486.0f * color_key)));
-	uint8_t b = (static_cast<uint8_t>(std::floor(color_key * 238.0f)));
-	uint8_t a = 1;
-	lines_vertices.emplace_back(PosColVertex{
-		.Position = start,
-		.Color{.r = r, .g = g, .b = b, .a = a},
-	});
-	lines_vertices.emplace_back(PosColVertex{
-		.Position = new_location,
-	});
-	return new_location;
-}
 
 void Tutorial::on_input(InputEvent const &evt)
 {
@@ -1208,8 +1122,8 @@ void Tutorial::on_input(InputEvent const &evt)
 	}
 	if (evt.type == InputEvent::KeyDown && evt.key.key == GLFW_KEY_M)
 	{
-		shadows_on = !shadows_on;
-		std::cout << "Switching shadows " << shadows_on << std::endl;
+		scene_system.shadows_on = !scene_system.shadows_on;
+		std::cout << "Switching shadows " << scene_system.shadows_on << std::endl;
 	}
 	if (evt.type == InputEvent::KeyDown && evt.key.key == GLFW_KEY_SPACE)
 	{
@@ -1218,66 +1132,66 @@ void Tutorial::on_input(InputEvent const &evt)
 	}
 	if (evt.type == InputEvent::KeyDown && evt.key.key == GLFW_KEY_R)
 	{
-		time_elapsed = 0.0f;
+		scene_system.time_elapsed = 0.0f;
 		std::cout<<"resetting animation"<<std::endl;
 	}
 	if (evt.type == InputEvent::KeyDown && evt.key.key == GLFW_KEY_TAB)
 	{
 		// switch between 2 camera modes
-		if (camera_mode != CameraMode::Debug)
-			camera_mode = CameraMode((int(camera_mode) + 1) % 2);
-		else if (camera_mode == CameraMode::Debug)
-			prev_camera_mode = CameraMode((int(prev_camera_mode) + 1) % 2);
+		if (scene_system.camera_mode != CameraMode::Debug)
+			scene_system.camera_mode = CameraMode((int(scene_system.camera_mode) + 1) % 2);
+		else if (scene_system.camera_mode == CameraMode::Debug)
+			scene_system.prev_camera_mode = CameraMode((int(scene_system.prev_camera_mode) + 1) % 2);
 		return;
 	}
 	if (evt.type == InputEvent::KeyDown && evt.key.key == GLFW_KEY_D)
 	{
-		if(camera_mode != CameraMode::Debug)shadow_dump = true;
+		if(scene_system.camera_mode != CameraMode::Debug)scene_system.shadow_dump = true;
 		// go between debug and not debug
-		CameraMode temp_current_mode = camera_mode;
-		camera_mode = prev_camera_mode;
-		prev_camera_mode = temp_current_mode;
+		CameraMode temp_current_mode = scene_system.camera_mode;
+		scene_system.camera_mode = scene_system.prev_camera_mode;
+		scene_system.prev_camera_mode = temp_current_mode;
 		return;
 	}
 	if (evt.type == InputEvent::KeyDown && evt.key.key == GLFW_KEY_S)
 	{
-		std::cout << loaded_cameras.size() << "previous camera: " << current_camera->first << std::endl;
-		current_camera++;
-		if (current_camera == loaded_cameras.end())
+		std::cout << scene_system.loaded_cameras.size() << "previous camera: " << scene_system.current_camera->first << std::endl;
+		scene_system.current_camera++;
+		if (scene_system.current_camera == scene_system.loaded_cameras.end())
 		{
-			current_camera = loaded_cameras.begin();
+			scene_system.current_camera = scene_system.loaded_cameras.begin();
 		}
-		std::cout << loaded_cameras.size() << "current camera: " << current_camera->first << std::endl;
+		std::cout << scene_system.loaded_cameras.size() << "current camera: " << scene_system.current_camera->first << std::endl;
 	}
 	if (evt.type == InputEvent::KeyDown && evt.key.key == GLFW_KEY_G)
 	{
 		// toggle growing
-		growing = !growing;
+		scene_system.growing = !scene_system.growing;
 		return;
 	}
 
 	// wind motor: hold left mouse button to blow smoke in camera direction
 	if (evt.type == InputEvent::MouseButtonDown && evt.button.button == GLFW_MOUSE_BUTTON_RIGHT)
-		wind_motor_active = true;
+		scene_system.wind_motor_active = true;
 	if (evt.type == InputEvent::MouseButtonUp && evt.button.button == GLFW_MOUSE_BUTTON_RIGHT)
-		wind_motor_active = false;
+		scene_system.wind_motor_active = false;
 
 	// free camera controls
-	if (camera_mode == CameraMode::Free)
+	if (scene_system.camera_mode == CameraMode::Free)
 	{
 		if (evt.type == InputEvent::MouseWheel)
 		{
 			// zoom in/out
-			free_camera.radius *= std::pow(1.1f, -evt.wheel.y);
-			free_camera.radius = std::min(free_camera.radius, free_camera.far);
-			free_camera.radius = std::max(free_camera.radius, free_camera.near);
+			scene_system.free_camera.radius *= std::pow(1.1f, -evt.wheel.y);
+			scene_system.free_camera.radius = std::min(scene_system.free_camera.radius, scene_system.free_camera.far);
+			scene_system.free_camera.radius = std::max(scene_system.free_camera.radius, scene_system.free_camera.near);
 		}
 		if (evt.type == InputEvent::MouseButtonDown && evt.button.button == GLFW_MOUSE_BUTTON_LEFT && !(evt.button.mods & GLFW_MOD_SHIFT))
 		{
 			// start tumbling
 			float init_x = evt.button.x;
 			float init_y = evt.button.y;
-			OrbitCamera init_camera = free_camera;
+			OrbitCamera init_camera = scene_system.free_camera;
 
 			action = [this, init_x, init_y, init_camera](InputEvent const &evt)
 			{
@@ -1296,13 +1210,13 @@ void Tutorial::on_input(InputEvent const &evt)
 					// rotate camera based on motion:
 					float speed = float(M_PI);
 					float flip_x = (std::abs(init_camera.elevation) > 0.5f * float(M_PI) ? -1.0f : 1.0f); // switch azimuth rotation when camera is upside-down
-					free_camera.azimuth = init_camera.azimuth - dx * speed * flip_x;
-					free_camera.elevation = init_camera.elevation - dy * speed;
+					scene_system.free_camera.azimuth = init_camera.azimuth - dx * speed * flip_x;
+					scene_system.free_camera.elevation = init_camera.elevation - dy * speed;
 
 					// reduce azimuth and elevation to [-pi,pi] range:
 					const float twopi = 2.0f * float(M_PI);
-					free_camera.elevation -= std::round(free_camera.elevation / twopi) * twopi;
-					free_camera.azimuth -= std::round(free_camera.azimuth / twopi) * twopi;
+					scene_system.free_camera.elevation -= std::round(scene_system.free_camera.elevation / twopi) * twopi;
+					scene_system.free_camera.azimuth -= std::round(scene_system.free_camera.azimuth / twopi) * twopi;
 					return;
 				}
 			};
@@ -1313,7 +1227,7 @@ void Tutorial::on_input(InputEvent const &evt)
 			// start panning
 			float init_x = evt.button.x;
 			float init_y = evt.button.y;
-			OrbitCamera init_camera = free_camera;
+			OrbitCamera init_camera = scene_system.free_camera;
 			// handle panning
 			action = [this, init_x, init_y, init_camera](InputEvent const &evt)
 			{
@@ -1326,7 +1240,7 @@ void Tutorial::on_input(InputEvent const &evt)
 				if (evt.type == InputEvent::MouseMotion)
 				{
 					// handle panning
-					float height = 2.0f * std::tan(free_camera.fov * 0.5f) * free_camera.radius;
+					float height = 2.0f * std::tan(scene_system.free_camera.fov * 0.5f) * scene_system.free_camera.radius;
 					// multiplying dx and dy by height because farther camera should move more so that stuff should glide across screen the same?
 					float dx = (evt.motion.x - init_x) / rtg.swapchain_extent.height * height;
 					float dy = -(evt.motion.y - init_y) / rtg.swapchain_extent.height * height; // note: negated because glfw uses y-down coordinate system
@@ -1335,28 +1249,28 @@ void Tutorial::on_input(InputEvent const &evt)
 					mat4 camera_from_world = orbit(init_camera.target, init_camera.azimuth, init_camera.elevation, init_camera.radius);
 					vec3 right = vec3(camera_from_world[0], camera_from_world[4], camera_from_world[8]);
 					vec3 up = vec3(camera_from_world[1], camera_from_world[5], camera_from_world[9]);
-					free_camera.target = init_camera.target - dx * right - dy * up;
+					scene_system.free_camera.target = init_camera.target - dx * right - dy * up;
 					return;
 				}
 			};
 			return;
 		}
 	}
-	else if (camera_mode == CameraMode::Debug)
+	else if (scene_system.camera_mode == CameraMode::Debug)
 	{
 		if (evt.type == InputEvent::MouseWheel)
 		{
 			// zoom in/out
-			debug_camera.radius *= std::pow(1.1f, -evt.wheel.y);
-			debug_camera.radius = std::min(debug_camera.radius, debug_camera.far);
-			debug_camera.radius = std::max(debug_camera.radius, debug_camera.near);
+			scene_system.debug_camera.radius *= std::pow(1.1f, -evt.wheel.y);
+			scene_system.debug_camera.radius = std::min(scene_system.debug_camera.radius, scene_system.debug_camera.far);
+			scene_system.debug_camera.radius = std::max(scene_system.debug_camera.radius, scene_system.debug_camera.near);
 		}
 		if (evt.type == InputEvent::MouseButtonDown && evt.button.button == GLFW_MOUSE_BUTTON_LEFT && !(evt.button.mods & GLFW_MOD_SHIFT))
 		{
 			// start tumbling
 			float init_x = evt.button.x;
 			float init_y = evt.button.y;
-			OrbitCamera init_camera = debug_camera;
+			OrbitCamera init_camera = scene_system.debug_camera;
 
 			action = [this, init_x, init_y, init_camera](InputEvent const &evt)
 			{
@@ -1375,13 +1289,13 @@ void Tutorial::on_input(InputEvent const &evt)
 					// rotate camera based on motion:
 					float speed = float(M_PI);
 					float flip_x = (std::abs(init_camera.elevation) > 0.5f * float(M_PI) ? -1.0f : 1.0f); // switch azimuth rotation when camera is upside-down
-					debug_camera.azimuth = init_camera.azimuth - dx * speed * flip_x;
-					debug_camera.elevation = init_camera.elevation - dy * speed;
+					scene_system.debug_camera.azimuth = init_camera.azimuth - dx * speed * flip_x;
+					scene_system.debug_camera.elevation = init_camera.elevation - dy * speed;
 
 					// reduce azimuth and elevation to [-pi,pi] range:
 					const float twopi = 2.0f * float(M_PI);
-					debug_camera.elevation -= std::round(debug_camera.elevation / twopi) * twopi;
-					debug_camera.azimuth -= std::round(debug_camera.azimuth / twopi) * twopi;
+					scene_system.debug_camera.elevation -= std::round(scene_system.debug_camera.elevation / twopi) * twopi;
+					scene_system.debug_camera.azimuth -= std::round(scene_system.debug_camera.azimuth / twopi) * twopi;
 					return;
 				}
 			};
@@ -1392,7 +1306,7 @@ void Tutorial::on_input(InputEvent const &evt)
 			// start panning
 			float init_x = evt.button.x;
 			float init_y = evt.button.y;
-			OrbitCamera init_camera = debug_camera;
+			OrbitCamera init_camera = scene_system.debug_camera;
 			// handle panning
 			action = [this, init_x, init_y, init_camera](InputEvent const &evt)
 			{
@@ -1405,7 +1319,7 @@ void Tutorial::on_input(InputEvent const &evt)
 				if (evt.type == InputEvent::MouseMotion)
 				{
 					// handle panning
-					float height = 2.0f * std::tan(debug_camera.fov * 0.5f) * debug_camera.radius;
+					float height = 2.0f * std::tan(scene_system.debug_camera.fov * 0.5f) * scene_system.debug_camera.radius;
 					// multiplying dx and dy by height because farther camera should move more so that stuff should glide across screen the same?
 					float dx = (evt.motion.x - init_x) / rtg.swapchain_extent.height * height;
 					float dy = -(evt.motion.y - init_y) / rtg.swapchain_extent.height * height; // note: negated because glfw uses y-down coordinate system
@@ -1414,7 +1328,7 @@ void Tutorial::on_input(InputEvent const &evt)
 					mat4 camera_from_world = orbit(init_camera.target, init_camera.azimuth, init_camera.elevation, init_camera.radius);
 					vec3 right = vec3(camera_from_world[0], camera_from_world[4], camera_from_world[8]);
 					vec3 up = vec3(camera_from_world[1], camera_from_world[5], camera_from_world[9]);
-					debug_camera.target = init_camera.target - dx * right - dy * up;
+					scene_system.debug_camera.target = init_camera.target - dx * right - dy * up;
 					return;
 				}
 			};
@@ -1423,66 +1337,6 @@ void Tutorial::on_input(InputEvent const &evt)
 	}
 }
 
-void Tutorial::add_debug_lines_frustrum()
-{
-	//----frustrum drawing
-	std::array<vec3, 8> frustrum_corners; // get the corners
-	vec3 color;
-	if (prev_camera_mode == CameraMode::Scene)
-	{
-		frustrum_corners = current_camera->second.get_frustum_corners();
-		color = vec3{0.0, 0.0, 1.0};
-	}
-	else if (prev_camera_mode == CameraMode::Free)
-	{
-		frustrum_corners = free_camera.get_frustum_corners(rtg.swapchain_extent.width / float(rtg.swapchain_extent.height)); // aspect passed in
-		color = vec3{0.0, 1.0, 0.0};
-	}
-	else
-	{
-		assert(0 && "prev can't also be debug");
-	}
-	// Order: near plane (bottom-left, bottom-right, top-right, top-left),
-	//        far plane (bottom-left, bottom-right, top-right, top-left)
-	uint8_t r = uint8_t(std::round(256 * color.x));
-	uint8_t g = uint8_t(std::round(256 * color.y));
-	uint8_t b = uint8_t(std::round(256 * color.z));
-
-	add_cuboid_from_corners(frustrum_corners, r, g, b);
-}
-
-void Tutorial::add_cuboid_from_corners(std::array<vec3, 8> const &box_corners, uint8_t r, uint8_t g, uint8_t b)
-{
-	auto emplace_line = [&](uint32_t from, uint32_t to)
-	{
-		lines_vertices.emplace_back(PosColVertex{.Position = box_corners[from], .Color = {.r = r, .g = g, .b = b, .a = 255}});
-		lines_vertices.emplace_back(PosColVertex{.Position = box_corners[to], .Color = {.r = r, .g = g, .b = b, .a = 255}});
-	};
-	// near face
-	emplace_line(0, 1);
-	emplace_line(1, 2);
-	emplace_line(2, 3);
-	emplace_line(3, 0);
-	// far face
-	emplace_line(4, 5);
-	emplace_line(5, 6);
-	emplace_line(6, 7);
-	emplace_line(7, 4);
-	// connections
-	emplace_line(0, 4);
-	emplace_line(1, 5);
-	emplace_line(2, 6);
-	emplace_line(3, 7);
-}
-
-void Tutorial::add_debug_lines_bbox(AABB &bbox, mat4 WORLD_FROM_LOCAL)
-{
-	// local corners
-	std::array<vec3, 8> bbox_corners;
-	bbox.get_box_corners(WORLD_FROM_LOCAL, bbox_corners);
-
-	add_cuboid_from_corners(bbox_corners, 0, 255, 0);
-}
 
 std::array<vec3, 8> BasicCamera::get_frustum_corners() const
 {
@@ -1617,79 +1471,6 @@ std::array<vec3, 8> OrbitCamera::get_frustum_corners(float aspect) const
 	return corners;
 }
 
-bool Tutorial::do_cull(std::array<vec3, 8> const &frustrum_corners, std::array<vec3, 8> const &box_corners)
-{
-	auto test_axis = [&](vec3 const &dir) -> bool
-	{
-		// plot all points on a number line
-		std::array<float, 8> box_points;
-		std::array<float, 8> frustrum_points;
-		for (uint32_t i = 0; i < 8; i++)
-		{
-			box_points[i] = dot(box_corners[i], dir);
-			frustrum_points[i] = dot(frustrum_corners[i], dir);
-		}
-		// check for overlap
-		std::sort(box_points.begin(), box_points.end());
-		std::sort(frustrum_points.begin(), frustrum_points.end());
-
-		if (box_points[7] < frustrum_points[0] || box_points[0] > frustrum_points[7])
-		{
-			return true;
-		}
-		return false;
-	};
-
-	//------go through all the faces' Separating axes
-	vec3 box_axes[3] = {
-		box_corners[1] - box_corners[0], // right edge (x-axis)
-		box_corners[3] - box_corners[0], // up edge (y-axis)
-		box_corners[4] - box_corners[0], // forward edge (z-axis)
-	};
-	{ // Test box face normals (3 axes)
-		for (uint32_t i = 0; i < 3; i++)
-		{
-			if (test_axis(box_axes[i]))
-				return true;
-		}
-	}
-	//------Test frustum face normals (6 faces)
-	vec3 frustrum_edges[6] = {
-		frustrum_corners[1] - frustrum_corners[0], // near face: bottom, right
-		frustrum_corners[2] - frustrum_corners[1],
-		frustrum_corners[4] - frustrum_corners[0], // bottom left projecting edge
-		frustrum_corners[6] - frustrum_corners[2], // top right projecting edge
-		frustrum_corners[5] - frustrum_corners[1], // bottom right projecting edge
-		frustrum_corners[7] - frustrum_corners[3], // top left projecting edges
-	};
-	{ // Compute face normals
-		vec3 frustrum_normals[5] = {
-			cross(frustrum_edges[0], frustrum_edges[1]), // near
-			cross(frustrum_edges[2], frustrum_edges[1]), // left
-			cross(frustrum_edges[3], frustrum_edges[1]), // right
-			cross(frustrum_edges[2], frustrum_edges[0]), // top
-			cross(frustrum_edges[3], frustrum_edges[0]), // bottom
-		};
-
-		for (uint32_t i = 0; i < 5; i++)
-		{
-			if (test_axis(frustrum_normals[i]))
-				return true;
-		}
-	}
-	//------go through all the cross products
-	// bbox x axis, y axis, z axis cross...
-	for (vec3 const &bedge : box_axes)
-	{
-		// frustrum near horizontal edge, near vertical edge, four projecting edges
-		for (vec3 const &fedge : frustrum_edges)
-		{
-			if (test_axis(cross(bedge, fedge)))
-				return true;
-		}
-	}
-	return false; // none of the SATs work
-}
 
 void AABB::get_box_corners(mat4 WORLD_FROM_LOCAL, std::array<vec3, 8> &box_corners)
 {

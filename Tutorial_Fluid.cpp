@@ -237,15 +237,15 @@ void Tutorial::add_sources_velocity(float dt){
     vec3 volume_center = vec3(0.0f, 0.0f, 10.0f);
     float volume_size  = cell_size_ws;
     vec3 volume_min    = volume_center - vec3(volume_size * 0.5f);
-    vec3 cam_grid      = (EYE - volume_min) / volume_size * float(v_volume_side_length);
+    vec3 cam_grid      = (scene_system.EYE - volume_min) / volume_size * float(v_volume_side_length);
 
     AddVectorSourcesPipeline::Push push{
         .N = v_volume_side_length,
         .dt = dt,
-        .motor_active = wind_motor_active ? 1u : 0u,
+        .motor_active = scene_system.wind_motor_active ? 1u : 0u,
         .motor_radius = float(v_volume_side_length) * 0.08f,
         .cam_pos_grid = vec4(cam_grid.x, cam_grid.y, cam_grid.z, 0.0f),
-        .cam_dir      = vec4(CAM_DIR.x, CAM_DIR.y, CAM_DIR.z, 0.0f),
+        .cam_dir      = vec4(scene_system.CAM_DIR.x, scene_system.CAM_DIR.y, scene_system.CAM_DIR.z, 0.0f),
     };
     vkCmdPushConstants(compute_cmd_buf, add_vector_sources_pipeline.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(push), &push);
 
@@ -656,7 +656,33 @@ void Tutorial::init_fluid(){
     };
     vkQueueSubmit(rtg.graphics_queue, 1, &submit, VK_NULL_HANDLE);
     vkQueueWaitIdle(rtg.graphics_queue);
-    
+
+    {//initialize sampled descriptor sets so they are valid before the first draw
+        std::array<VkDescriptorImageInfo, 2> image_infos{
+            VkDescriptorImageInfo{ .sampler = material_system.texture_sampler, .imageView = velocity_3D_views[velocity_ind], .imageLayout = VK_IMAGE_LAYOUT_GENERAL },
+            VkDescriptorImageInfo{ .sampler = material_system.texture_sampler, .imageView = density_3D_views[density_ind], .imageLayout = VK_IMAGE_LAYOUT_GENERAL },
+        };
+        std::array<VkWriteDescriptorSet, 2> writes{
+            VkWriteDescriptorSet{
+                .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .dstSet = velocity_tex,
+                .dstBinding = 0,
+                .descriptorCount = 1,
+                .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                .pImageInfo = &image_infos[0],
+            },
+            VkWriteDescriptorSet{
+                .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .dstSet = density_tex,
+                .dstBinding = 0,
+                .descriptorCount = 1,
+                .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                .pImageInfo = &image_infos[1],
+            },
+        };
+        vkUpdateDescriptorSets(rtg.device, (uint32_t)writes.size(), writes.data(), 0, nullptr);
+    }
+
 }
 
 void Tutorial::update_fluid(float dt){

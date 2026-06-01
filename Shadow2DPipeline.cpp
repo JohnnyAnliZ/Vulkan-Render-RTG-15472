@@ -78,12 +78,13 @@ void Tutorial::init_shadow_mapping(){
 	}	
 
 	shadow_2D_pipeline.create(rtg, shadow_pass, 0);
+    scene_system.shadow_pipe_layout = shadow_2D_pipeline.layout;
     std::cout<<"created shadow pass pipeline"<<std::endl;
 
 	{//go through the lights to count the lights and get a suitable shadow atlas size
-		std::deque<Item> current_nodes;
+		std::deque<SceneSystem::Item> current_nodes;
 		for(auto n : scene72.scene.roots){//start with the root nodes
-			current_nodes.emplace_back(Item{n,mat4::identity()});
+			current_nodes.emplace_back(SceneSystem::Item{n,mat4::identity()});
 		}
 		while(!current_nodes.empty()){//go through the graph using this queue bfs setup (this creates two instances of a child if two nodes have it as one of the children)
 			auto [node, world_from_parent] = current_nodes.front();
@@ -110,23 +111,23 @@ void Tutorial::init_shadow_mapping(){
 				}
 
 				uint32_t shadow_map_size = node->light->shadow;
-				light_shadow_map_sizes.emplace_back(shadow_map_size);
-				total_shadow_map_size += shadow_map_size * shadow_map_size * faces;	
+				scene_system.light_shadow_map_sizes.emplace_back(shadow_map_size);
+				scene_system.total_shadow_map_size += shadow_map_size * shadow_map_size * faces;	
 			}
 			for(S72::Node *child : node->children){
 				current_nodes.emplace_back(child, world_from_local);
 			}
 		}
 		//find the fitting atlas size
-		atlas_size = Shadow2DPipeline::find_fitting_atlas_size(total_shadow_map_size);
+		scene_system.atlas_size = Shadow2DPipeline::find_fitting_atlas_size(scene_system.total_shadow_map_size);
 	}
     
-    std::cout<<"total shadow map size is: "<<total_shadow_map_size<<std::endl;
-    std::cout<<"shadow atlas total size is: "<<atlas_size<<std::endl;
+    std::cout<<"total shadow map size is: "<<scene_system.total_shadow_map_size<<std::endl;
+    std::cout<<"shadow atlas total size is: "<<scene_system.atlas_size<<std::endl;
     for (Workspace &workspace : workspaces){
         {//create image for shadow atlas
             workspace.Shadow_Atlas = rtg.helpers.create_image(
-                VkExtent2D{.width = atlas_size, .height = atlas_size},
+                VkExtent2D{.width = scene_system.atlas_size, .height = scene_system.atlas_size},
                 VK_FORMAT_D32_SFLOAT, 
                 VK_IMAGE_TILING_OPTIMAL,
                 VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT|VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
@@ -155,8 +156,8 @@ void Tutorial::init_shadow_mapping(){
                 .renderPass = shadow_pass,
                 .attachmentCount = 1,
                 .pAttachments = &workspace.Shadow_Atlas_view,
-                .width = atlas_size,
-                .height = atlas_size,
+                .width = scene_system.atlas_size,
+                .height = scene_system.atlas_size,
                 .layers = 1
             };
             VK(vkCreateFramebuffer(rtg.device, &fb_info, nullptr, &workspace.Shadow_Atlas_FB));
@@ -223,12 +224,12 @@ void Tutorial::init_shadow_mapping(){
     }
 }
 
-void Tutorial::draw_all_objects(VkCommandBuffer const &cmd, mat4 const &LIGHTS_CLIP_FROM_WORLD, vec4 const &_shadow_atlas){
+void SceneSystem::draw_all_objects(VkCommandBuffer const &cmd, mat4 const &LIGHTS_CLIP_FROM_WORLD, vec4 const &_shadow_atlas){
     //push constants
     Shadow2DPipeline::Push push{
         .LIGHT_CLIP_FROM_WORLD = LIGHTS_CLIP_FROM_WORLD,
     };
-    vkCmdPushConstants(cmd, shadow_2D_pipeline.layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(push), &push);
+    vkCmdPushConstants(cmd, shadow_pipe_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(push), &push);
     
     float atlas_size_fl = float(atlas_size);
     float offset_x = atlas_size_fl * _shadow_atlas.x;

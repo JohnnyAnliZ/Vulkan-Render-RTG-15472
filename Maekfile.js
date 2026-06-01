@@ -44,11 +44,11 @@ const main_objs = [
 	maek.CPP('Helpers.cpp'),
 	maek.CPP('S72.cpp'),
 	maek.CPP('main.cpp'),
-	maek.CPP('Tutorial_Scene.cpp'),
 	maek.CPP('Tutorial_Init.cpp'),
 	maek.CPP('Tutorial_Fluid.cpp'),
 	maek.CPP('TextureSystem.cpp'),
 	maek.CPP('MaterialSystem.cpp'),
+	maek.CPP('SceneSystem.cpp'),
 	maek.CPP('Compute_Init.cpp')
 ];
 

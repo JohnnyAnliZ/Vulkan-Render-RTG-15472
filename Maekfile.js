@@ -50,6 +50,7 @@ const main_objs = [
 	maek.CPP('SceneSystem.cpp'),
 	maek.CPP('ComputeSystem.cpp'),
 	maek.CPP('FluidSystem.cpp'),
+	maek.CPP('TextureDebugSystem.cpp'),
 ];
 
 const cube_objs = [

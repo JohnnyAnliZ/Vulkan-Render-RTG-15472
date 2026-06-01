@@ -49,13 +49,11 @@ struct FluidSystem {
 	//velocity
 	uint32_t velocity_ind = 0;
 	VkDescriptorSet velocity_volumes[2];
-	VkDescriptorSet velocity_tex = VK_NULL_HANDLE;
 	Helpers::AllocatedImage3D velocity_3D_textures[2];
 	VkImageView velocity_3D_views[2];
 	//density
 	uint32_t density_ind = 0;
 	VkDescriptorSet density_volumes[2];
-	VkDescriptorSet density_tex = VK_NULL_HANDLE;
 	Helpers::AllocatedImage3D density_3D_textures[2];
 	VkImageView density_3D_views[2];
 	//pressure

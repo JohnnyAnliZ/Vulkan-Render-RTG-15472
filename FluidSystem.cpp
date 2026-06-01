@@ -537,24 +537,6 @@ void FluidSystem::init_fluid(RTG &rtg, ComputeContext &comp_context, MaterialSys
 		VK( vkCreateSampler(rtg.device, &create_info, nullptr, &volume_sampler) );
 	}
 
-    //allocate the sampled descriptor sets
-    {
-        VkDescriptorSetAllocateInfo alloc_info_v{
-            .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-            .descriptorPool = material_system.texture_descriptor_pool,
-            .descriptorSetCount = 1,
-            .pSetLayouts = &texture_debug_pipeline.set1_vel_vol,
-        };
-        vkAllocateDescriptorSets(rtg.device, &alloc_info_v, &velocity_tex);
-
-        VkDescriptorSetAllocateInfo alloc_info_d{
-            .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-            .descriptorPool = material_system.texture_descriptor_pool,
-            .descriptorSetCount = 1,
-            .pSetLayouts = &texture_debug_pipeline.set2_dens_vol,
-        };
-        vkAllocateDescriptorSets(rtg.device, &alloc_info_d, &density_tex);
-    }
 
     std::cout<<"allocating ping-pong descriptor sets for Density"<<std::endl;
     make_ping_pong_descriptor_sets(rtg, comp_context, density_volumes, add_scalar_sources_pipeline.set0_density_volume, density_3D_views);   
@@ -566,7 +548,7 @@ void FluidSystem::init_fluid(RTG &rtg, ComputeContext &comp_context, MaterialSys
     {
         VkDescriptorSetAllocateInfo alloc_info{
             .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-            .descriptorPool = storage_descriptor_pool,
+            .descriptorPool = comp_context.storage_descriptor_pool,
             .descriptorSetCount = 1,
             .pSetLayouts = &divergence_pipeline.set2_divergence_volume,
         };
@@ -645,31 +627,7 @@ void FluidSystem::init_fluid(RTG &rtg, ComputeContext &comp_context, MaterialSys
     project_velocity(comp_context);
 
 
-    {//initialize sampled descriptor sets so they are valid before the first draw
-        std::array<VkDescriptorImageInfo, 2> image_infos{
-            VkDescriptorImageInfo{ .sampler = material_system.texture_sampler, .imageView = velocity_3D_views[velocity_ind], .imageLayout = VK_IMAGE_LAYOUT_GENERAL },
-            VkDescriptorImageInfo{ .sampler = material_system.texture_sampler, .imageView = density_3D_views[density_ind], .imageLayout = VK_IMAGE_LAYOUT_GENERAL },
-        };
-        std::array<VkWriteDescriptorSet, 2> writes{
-            VkWriteDescriptorSet{
-                .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                .dstSet = velocity_tex,
-                .dstBinding = 0,
-                .descriptorCount = 1,
-                .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-                .pImageInfo = &image_infos[0],
-            },
-            VkWriteDescriptorSet{
-                .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                .dstSet = density_tex,
-                .dstBinding = 0,
-                .descriptorCount = 1,
-                .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-                .pImageInfo = &image_infos[1],
-            },
-        };
-        vkUpdateDescriptorSets(rtg.device, (uint32_t)writes.size(), writes.data(), 0, nullptr);
-    }
+
 
 }
 
@@ -720,33 +678,7 @@ void FluidSystem::update_fluid(float dt, ComputeContext comp_context, SceneSyste
 
 
     
-    {//update descriptor sets for the two sampled images
-        std::array<VkDescriptorImageInfo, 2> image_infos{
-            VkDescriptorImageInfo{ .sampler = material_system.texture_sampler, .imageView = velocity_3D_views[velocity_ind], .imageLayout = VK_IMAGE_LAYOUT_GENERAL },
-            VkDescriptorImageInfo{ .sampler = material_system.texture_sampler, .imageView = density_3D_views[density_ind], .imageLayout = VK_IMAGE_LAYOUT_GENERAL },
-        };
 
-        std::array<VkWriteDescriptorSet, 2> writes{
-            VkWriteDescriptorSet{
-                .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                .dstSet = velocity_tex,
-                .dstBinding = 0,
-                .descriptorCount = 1,
-                .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-                .pImageInfo = &image_infos[0],
-            },
-            VkWriteDescriptorSet{
-                .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                .dstSet = density_tex,
-                .dstBinding = 0,
-                .descriptorCount = 1,
-                .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-                .pImageInfo = &image_infos[1],
-            },
-        };
-
-        vkUpdateDescriptorSets(comp_context.rtg.device, (uint32_t)writes.size(), writes.data(), 0, nullptr);
-    }
 
 
 }

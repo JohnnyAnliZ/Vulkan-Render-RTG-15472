@@ -4,6 +4,7 @@
 #include "SceneSystem.hpp"
 #include "ComputeSystem.hpp"
 #include "FluidSystem.hpp"
+#include "TextureDebugSystem.hpp"
 
 #include "PosNorTexVertex.hpp"
 #include "PosNorTanTexVertex.hpp"
@@ -39,7 +40,6 @@ struct Tutorial : RTG::Application {
 
 	//Pipelines:
 	BackgroundPipeline background_pipeline;
-	TextureDebugPipeline texture_debug_pipeline;
 	RayMarchSmokeVolumePipeline ray_march_smoke_volume_pipeline;
 	LinesPipeline lines_pipeline;
 	LambertianObjectsPipeline lambertian_objects_pipeline;
@@ -71,6 +71,9 @@ struct Tutorial : RTG::Application {
 	//fluid system that uses computes system to do voxel fluid simulation
 	FluidSystem fluid_system;
 
+	//TextureDebugSystem
+	TextureDebugSystem texture_debug_system;
+
 	//--------------------------------------------------------------------
 	//Resources that change when the swapchain is resized:
 
@@ -87,15 +90,13 @@ struct Tutorial : RTG::Application {
 	virtual void update(float dt) override;
 	virtual void on_input(InputEvent const &) override;
 
-	std::function<void(InputEvent const &)> action;
+	std::function<void(InputEvent const &)> action;\
 
+	//animation
 	float time = 0.0f;
-
-	//animation controls
 	uint32_t frame_number = 0;
 	float frame_time = 0.0f;
 	bool animating = true;
-
 
 	//--------------------------------------------------------------------
 	virtual void render(RTG &, RTG::RenderParams const &) override;

@@ -45,11 +45,11 @@ const main_objs = [
 	maek.CPP('S72.cpp'),
 	maek.CPP('main.cpp'),
 	maek.CPP('Tutorial_Init.cpp'),
-	maek.CPP('Tutorial_Fluid.cpp'),
 	maek.CPP('TextureSystem.cpp'),
 	maek.CPP('MaterialSystem.cpp'),
 	maek.CPP('SceneSystem.cpp'),
-	maek.CPP('Compute_Init.cpp')
+	maek.CPP('ComputeSystem.cpp'),
+	maek.CPP('FluidSystem.cpp'),
 ];
 
 const cube_objs = [

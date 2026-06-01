@@ -28,7 +28,7 @@ Tutorial::Tutorial(RTG &rtg_)
 	// command pool, descriptor pool,
 	init_tutorial();
 
-	init_compute();
+	compute_system.init_compute(rtg);
 	std::cout << "LOADING SCENE" << std::endl;
 
 	// set up loaded cameras, put mesh data into the GPU vertex buffer
@@ -39,7 +39,11 @@ Tutorial::Tutorial(RTG &rtg_)
 	material_system.load_materials();
 
 	std::cout<<"INITIALIZING fluid"<<std::endl;
-	init_fluid();	
+
+	ComputeContext comp_context = compute_system.begin_frame(rtg);
+	fluid_system.init_fluid(rtg, comp_context, material_system, scene_system);	
+	compute_system.end_frame(comp_context);
+	
 
 	std::cout<<"INITIALIZING shadows"<<std::endl;
 
@@ -58,11 +62,6 @@ Tutorial::~Tutorial()
 		std::cerr << "Failed to vkDeviceWaitIdle in Tutorial::~Tutorial [" << string_VkResult(result) << "]; continuing anyway." << std::endl;
 	}
 
-	if(volume_sampler)
-	{
-		vkDestroySampler(rtg.device, volume_sampler, nullptr);
-		volume_sampler = VK_NULL_HANDLE;
-	}
 	// texture/material cleanup is handled by material_system destructor
 
 	// scene_system destructor frees object_vertices buffer
@@ -72,29 +71,8 @@ Tutorial::~Tutorial()
 		destroy_framebuffers();
 	}
 
-
-	{//fluid stuff
-		//image views
-		for (VkImageView &v_view_3D : velocity_3D_views){
-			vkDestroyImageView(rtg.device, v_view_3D, nullptr);
-			v_view_3D = VK_NULL_HANDLE;
-		}
-		for (VkImageView &p_view_3D : pressure_3D_views){
-			vkDestroyImageView(rtg.device, p_view_3D, nullptr);
-			p_view_3D = VK_NULL_HANDLE;
-		}
-		vkDestroyImageView(rtg.device, divergence_3D_view, nullptr);
-		divergence_3D_view = VK_NULL_HANDLE;
-
-		//images
-		for (auto &v_image_3D : velocity_3D_textures){
-			rtg.helpers.destroy_image_3D(std::move(v_image_3D));
-		}
-		for (auto &p_image_3D : pressure_3D_textures){
-			rtg.helpers.destroy_image_3D(std::move(p_image_3D));
-		}
-		rtg.helpers.destroy_image_3D(std::move(divergence_3D_texture));
-	}
+	compute_system.destroy(rtg);
+	fluid_system.destroy(rtg);
 
 	for (Workspace &workspace : workspaces)
 	{
@@ -168,12 +146,6 @@ Tutorial::~Tutorial()
 		descriptor_pool = nullptr;
 		//(this also frees the descriptor sets allocated from the pool)
 	}
-	if(storage_descriptor_pool)
-	{
-		vkDestroyDescriptorPool(rtg.device, storage_descriptor_pool, nullptr);
-		storage_descriptor_pool = nullptr;
-	}
-
 
 	background_pipeline.destroy(rtg);
 	lines_pipeline.destroy(rtg);
@@ -184,28 +156,12 @@ Tutorial::~Tutorial()
 	texture_debug_pipeline.destroy(rtg);
 	ray_march_smoke_volume_pipeline.destroy(rtg);
 
-	add_scalar_sources_pipeline.destroy(rtg);
-	diffuse_scalar_pipeline.destroy(rtg);
-	advect_density_pipeline.destroy(rtg);
 
-	add_vector_sources_pipeline.destroy(rtg);
-	diffuse_vector_pipeline.destroy(rtg);
-	advect_vector_pipeline.destroy(rtg);
-	divergence_pipeline.destroy(rtg);
-	pressure_solve_pipeline.destroy(rtg);
-	gradient_subtract_pipeline.destroy(rtg);
 
-	
 	if (command_pool != VK_NULL_HANDLE)
 	{
 		vkDestroyCommandPool(rtg.device, command_pool, nullptr);
 		command_pool = VK_NULL_HANDLE;
-	}
-
-	if(compute_command_pool != VK_NULL_HANDLE)
-	{
-		vkDestroyCommandPool(rtg.device, compute_command_pool, nullptr);
-		compute_command_pool = VK_NULL_HANDLE;
 	}
 
 	if (render_pass != VK_NULL_HANDLE)
@@ -949,15 +905,15 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params)
 		{//draw with the ray march smoke volume pipeline
 			vkCmdBindPipeline(workspace.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, ray_march_smoke_volume_pipeline.handle);
 			vkCmdBindDescriptorSets(workspace.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, ray_march_smoke_volume_pipeline.layout,
-										0, 1, &density_tex, 0, nullptr);
+										0, 1, &fluid_system.density_tex, 0, nullptr);
 
 			mat4 WORLD_FROM_CLIP = scene_system.CLIP_FROM_WORLD.inverse();
 
 			RayMarchSmokeVolumePipeline::Push push{
 				.WORLD_FROM_CLIP = WORLD_FROM_CLIP,
 				.eye = vec4(scene_system.EYE.x, scene_system.EYE.y, scene_system.EYE.z, 0.0f),
-				.volume_center = vec4(0.0, 0.0, 10.0f,cell_size_ws),//hard coded position, no scene representation yet, last bit stores cell size in world space
-				.N = v_volume_side_length,
+				.volume_center = vec4(0.0, 0.0, 10.0f, fluid_system.cell_size_ws),//hard coded position, no scene representation yet, last bit stores cell size in world space
+				.N = fluid_system.v_volume_side_length,
 			};
 			vkCmdPushConstants(workspace.command_buffer, ray_march_smoke_volume_pipeline.layout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(push), &push);
 			vkCmdDraw(workspace.command_buffer, 3, 1, 0, 0);
@@ -970,10 +926,10 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params)
 			0, 1, &workspace.Shadow_Atlas_descriptors, 0, nullptr);
 
 			vkCmdBindDescriptorSets(workspace.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, texture_debug_pipeline.layout,
-			1, 1, &velocity_tex, 0, nullptr);
+			1, 1, &fluid_system.velocity_tex, 0, nullptr);
 
 			vkCmdBindDescriptorSets(workspace.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, texture_debug_pipeline.layout,
-			2, 1, &density_tex, 0, nullptr);
+			2, 1, &fluid_system.density_tex, 0, nullptr);
 
 			vkCmdDraw(workspace.command_buffer, 3, 1, 0, 0);
 		}
@@ -1097,9 +1053,9 @@ void Tutorial::update(float dt)
 		});
 	}
 
-	
-	if(fluid_unpaused)update_fluid(dt);
-
+	ComputeContext comp_context = compute_system.begin_frame(rtg);
+	if(fluid_system.fluid_unpaused)fluid_system.update_fluid(dt, comp_context,scene_system);
+	compute_system.end_frame(comp_context);
 }
 
 // helper functions
@@ -1117,8 +1073,8 @@ void Tutorial::on_input(InputEvent const &evt)
 	// general controls
 	if (evt.type == InputEvent::KeyDown && evt.key.key == GLFW_KEY_F)
 	{
-		fluid_unpaused = !fluid_unpaused;
-		std::cout << "Switching fluid unpaused:" << fluid_unpaused << std::endl;
+		fluid_system.fluid_unpaused = !fluid_system.fluid_unpaused;
+		std::cout << "Switching fluid unpaused:" << fluid_system.fluid_unpaused << std::endl;
 	}
 	if (evt.type == InputEvent::KeyDown && evt.key.key == GLFW_KEY_M)
 	{

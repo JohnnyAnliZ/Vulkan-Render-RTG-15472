@@ -1,9 +1,9 @@
-#include "Tutorial.hpp"
+#include "FluidSystem.hpp"
 #include "Helpers.hpp"
 #include "VK.hpp"
 
 //this function make sure the written image is available for reading in the next dispatch, by inserting a memory barrier for the written image
-void Tutorial::ping_pong_barrier(VkCommandBuffer cmd, VkImage &img){
+void FluidSystem::ping_pong_barrier(VkCommandBuffer cmd, VkImage &img){
     VkImageMemoryBarrier barrier{
         .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
         .srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT,
@@ -28,7 +28,9 @@ void Tutorial::ping_pong_barrier(VkCommandBuffer cmd, VkImage &img){
     );
 }
 
-void Tutorial::make_ping_pong_descriptor_sets(
+void FluidSystem::make_ping_pong_descriptor_sets(
+    RTG &rtg,
+    ComputeContext comp_context,
     VkDescriptorSet *pressure_sets,
     VkDescriptorSetLayout const &layout,
     VkImageView *image_views
@@ -38,7 +40,7 @@ void Tutorial::make_ping_pong_descriptor_sets(
     std::array<VkDescriptorSetLayout,2> layouts{layout, layout};
     VkDescriptorSetAllocateInfo alloc_info{
         .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-        .descriptorPool = storage_descriptor_pool,
+        .descriptorPool = comp_context.storage_descriptor_pool,
         .descriptorSetCount = (uint32_t)layouts.size(),
         .pSetLayouts = layouts.data(), // same layout twice
     };
@@ -83,15 +85,15 @@ void Tutorial::make_ping_pong_descriptor_sets(
 
 
 
-void Tutorial::add_sources_density(float dt){
+void FluidSystem::add_sources_density(float dt, ComputeContext comp_context){
     vkCmdBindPipeline(
-        compute_cmd_buf,
+        comp_context.compute_cmd_buf,
         VK_PIPELINE_BIND_POINT_COMPUTE,
         add_scalar_sources_pipeline.handle
     );
 
     vkCmdBindDescriptorSets(
-        compute_cmd_buf,
+        comp_context.compute_cmd_buf,
         VK_PIPELINE_BIND_POINT_COMPUTE,
         add_scalar_sources_pipeline.layout,
         0,
@@ -105,26 +107,26 @@ void Tutorial::add_sources_density(float dt){
         .N = v_volume_side_length,
         .dt = dt,
     };
-    vkCmdPushConstants(compute_cmd_buf, add_scalar_sources_pipeline.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(push), &push);
+    vkCmdPushConstants(comp_context.compute_cmd_buf, add_scalar_sources_pipeline.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(push), &push);
 
     vkCmdDispatch(
-        compute_cmd_buf,
+        comp_context.compute_cmd_buf,
         v_volume_side_length/groupCounts[0],
         v_volume_side_length/groupCounts[1],
         v_volume_side_length/groupCounts[2]
     );  
 
     //memory barrier
-    ping_pong_barrier(compute_cmd_buf, density_3D_textures[1 - density_ind].handle);
+    ping_pong_barrier(comp_context.compute_cmd_buf, density_3D_textures[1 - density_ind].handle);
 
     //swap
     density_ind = 1 - density_ind;
 }
 
 
-void Tutorial::diffuse_density(float dt){
+void FluidSystem::diffuse_density(float dt, ComputeContext comp_context){
     const uint32_t ITERS = 5;
-    vkCmdBindPipeline(compute_cmd_buf, VK_PIPELINE_BIND_POINT_COMPUTE, diffuse_scalar_pipeline.handle);
+    vkCmdBindPipeline(comp_context.compute_cmd_buf, VK_PIPELINE_BIND_POINT_COMPUTE, diffuse_scalar_pipeline.handle);
     for(uint32_t i = 0; i < ITERS; i++){//red-black gauss-seidel method, red pass fills half buffer and the black pass reads from that 
         //red pass
         DiffuseScalarPipeline::Push push_red{
@@ -132,9 +134,9 @@ void Tutorial::diffuse_density(float dt){
             .dt = dt,
             .color = 0, 
         };
-        vkCmdPushConstants(compute_cmd_buf, diffuse_scalar_pipeline.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(push_red), &push_red);
+        vkCmdPushConstants(comp_context.compute_cmd_buf, diffuse_scalar_pipeline.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(push_red), &push_red);
         vkCmdBindDescriptorSets(
-            compute_cmd_buf,
+            comp_context.compute_cmd_buf,
             VK_PIPELINE_BIND_POINT_COMPUTE,
             diffuse_scalar_pipeline.layout,
             0,
@@ -143,14 +145,14 @@ void Tutorial::diffuse_density(float dt){
             0,
             nullptr
         );
-        vkCmdDispatch(compute_cmd_buf,
+        vkCmdDispatch(comp_context.compute_cmd_buf,
             v_volume_side_length/groupCounts[0],
             v_volume_side_length/groupCounts[1],
             v_volume_side_length/groupCounts[2]
         );
 
         //memory barrier
-        ping_pong_barrier(compute_cmd_buf, density_3D_textures[1 - density_ind].handle);
+        ping_pong_barrier(comp_context.compute_cmd_buf, density_3D_textures[1 - density_ind].handle);
         //swap
         density_ind = 1 - density_ind;
 
@@ -160,9 +162,9 @@ void Tutorial::diffuse_density(float dt){
             .dt = dt,
             .color = 1, 
         };
-        vkCmdPushConstants(compute_cmd_buf, diffuse_scalar_pipeline.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(push_black), &push_black);
+        vkCmdPushConstants(comp_context.compute_cmd_buf, diffuse_scalar_pipeline.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(push_black), &push_black);
         vkCmdBindDescriptorSets(
-            compute_cmd_buf,
+            comp_context.compute_cmd_buf,
             VK_PIPELINE_BIND_POINT_COMPUTE,
             diffuse_scalar_pipeline.layout,
             0,
@@ -171,32 +173,32 @@ void Tutorial::diffuse_density(float dt){
             0,
             nullptr
         );
-        vkCmdDispatch(compute_cmd_buf,
+        vkCmdDispatch(comp_context.compute_cmd_buf,
             v_volume_side_length/groupCounts[0],
             v_volume_side_length/groupCounts[1],
             v_volume_side_length/groupCounts[2]
         );
 
         //memory barrier
-        ping_pong_barrier(compute_cmd_buf, density_3D_textures[1 - density_ind].handle);
+        ping_pong_barrier(comp_context.compute_cmd_buf, density_3D_textures[1 - density_ind].handle);
         //swap
         density_ind = 1 - density_ind;
     }
 }
 
-void Tutorial::advect_density(float dt){
-    vkCmdBindPipeline(compute_cmd_buf, VK_PIPELINE_BIND_POINT_COMPUTE, advect_density_pipeline.handle);
+void FluidSystem::advect_density(float dt, ComputeContext comp_context){
+    vkCmdBindPipeline(comp_context.compute_cmd_buf, VK_PIPELINE_BIND_POINT_COMPUTE, advect_density_pipeline.handle);
     AdvectDensityPipeline::Push push{
         .N = v_volume_side_length,
         .dt = dt,
     };
-    vkCmdPushConstants(compute_cmd_buf, advect_density_pipeline.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(push), &push);
+    vkCmdPushConstants(comp_context.compute_cmd_buf, advect_density_pipeline.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(push), &push);
     std::array<VkDescriptorSet, 2> sets{
         density_volumes[density_ind],//read_write
         velocity_volumes[velocity_ind],//read
     };
     vkCmdBindDescriptorSets(
-        compute_cmd_buf,
+        comp_context.compute_cmd_buf,
         VK_PIPELINE_BIND_POINT_COMPUTE,
         advect_density_pipeline.layout,
         0,
@@ -205,26 +207,26 @@ void Tutorial::advect_density(float dt){
         0,
         nullptr
     );
-    vkCmdDispatch(compute_cmd_buf,
+    vkCmdDispatch(comp_context.compute_cmd_buf,
         v_volume_side_length/groupCounts[0],
         v_volume_side_length/groupCounts[1],
         v_volume_side_length/groupCounts[2]
     );
     //memory barrier
-    ping_pong_barrier(compute_cmd_buf, density_3D_textures[1 - density_ind].handle);
+    ping_pong_barrier(comp_context.compute_cmd_buf, density_3D_textures[1 - density_ind].handle);
     //swap
     density_ind = 1 - density_ind;
 }
 
-void Tutorial::add_sources_velocity(float dt){
+void FluidSystem::add_sources_velocity(float dt, ComputeContext comp_context, SceneSystem &scene_system){
     vkCmdBindPipeline(
-        compute_cmd_buf,
+        comp_context.compute_cmd_buf,
         VK_PIPELINE_BIND_POINT_COMPUTE,
         add_vector_sources_pipeline.handle
     );
 
     vkCmdBindDescriptorSets(
-        compute_cmd_buf,
+        comp_context.compute_cmd_buf,
         VK_PIPELINE_BIND_POINT_COMPUTE,
         add_vector_sources_pipeline.layout,
         0,
@@ -247,37 +249,37 @@ void Tutorial::add_sources_velocity(float dt){
         .cam_pos_grid = vec4(cam_grid.x, cam_grid.y, cam_grid.z, 0.0f),
         .cam_dir      = vec4(scene_system.CAM_DIR.x, scene_system.CAM_DIR.y, scene_system.CAM_DIR.z, 0.0f),
     };
-    vkCmdPushConstants(compute_cmd_buf, add_vector_sources_pipeline.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(push), &push);
+    vkCmdPushConstants(comp_context.compute_cmd_buf, add_vector_sources_pipeline.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(push), &push);
 
     vkCmdDispatch(  
-        compute_cmd_buf,
+        comp_context.compute_cmd_buf,
         v_volume_side_length/groupCounts[0],
         v_volume_side_length/groupCounts[1],
         v_volume_side_length/groupCounts[2]
     );  
 
     //memory barrier
-    ping_pong_barrier(compute_cmd_buf, velocity_3D_textures[1 - velocity_ind].handle);
+    ping_pong_barrier(comp_context.compute_cmd_buf, velocity_3D_textures[1 - velocity_ind].handle);
 
     //swap
     velocity_ind = 1 - velocity_ind;
 }
 
 
-void Tutorial::project_velocity(){
+void FluidSystem::project_velocity(ComputeContext comp_context){
     //Phase 1: calculate divergence and clear pressure
-    vkCmdBindPipeline(compute_cmd_buf, VK_PIPELINE_BIND_POINT_COMPUTE, divergence_pipeline.handle);
+    vkCmdBindPipeline(comp_context.compute_cmd_buf, VK_PIPELINE_BIND_POINT_COMPUTE, divergence_pipeline.handle);
     DivergencePipeline::Push push_div{
         .N = v_volume_side_length,
     };
-    vkCmdPushConstants(compute_cmd_buf, divergence_pipeline.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(push_div), &push_div);
+    vkCmdPushConstants(comp_context.compute_cmd_buf, divergence_pipeline.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(push_div), &push_div);
     std::array<VkDescriptorSet, 3> sets{
         velocity_volumes[velocity_ind],//read
         pressure_volumes[pressure_ind],//read
         divergence_volume,//write
     };
     vkCmdBindDescriptorSets(
-        compute_cmd_buf,
+        comp_context.compute_cmd_buf,
         VK_PIPELINE_BIND_POINT_COMPUTE,
         divergence_pipeline.layout,
         0,
@@ -286,7 +288,7 @@ void Tutorial::project_velocity(){
         0,
         nullptr
     );
-    vkCmdDispatch(compute_cmd_buf,
+    vkCmdDispatch(comp_context.compute_cmd_buf,
         v_volume_side_length/groupCounts[0],
         v_volume_side_length/groupCounts[1],
         v_volume_side_length/groupCounts[2]
@@ -307,48 +309,48 @@ void Tutorial::project_velocity(){
     };
 
     //Phase 2: pressure solve (jacobi iterations)
-    vkCmdBindPipeline(compute_cmd_buf, VK_PIPELINE_BIND_POINT_COMPUTE, pressure_solve_pipeline.handle);
+    vkCmdBindPipeline(comp_context.compute_cmd_buf, VK_PIPELINE_BIND_POINT_COMPUTE, pressure_solve_pipeline.handle);
     PressureSolvePipeline::Push push_ps{
         .N = v_volume_side_length,
     };
-    vkCmdPushConstants(compute_cmd_buf, pressure_solve_pipeline.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(push_ps), &push_ps);
-    vkCmdBindDescriptorSets(compute_cmd_buf, VK_PIPELINE_BIND_POINT_COMPUTE, pressure_solve_pipeline.layout, 0, 1, &divergence_volume, 0, nullptr);
+    vkCmdPushConstants(comp_context.compute_cmd_buf, pressure_solve_pipeline.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(push_ps), &push_ps);
+    vkCmdBindDescriptorSets(comp_context.compute_cmd_buf, VK_PIPELINE_BIND_POINT_COMPUTE, pressure_solve_pipeline.layout, 0, 1, &divergence_volume, 0, nullptr);
     const uint32_t ITERS = 10;
     for(uint32_t i = 0; i < ITERS; i++){//jacobi    
-        vkCmdBindDescriptorSets(compute_cmd_buf, VK_PIPELINE_BIND_POINT_COMPUTE, pressure_solve_pipeline.layout, 1, 1, &pressure_volumes[pressure_ind], 0, nullptr);
-        vkCmdDispatch(compute_cmd_buf,
+        vkCmdBindDescriptorSets(comp_context.compute_cmd_buf, VK_PIPELINE_BIND_POINT_COMPUTE, pressure_solve_pipeline.layout, 1, 1, &pressure_volumes[pressure_ind], 0, nullptr);
+        vkCmdDispatch(comp_context.compute_cmd_buf,
             v_volume_side_length/groupCounts[0],
             v_volume_side_length/groupCounts[1],
             v_volume_side_length/groupCounts[2]
         );
-        ping_pong_barrier(compute_cmd_buf, pressure_3D_textures[1 - pressure_ind].handle);
+        ping_pong_barrier(comp_context.compute_cmd_buf, pressure_3D_textures[1 - pressure_ind].handle);
         pressure_ind = 1 - pressure_ind;//ping-pong
     }
 
     //Phase 3: gradient subtract
-    vkCmdBindPipeline(compute_cmd_buf, VK_PIPELINE_BIND_POINT_COMPUTE, gradient_subtract_pipeline.handle);
+    vkCmdBindPipeline(comp_context.compute_cmd_buf, VK_PIPELINE_BIND_POINT_COMPUTE, gradient_subtract_pipeline.handle);
     GradientSubtractPipeline::Push push_gs{
         .N = v_volume_side_length,
     };
-    vkCmdPushConstants(compute_cmd_buf, gradient_subtract_pipeline.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(push_gs), &push_gs);
+    vkCmdPushConstants(comp_context.compute_cmd_buf, gradient_subtract_pipeline.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(push_gs), &push_gs);
     std::array<VkDescriptorSet, 2> sets_gs{
         velocity_volumes[velocity_ind],//read_write
         pressure_volumes[pressure_ind],//read
     };
-    vkCmdBindDescriptorSets(compute_cmd_buf, VK_PIPELINE_BIND_POINT_COMPUTE, gradient_subtract_pipeline.layout, 0, (uint32_t)sets_gs.size(), sets_gs.data(), 0, nullptr);
-    vkCmdDispatch(compute_cmd_buf,
+    vkCmdBindDescriptorSets(comp_context.compute_cmd_buf, VK_PIPELINE_BIND_POINT_COMPUTE, gradient_subtract_pipeline.layout, 0, (uint32_t)sets_gs.size(), sets_gs.data(), 0, nullptr);
+    vkCmdDispatch(comp_context.compute_cmd_buf,
         v_volume_side_length/groupCounts[0],
         v_volume_side_length/groupCounts[1],
         v_volume_side_length/groupCounts[2]
     );
-    ping_pong_barrier(compute_cmd_buf, velocity_3D_textures[1 -velocity_ind].handle);
+    ping_pong_barrier(comp_context.compute_cmd_buf, velocity_3D_textures[1 -velocity_ind].handle);
     velocity_ind = 1 - velocity_ind;//ping-pong
 
 }
 
-void Tutorial::diffuse_velocity(float dt){
+void FluidSystem::diffuse_velocity(float dt, ComputeContext comp_context){
     const uint32_t ITERS = 5;
-    vkCmdBindPipeline(compute_cmd_buf, VK_PIPELINE_BIND_POINT_COMPUTE, diffuse_vector_pipeline.handle);
+    vkCmdBindPipeline(comp_context.compute_cmd_buf, VK_PIPELINE_BIND_POINT_COMPUTE, diffuse_vector_pipeline.handle);
     for(uint32_t i = 0; i < ITERS; i++){//red-black gauss-seidel method, red pass fills half buffer and the black pass reads from that 
         //red pass
         DiffuseVectorPipeline::Push push_red{
@@ -356,9 +358,9 @@ void Tutorial::diffuse_velocity(float dt){
             .dt = dt,
             .color = 0, 
         };
-        vkCmdPushConstants(compute_cmd_buf, diffuse_vector_pipeline.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(push_red), &push_red);
+        vkCmdPushConstants(comp_context.compute_cmd_buf, diffuse_vector_pipeline.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(push_red), &push_red);
         vkCmdBindDescriptorSets(
-            compute_cmd_buf,
+            comp_context.compute_cmd_buf,
             VK_PIPELINE_BIND_POINT_COMPUTE,
             diffuse_vector_pipeline.layout,
             0,
@@ -367,14 +369,14 @@ void Tutorial::diffuse_velocity(float dt){
             0,
             nullptr
         );
-        vkCmdDispatch(compute_cmd_buf,
+        vkCmdDispatch(comp_context.compute_cmd_buf,
             v_volume_side_length/groupCounts[0],
             v_volume_side_length/groupCounts[1],
             v_volume_side_length/groupCounts[2]
         );
 
         //memory barrier
-        ping_pong_barrier(compute_cmd_buf, velocity_3D_textures[1- velocity_ind].handle);
+        ping_pong_barrier(comp_context.compute_cmd_buf, velocity_3D_textures[1- velocity_ind].handle);
         //swap
         velocity_ind = 1 - velocity_ind;
 
@@ -384,9 +386,9 @@ void Tutorial::diffuse_velocity(float dt){
             .dt = dt,
             .color = 1, 
         };
-        vkCmdPushConstants(compute_cmd_buf, diffuse_vector_pipeline.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(push_black), &push_black);
+        vkCmdPushConstants(comp_context.compute_cmd_buf, diffuse_vector_pipeline.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(push_black), &push_black);
         vkCmdBindDescriptorSets(
-            compute_cmd_buf,
+            comp_context.compute_cmd_buf,
             VK_PIPELINE_BIND_POINT_COMPUTE,
             diffuse_vector_pipeline.layout,
             0,
@@ -395,28 +397,28 @@ void Tutorial::diffuse_velocity(float dt){
             0,
             nullptr
         );
-        vkCmdDispatch(compute_cmd_buf,
+        vkCmdDispatch(comp_context.compute_cmd_buf,
             v_volume_side_length/groupCounts[0],
             v_volume_side_length/groupCounts[1],
             v_volume_side_length/groupCounts[2]
         );
 
         //memory barrier
-        ping_pong_barrier(compute_cmd_buf, velocity_3D_textures[1- velocity_ind].handle);
+        ping_pong_barrier(comp_context.compute_cmd_buf, velocity_3D_textures[1- velocity_ind].handle);
         //swap
         velocity_ind = 1 - velocity_ind;
     }
 }
 
-void Tutorial::advect_velocity(float dt){
-    vkCmdBindPipeline(compute_cmd_buf, VK_PIPELINE_BIND_POINT_COMPUTE, advect_vector_pipeline.handle);
+void FluidSystem::advect_velocity(float dt, ComputeContext comp_context){
+    vkCmdBindPipeline(comp_context.compute_cmd_buf, VK_PIPELINE_BIND_POINT_COMPUTE, advect_vector_pipeline.handle);
     AdvectVectorPipeline::Push push{
         .N = v_volume_side_length,
         .dt = dt,
     };
-    vkCmdPushConstants(compute_cmd_buf, advect_vector_pipeline.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(push), &push);
+    vkCmdPushConstants(comp_context.compute_cmd_buf, advect_vector_pipeline.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(push), &push);
     vkCmdBindDescriptorSets(
-        compute_cmd_buf,
+        comp_context.compute_cmd_buf,
         VK_PIPELINE_BIND_POINT_COMPUTE,
         advect_vector_pipeline.layout,
         0,
@@ -425,18 +427,18 @@ void Tutorial::advect_velocity(float dt){
         0,
         nullptr
     );
-    vkCmdDispatch(compute_cmd_buf,
+    vkCmdDispatch(comp_context.compute_cmd_buf,
         v_volume_side_length/groupCounts[0],
         v_volume_side_length/groupCounts[1],
         v_volume_side_length/groupCounts[2]
     );
     //memory barrier
-    ping_pong_barrier(compute_cmd_buf, velocity_3D_textures[1- velocity_ind].handle);
+    ping_pong_barrier(comp_context.compute_cmd_buf, velocity_3D_textures[1- velocity_ind].handle);
     //swap
     velocity_ind = 1 - velocity_ind;
 }
 
-void Tutorial::init_fluid(){
+void FluidSystem::init_fluid(RTG &rtg, ComputeContext &comp_context, MaterialSystem &material_system, SceneSystem &scene_system){
     add_scalar_sources_pipeline.create(rtg);
     diffuse_scalar_pipeline.create(rtg);
     advect_density_pipeline.create(rtg);
@@ -555,11 +557,11 @@ void Tutorial::init_fluid(){
     }
 
     std::cout<<"allocating ping-pong descriptor sets for Density"<<std::endl;
-    make_ping_pong_descriptor_sets(density_volumes, add_scalar_sources_pipeline.set0_density_volume, density_3D_views);   
+    make_ping_pong_descriptor_sets(rtg, comp_context, density_volumes, add_scalar_sources_pipeline.set0_density_volume, density_3D_views);   
     std::cout<<"allocating ping-pong descriptor sets for Velocity"<<std::endl;
-    make_ping_pong_descriptor_sets(velocity_volumes, add_vector_sources_pipeline.set0_velocity_volume, velocity_3D_views);
+    make_ping_pong_descriptor_sets(rtg, comp_context, velocity_volumes, add_vector_sources_pipeline.set0_velocity_volume, velocity_3D_views);
     std::cout<<"allocating ping-pong descriptor sets for Pressure"<<std::endl;
-    make_ping_pong_descriptor_sets(pressure_volumes, divergence_pipeline.set1_pressure_volume, pressure_3D_views);
+    make_ping_pong_descriptor_sets(rtg, comp_context, pressure_volumes, divergence_pipeline.set1_pressure_volume, pressure_3D_views);
     //make descriptor set for divergence volume and updated with the divergence image view
     {
         VkDescriptorSetAllocateInfo alloc_info{
@@ -589,12 +591,7 @@ void Tutorial::init_fluid(){
     }
 
 
-    //record:
-    VkCommandBufferBeginInfo begin_info{
-        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-        .flags = 0,
-    };
-    VK(vkBeginCommandBuffer(compute_cmd_buf, &begin_info));
+    //compute command buffer already started recording:
     {//image layout transition
         auto layout_transition = [](VkCommandBuffer cmd_buf, Helpers::AllocatedImage3D &image){
             VkImageMemoryBarrier barrier{
@@ -618,11 +615,11 @@ void Tutorial::init_fluid(){
 
         for (int i = 0; i < 2; i++) {
             
-            layout_transition(compute_cmd_buf, density_3D_textures[i]);
-            layout_transition(compute_cmd_buf, velocity_3D_textures[i]);
-            layout_transition(compute_cmd_buf, pressure_3D_textures[i]);
+            layout_transition(comp_context.compute_cmd_buf, density_3D_textures[i]);
+            layout_transition(comp_context.compute_cmd_buf, velocity_3D_textures[i]);
+            layout_transition(comp_context.compute_cmd_buf, pressure_3D_textures[i]);
         }
-        layout_transition(compute_cmd_buf, divergence_3D_texture);
+        layout_transition(comp_context.compute_cmd_buf, divergence_3D_texture);
     }
 
     {//clear both volumes
@@ -635,27 +632,18 @@ void Tutorial::init_fluid(){
             .layerCount = 1,
         };
         for (int i = 0; i < 2; i++) {
-            vkCmdClearColorImage(compute_cmd_buf, velocity_3D_textures[i].handle, VK_IMAGE_LAYOUT_GENERAL, &zero, 1, &range);
-            vkCmdClearColorImage( compute_cmd_buf, density_3D_textures[i].handle, VK_IMAGE_LAYOUT_GENERAL, &zero, 1, &range);
+            vkCmdClearColorImage(comp_context.compute_cmd_buf, velocity_3D_textures[i].handle, VK_IMAGE_LAYOUT_GENERAL, &zero, 1, &range);
+            vkCmdClearColorImage( comp_context.compute_cmd_buf, density_3D_textures[i].handle, VK_IMAGE_LAYOUT_GENERAL, &zero, 1, &range);
         }
     }
 
     
     //add sources
-    add_sources_velocity(0.5f);
+    add_sources_velocity(0.5f, comp_context, scene_system);
 
     //project
-    project_velocity();
+    project_velocity(comp_context);
 
-    VK(vkEndCommandBuffer(compute_cmd_buf));
-
-    VkSubmitInfo submit{
-        .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
-        .commandBufferCount = 1,
-        .pCommandBuffers = &compute_cmd_buf,
-    };
-    vkQueueSubmit(rtg.graphics_queue, 1, &submit, VK_NULL_HANDLE);
-    vkQueueWaitIdle(rtg.graphics_queue);
 
     {//initialize sampled descriptor sets so they are valid before the first draw
         std::array<VkDescriptorImageInfo, 2> image_infos{
@@ -685,13 +673,7 @@ void Tutorial::init_fluid(){
 
 }
 
-void Tutorial::update_fluid(float dt){
-    vkResetCommandBuffer(compute_cmd_buf, 0);
-
-    VkCommandBufferBeginInfo begin_info{
-        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-    };
-    VK(vkBeginCommandBuffer(compute_cmd_buf, &begin_info));
+void FluidSystem::update_fluid(float dt, ComputeContext comp_context, SceneSystem &scene_system){
 
     {//velocity
         const bool do_add_sources = true;
@@ -700,23 +682,23 @@ void Tutorial::update_fluid(float dt){
         const bool do_project = true;
 
         if(do_add_sources){//add sources
-            add_sources_velocity(dt);
+            add_sources_velocity(dt, comp_context, scene_system);
         }
 
         if(do_diffuse){//diffuse
-            diffuse_velocity(dt);
+            diffuse_velocity(dt, comp_context);
         }
 
         if(do_project){//project
-            project_velocity();
+            project_velocity(comp_context);
         }
 
         if(do_advect){//advect
-            advect_velocity(dt);
+            advect_velocity(dt, comp_context);
         }
 
         if(do_project){//project
-            project_velocity();
+            project_velocity(comp_context);
         }
     }
 
@@ -726,28 +708,16 @@ void Tutorial::update_fluid(float dt){
         const bool do_advect = true;
         
         if(do_add_sources){//add sources
-            add_sources_density(dt);
+            add_sources_density(dt, comp_context);
         }
         if(do_diffuse){//diffuse
-            diffuse_density(dt);
+            diffuse_density(dt, comp_context);
         }
         if(do_advect){//advect
-            advect_density(dt);
+            advect_density(dt, comp_context);
         }
     }
 
-    {//submit compute work
-        VK(vkEndCommandBuffer(compute_cmd_buf));
-
-        VkSubmitInfo submit{
-            .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
-            .commandBufferCount = 1,
-            .pCommandBuffers = &compute_cmd_buf,
-        };
-
-        vkQueueSubmit(rtg.graphics_queue, 1, &submit, VK_NULL_HANDLE);
-        vkQueueWaitIdle(rtg.graphics_queue);
-    }    
 
     
     {//update descriptor sets for the two sampled images
@@ -775,8 +745,51 @@ void Tutorial::update_fluid(float dt){
             },
         };
 
-        vkUpdateDescriptorSets(rtg.device, (uint32_t)writes.size(), writes.data(), 0, nullptr);
+        vkUpdateDescriptorSets(comp_context.rtg.device, (uint32_t)writes.size(), writes.data(), 0, nullptr);
     }
 
 
+}
+
+
+void FluidSystem::destroy(RTG &rtg){
+    {//fluid stuff		
+		if(volume_sampler)
+		{
+			vkDestroySampler(rtg.device, volume_sampler, nullptr);
+			volume_sampler = VK_NULL_HANDLE;
+		}
+
+		//image views
+		for (VkImageView &v_view_3D : velocity_3D_views){
+			vkDestroyImageView(rtg.device, v_view_3D, nullptr);
+			v_view_3D = VK_NULL_HANDLE;
+		}
+		for (VkImageView &p_view_3D : pressure_3D_views){
+			vkDestroyImageView(rtg.device, p_view_3D, nullptr);
+			p_view_3D = VK_NULL_HANDLE;
+		}
+		vkDestroyImageView(rtg.device, divergence_3D_view, nullptr);
+		divergence_3D_view = VK_NULL_HANDLE;
+
+		//images
+		for (auto &v_image_3D : velocity_3D_textures){
+			rtg.helpers.destroy_image_3D(std::move(v_image_3D));
+		}
+		for (auto &p_image_3D : pressure_3D_textures){
+			rtg.helpers.destroy_image_3D(std::move(p_image_3D));
+		}
+		rtg.helpers.destroy_image_3D(std::move(divergence_3D_texture));
+
+        add_scalar_sources_pipeline.destroy(rtg);
+        diffuse_scalar_pipeline.destroy(rtg);
+        advect_density_pipeline.destroy(rtg);
+
+        add_vector_sources_pipeline.destroy(rtg);
+        diffuse_vector_pipeline.destroy(rtg);
+        advect_vector_pipeline.destroy(rtg);
+        divergence_pipeline.destroy(rtg);
+        pressure_solve_pipeline.destroy(rtg);
+        gradient_subtract_pipeline.destroy(rtg);
+	}
 }

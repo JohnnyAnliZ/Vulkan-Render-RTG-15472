@@ -214,4 +214,8 @@ void TextureDebugPipeline::destroy(RTG &rtg){
 		vkDestroyDescriptorSetLayout(rtg.device, set1_vel_vol, nullptr);
 		set1_vel_vol = VK_NULL_HANDLE;
 	}
+    if (set2_dens_vol != VK_NULL_HANDLE) {
+        vkDestroyDescriptorSetLayout(rtg.device, set2_dens_vol, nullptr);
+        set2_dens_vol = VK_NULL_HANDLE;
+    }
 }

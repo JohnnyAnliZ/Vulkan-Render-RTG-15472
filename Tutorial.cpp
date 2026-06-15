@@ -45,8 +45,15 @@ Tutorial::Tutorial(RTG &rtg_)
 
 	std::cout<<"INITIALIZING fluid"<<std::endl;
 	ComputeContext comp_context = compute_system.begin_frame(rtg);
-	fluid_system.init_fluid(rtg, comp_context, material_system, scene_system);	
+	fluid_system.init_fluid(rtg, comp_context, material_system, scene_system);
 	compute_system.end_frame(comp_context);
+
+	{
+		ComputeContext part_ctx = compute_system.begin_frame(rtg);
+		particle_system.init(rtg, part_ctx, particle_descriptor_pool,
+		                     fluid_system.velocity_3D_views);
+		compute_system.end_frame(part_ctx);
+	}
 
 	texture_debug_system.init_texture_debug(rtg, material_system, fluid_system);
 
@@ -76,6 +83,11 @@ Tutorial::~Tutorial()
 		destroy_framebuffers();
 	}
 
+	particle_system.destroy(rtg);
+	if (particle_descriptor_pool != VK_NULL_HANDLE) {
+		vkDestroyDescriptorPool(rtg.device, particle_descriptor_pool, nullptr);
+		particle_descriptor_pool = VK_NULL_HANDLE;
+	}
 	compute_system.destroy(rtg);
 	fluid_system.destroy(rtg);
 
@@ -923,6 +935,16 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params)
 			vkCmdDraw(workspace.command_buffer, 3, 1, 0, 0);
 		}
 
+		{ // draw particles
+			particle_system.draw(
+				workspace.command_buffer,
+				scene_system.CLIP_FROM_WORLD,
+				vec3(0.0f, 0.0f, 10.0f),
+				fluid_system.cell_size_ws,
+				fluid_system.v_volume_side_length
+			);
+		}
+
 		{// draw with TextureDebugPipeline
 			vkCmdBindPipeline(workspace.command_buffer,VK_PIPELINE_BIND_POINT_GRAPHICS, texture_debug_system.texture_debug_pipeline.handle);
 
@@ -1058,7 +1080,8 @@ void Tutorial::update(float dt)
 	}
 
 	ComputeContext comp_context = compute_system.begin_frame(rtg);
-	if(fluid_system.fluid_unpaused)fluid_system.update_fluid(dt, comp_context,scene_system);
+	if (fluid_system.fluid_unpaused) fluid_system.update_fluid(dt, comp_context, scene_system);
+	particle_system.update(comp_context, dt, fluid_system.velocity_ind, frame_number);
 	compute_system.end_frame(comp_context);
 
 	texture_debug_system.update_texture_debug(rtg, material_system, fluid_system);

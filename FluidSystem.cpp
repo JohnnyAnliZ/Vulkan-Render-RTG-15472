@@ -680,7 +680,6 @@ void FluidSystem::update_fluid(float dt, ComputeContext comp_context, SceneSyste
     
 
 
-
 }
 
 
@@ -701,6 +700,10 @@ void FluidSystem::destroy(RTG &rtg){
 			vkDestroyImageView(rtg.device, p_view_3D, nullptr);
 			p_view_3D = VK_NULL_HANDLE;
 		}
+        for (VkImageView &d_view_3D : density_3D_views){
+			vkDestroyImageView(rtg.device, d_view_3D, nullptr);
+			d_view_3D = VK_NULL_HANDLE;
+		}
 		vkDestroyImageView(rtg.device, divergence_3D_view, nullptr);
 		divergence_3D_view = VK_NULL_HANDLE;
 
@@ -710,6 +713,9 @@ void FluidSystem::destroy(RTG &rtg){
 		}
 		for (auto &p_image_3D : pressure_3D_textures){
 			rtg.helpers.destroy_image_3D(std::move(p_image_3D));
+		}
+        for (auto &d_image_3D : density_3D_textures){
+			rtg.helpers.destroy_image_3D(std::move(d_image_3D));
 		}
 		rtg.helpers.destroy_image_3D(std::move(divergence_3D_texture));
 

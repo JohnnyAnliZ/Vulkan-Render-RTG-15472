@@ -18,6 +18,7 @@
 #include "ObjectPipelines.hpp"
 #include "Shadow2DPipeline.hpp"
 #include "RayMarchSmokeVolume.hpp"
+#include "ParticleSystem.hpp"
 
 #include "RTG.hpp"
 #include <corecrt_math_defines.h>
@@ -73,6 +74,9 @@ struct Tutorial : RTG::Application {
 
 	//TextureDebugSystem
 	TextureDebugSystem texture_debug_system;
+
+	ParticleSystem particle_system;
+	VkDescriptorPool particle_descriptor_pool = VK_NULL_HANDLE;
 
 	//--------------------------------------------------------------------
 	//Resources that change when the swapchain is resized:

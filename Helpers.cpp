@@ -235,6 +235,7 @@ void Helpers::transfer_to_buffer(void const *data, size_t size, AllocatedBuffer 
 	//wait for command buffer to finish
 	VK(vkQueueWaitIdle(rtg.graphics_queue));	
 	//don't leak buffer memory:
+	destroy_buffer(std::move(transfer_src));
 }
 
 

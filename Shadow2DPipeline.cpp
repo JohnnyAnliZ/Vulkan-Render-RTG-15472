@@ -77,6 +77,19 @@ void Tutorial::init_shadow_mapping(){
 		VK( vkCreateRenderPass(rtg.device, &create_info, nullptr, &shadow_pass) );
 	}	
 
+    {//create sampler
+        VkSamplerCreateInfo sampler_info{
+            .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
+            .magFilter = VK_FILTER_LINEAR,
+            .minFilter = VK_FILTER_LINEAR,               
+            .addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+            .addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+            .compareEnable = VK_TRUE,
+            .compareOp = VK_COMPARE_OP_LESS_OR_EQUAL,
+        };
+        VK( vkCreateSampler(rtg.device, &sampler_info, nullptr, &material_system.depth_texture_sampler) );
+    }
+
 	shadow_2D_pipeline.create(rtg, shadow_pass, 0);
     scene_system.shadow_pipe_layout = shadow_2D_pipeline.layout;
     std::cout<<"created shadow pass pipeline"<<std::endl;
@@ -124,6 +137,8 @@ void Tutorial::init_shadow_mapping(){
     
     std::cout<<"total shadow map size is: "<<scene_system.total_shadow_map_size<<std::endl;
     std::cout<<"shadow atlas total size is: "<<scene_system.atlas_size<<std::endl;
+
+
     for (Workspace &workspace : workspaces){
         {//create image for shadow atlas
             workspace.Shadow_Atlas = rtg.helpers.create_image(
@@ -170,18 +185,7 @@ void Tutorial::init_shadow_mapping(){
         }
 
 
-        {//create sampler
-            VkSamplerCreateInfo sampler_info{
-                .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
-                .magFilter = VK_FILTER_LINEAR,
-                .minFilter = VK_FILTER_LINEAR,               
-                .addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
-                .addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
-                .compareEnable = VK_TRUE,
-                .compareOp = VK_COMPARE_OP_LESS_OR_EQUAL,
-            };
-            VK( vkCreateSampler(rtg.device, &sampler_info, nullptr, &material_system.depth_texture_sampler) );
-        }
+
 
 		{//allocate descriptor set for Shadow Atlas descriptor
 			VkDescriptorSetAllocateInfo alloc_info{
@@ -423,6 +427,8 @@ void Shadow2DPipeline::create(RTG &rtg, VkRenderPass render_pass, uint32_t subpa
     }
     //deallocate shader modules now that they are no longer used
     vkDestroyShaderModule(rtg.device, vert_module, nullptr);
+    vkDestroyShaderModule(rtg.device, frag_module, nullptr);
+
 }
 
 void Shadow2DPipeline::destroy(RTG &rtg){

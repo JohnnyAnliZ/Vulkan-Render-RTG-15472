@@ -109,6 +109,7 @@ void Tutorial::init_tutorial(){
 	pbr_objects_pipeline.create(rtg, render_pass,0);
 	texture_debug_system.texture_debug_pipeline.create(rtg, render_pass,0);
 	ray_march_smoke_volume_pipeline.create(rtg, render_pass,0);
+	particle_system.render_pipeline.create(rtg, render_pass, 0);
 	
 
 	std::cout<<"created render pass pipelines"<<std::endl;
@@ -136,6 +137,25 @@ void Tutorial::init_tutorial(){
 		VK(vkCreateDescriptorPool(rtg.device, &create_info, nullptr, &descriptor_pool));
 	}
 
+	{ // particle compute descriptor pool: 2 sets × (1 STORAGE_BUFFER + 1 COMBINED_IMAGE_SAMPLER)
+		std::array<VkDescriptorPoolSize, 2> pool_sizes{
+			VkDescriptorPoolSize{
+				.type            = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+				.descriptorCount = 2,
+			},
+			VkDescriptorPoolSize{
+				.type            = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+				.descriptorCount = 2,
+			},
+		};
+		VkDescriptorPoolCreateInfo ci{
+			.sType         = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+			.maxSets       = 2,
+			.poolSizeCount = uint32_t(pool_sizes.size()),
+			.pPoolSizes    = pool_sizes.data(),
+		};
+		VK(vkCreateDescriptorPool(rtg.device, &ci, nullptr, &particle_descriptor_pool));
+	}
 
 	workspaces.resize(rtg.workspaces.size());
 	for (Workspace &workspace : workspaces) {

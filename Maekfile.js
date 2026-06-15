@@ -120,6 +120,13 @@ main_objs.push( maek.CPP('EnvMirrorObjectsPipeline.cpp', undefined, { depends:[.
 main_objs.push( maek.CPP('PbrObjectsPipeline.cpp', undefined, { depends:[...objects_shaders] } ) );
 main_objs.push( maek.CPP('Shadow2DPipeline.cpp', undefined, { depends:[...objects_shaders, ...shadows2D_shaders] } ) );
 
+//particle system shaders and pipeline:
+const particle_shaders = [
+	maek.GLSLC('particles.comp'),
+	maek.GLSLC('particles.vert'),
+	maek.GLSLC('particles.frag'),
+];
+main_objs.push( maek.CPP('ParticleSystem.cpp', undefined, { depends:[...particle_shaders] } ) );
 
 
 

@@ -8,12 +8,15 @@ layout(push_constant) uniform Push {
 } pc;
 
 layout(rgba32f, set = 0, binding = 0) readonly uniform image3D VEL; // input
-layout(r32f, set = 1, binding = 1) writeonly uniform image3D PRES;
+layout(r32f, set = 1, binding = 0) writeonly uniform image3D PRES;
 layout(r32f, set = 2, binding = 0) writeonly uniform image3D DIV;
 
 
 void main() {
     ivec3 c = ivec3(gl_GlobalInvocationID.xyz);
+    if (any(greaterThanEqual(c, ivec3(pc.N)))) return;
+
+    imageStore(PRES, c, vec4(0.0));
     if (any(lessThan(c, ivec3(1))) || any(greaterThanEqual(c, ivec3(pc.N-1)))) return;
 
     float h = 1.0 / float(pc.N);
@@ -32,5 +35,4 @@ void main() {
     );
 
     imageStore(DIV, c, vec4(div));
-    imageStore(PRES, c, vec4(0.0)); // zero pressure here
 }

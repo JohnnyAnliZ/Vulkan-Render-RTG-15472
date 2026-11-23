@@ -280,7 +280,29 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params)
 	}
 
 	compute_context.compute_cmd_buf = workspace.command_buffer;
-	if (fluid_system.fluid_unpaused) fluid_system.update_fluid(render_params.dt, compute_context, scene_system);
+	if (fluid_system.fluid_unpaused) {
+		// Previous frames can still be sampling the shared fluid images.
+		VkMemoryBarrier before_fluid{
+			.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER,
+			.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT,
+			.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+		};
+		vkCmdPipelineBarrier(workspace.command_buffer,
+		                     VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+		                     VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+		                     0, 1, &before_fluid, 0, nullptr, 0, nullptr);
+		fluid_system.update_fluid(render_params.dt, compute_context, scene_system);
+	}
+
+	// Publish the fluid output to fragment reads, including the startup projection when paused.
+	VkMemoryBarrier after_fluid{
+		.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER,
+		.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT,
+		.dstAccessMask = VK_ACCESS_SHADER_READ_BIT,
+	};
+	vkCmdPipelineBarrier(workspace.command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+	                     VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+	                     0, 1, &after_fluid, 0, nullptr, 0, nullptr);
 	particle_system.update(compute_context, render_params.dt, fluid_system.velocity_ind, frame_number);
 
 	// upload vertices

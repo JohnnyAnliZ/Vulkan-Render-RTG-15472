@@ -7,9 +7,11 @@ void FluidSystem::ping_pong_barrier(VkCommandBuffer cmd, VkImage &img){
     VkImageMemoryBarrier barrier{
         .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
         .srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT,
-        .dstAccessMask = VK_ACCESS_SHADER_READ_BIT,
+        .dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
         .oldLayout = VK_IMAGE_LAYOUT_GENERAL,
         .newLayout = VK_IMAGE_LAYOUT_GENERAL,
+        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
         .image = img, // written image
         .subresourceRange = {
             .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
@@ -275,7 +277,7 @@ void FluidSystem::project_velocity(ComputeContext comp_context){
     vkCmdPushConstants(comp_context.compute_cmd_buf, divergence_pipeline.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(push_div), &push_div);
     std::array<VkDescriptorSet, 3> sets{
         velocity_volumes[velocity_ind],//read
-        pressure_volumes[pressure_ind],//read
+        pressure_volumes[pressure_ind],//reset the first Jacobi input
         divergence_volume,//write
     };
     vkCmdBindDescriptorSets(
@@ -293,20 +295,14 @@ void FluidSystem::project_velocity(ComputeContext comp_context){
         v_volume_side_length/groupCounts[1],
         v_volume_side_length/groupCounts[2]
     );
-    //memory barrier for divergence volume
-    VkImageMemoryBarrier barrier{
-        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+    // The first Jacobi iteration reads both the divergence and the reset pressure.
+    VkMemoryBarrier barrier{
+        .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER,
         .srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT,
-        .dstAccessMask = VK_ACCESS_SHADER_READ_BIT,
-        .oldLayout = VK_IMAGE_LAYOUT_GENERAL,
-        .newLayout = VK_IMAGE_LAYOUT_GENERAL,
-        .image = divergence_3D_texture.handle, // written image
-        .subresourceRange = {
-            .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-            .levelCount = 1,
-            .layerCount = 1
-        }
+        .dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
     };
+    vkCmdPipelineBarrier(comp_context.compute_cmd_buf, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                         VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1, &barrier, 0, nullptr, 0, nullptr);
 
     //Phase 2: pressure solve (jacobi iterations)
     vkCmdBindPipeline(comp_context.compute_cmd_buf, VK_PIPELINE_BIND_POINT_COMPUTE, pressure_solve_pipeline.handle);
@@ -584,14 +580,16 @@ void FluidSystem::init_fluid(RTG &rtg, ComputeContext &comp_context, MaterialSys
 
     //compute command buffer already started recording:
     {//image layout transition
-        auto layout_transition = [](VkCommandBuffer cmd_buf, Helpers::AllocatedImage3D &image){
+        auto layout_transition = [&comp_context](VkImage image, VkPipelineStageFlags dst_stage, VkAccessFlags dst_access){
             VkImageMemoryBarrier barrier{
                 .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
                 .srcAccessMask = 0,
-                .dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+                .dstAccessMask = dst_access,
                 .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
                 .newLayout = VK_IMAGE_LAYOUT_GENERAL,
-                .image = image.handle,
+                .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                .image = image,
                 .subresourceRange = {
                     .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
                     .baseMipLevel = 0,
@@ -601,19 +599,20 @@ void FluidSystem::init_fluid(RTG &rtg, ComputeContext &comp_context, MaterialSys
                 }
             };
 
-            vkCmdPipelineBarrier( cmd_buf, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1, &barrier);
+            vkCmdPipelineBarrier(comp_context.compute_cmd_buf, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+                                 dst_stage, 0, 0, nullptr, 0, nullptr, 1, &barrier);
         };
 
+        constexpr VkAccessFlags shader_access = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
         for (int i = 0; i < 2; i++) {
-            
-            layout_transition(comp_context.compute_cmd_buf, density_3D_textures[i]);
-            layout_transition(comp_context.compute_cmd_buf, velocity_3D_textures[i]);
-            layout_transition(comp_context.compute_cmd_buf, pressure_3D_textures[i]);
+            layout_transition(density_3D_textures[i].handle, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
+            layout_transition(velocity_3D_textures[i].handle, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
+            layout_transition(pressure_3D_textures[i].handle, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
         }
-        layout_transition(comp_context.compute_cmd_buf, divergence_3D_texture);
+        layout_transition(divergence_3D_texture.handle, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, shader_access);
     }
 
-    {//clear both volumes
+    {//clear both images in each density, velocity, and pressure pair
         VkClearColorValue zero = {0.0f, 0.0f, 0.0f, 0.0f};
         VkImageSubresourceRange range{
             .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
@@ -625,7 +624,18 @@ void FluidSystem::init_fluid(RTG &rtg, ComputeContext &comp_context, MaterialSys
         for (int i = 0; i < 2; i++) {
             vkCmdClearColorImage(comp_context.compute_cmd_buf, velocity_3D_textures[i].handle, VK_IMAGE_LAYOUT_GENERAL, &zero, 1, &range);
             vkCmdClearColorImage( comp_context.compute_cmd_buf, density_3D_textures[i].handle, VK_IMAGE_LAYOUT_GENERAL, &zero, 1, &range);
+            vkCmdClearColorImage(comp_context.compute_cmd_buf, pressure_3D_textures[i].handle, VK_IMAGE_LAYOUT_GENERAL, &zero, 1, &range);
         }
+
+        // Rendering can sample the cleared density even while the simulation is paused.
+        VkMemoryBarrier clear_barrier{
+            .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER,
+            .srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
+            .dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+        };
+        vkCmdPipelineBarrier(comp_context.compute_cmd_buf, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                             VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+                             0, 1, &clear_barrier, 0, nullptr, 0, nullptr);
     }
 
     

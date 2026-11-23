@@ -6,26 +6,7 @@
 #include <GLFW/glfw3.h>
 
 
-void ComputeSystem::init_compute(RTG &rtg){
-    { //create command pool
-		VkCommandPoolCreateInfo create_info{
-			.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
-			.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
-			.queueFamilyIndex = rtg.graphics_queue_family.value(),
-		};
-		VK(vkCreateCommandPool(rtg.device, &create_info, nullptr, &compute_cmd_pool));
-	}
-    
-    {//allocate command buffer
-        VkCommandBufferAllocateInfo alloc_info{
-            .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,				
-            .commandPool = compute_cmd_pool,
-            .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
-            .commandBufferCount = 1,
-        };
-        VK(vkAllocateCommandBuffers(rtg.device, &alloc_info, &compute_cmd_buf));
-    }
-
+ComputeContext::ComputeContext(RTG &rtg, VkCommandBuffer cmd, VkCommandPool cmd_pool) : compute_cmd_buf(cmd) , compute_cmd_pool(cmd_pool){
     {//make a descriptor pool
         //number of fluid 3d texture descriptors
 
@@ -56,53 +37,11 @@ void ComputeSystem::init_compute(RTG &rtg){
 
 
 
-void ComputeSystem::destroy(RTG &rtg){
+void ComputeContext::destroy(RTG &rtg){
     if(storage_descriptor_pool)
 	{
 		vkDestroyDescriptorPool(rtg.device, storage_descriptor_pool, nullptr);
 		storage_descriptor_pool = nullptr;
 	}
-
-	if(compute_cmd_pool != VK_NULL_HANDLE)
-	{
-		vkDestroyCommandPool(rtg.device, compute_cmd_pool, nullptr);
-		compute_cmd_pool = VK_NULL_HANDLE;
-	}
 }
 
-
-ComputeContext ComputeSystem::begin_frame(RTG &rtg) {
-    vkResetCommandBuffer(compute_cmd_buf, 0);
-
-    VkCommandBufferBeginInfo begin_info{
-        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-        .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
-    };
-
-    vkBeginCommandBuffer(compute_cmd_buf, &begin_info);
-
-
-    ComputeContext ret{
-        .rtg = rtg,
-        .storage_descriptor_pool = storage_descriptor_pool,
-        .compute_cmd_pool = compute_cmd_pool,
-        .compute_cmd_buf = compute_cmd_buf,
-    };
-    return ret;
-}
-
-
-void ComputeSystem::end_frame(ComputeContext const &ctx) {
-    {//submit compute work
-        VK(vkEndCommandBuffer(ctx.compute_cmd_buf));
-
-        VkSubmitInfo submit{
-            .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
-            .commandBufferCount = 1,
-            .pCommandBuffers = &ctx.compute_cmd_buf,
-        };
-
-        vkQueueSubmit(ctx.rtg.graphics_queue, 1, &submit, VK_NULL_HANDLE);
-        vkQueueWaitIdle(ctx.rtg.graphics_queue);
-    }    
-}

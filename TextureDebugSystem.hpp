@@ -10,8 +10,8 @@ struct TextureDebugSystem{
     void init_texture_debug(RTG &rtg, MaterialSystem &material_system, FluidSystem & fluid_system);
     void update_texture_debug(RTG &rtg, MaterialSystem &material_system, FluidSystem & fluid_system);
 
-    VkDescriptorSet velocity_tex = VK_NULL_HANDLE;
-    VkDescriptorSet density_tex = VK_NULL_HANDLE;
+    std::array<VkDescriptorSet,2> velocity_tex;
+    std::array<VkDescriptorSet,2> density_tex;
     TextureDebugPipeline texture_debug_pipeline;
 
 };

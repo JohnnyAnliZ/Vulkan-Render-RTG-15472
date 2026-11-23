@@ -251,6 +251,13 @@ void ParticleRenderPipeline::destroy(RTG &rtg) {
 void ParticleSystem::init(RTG &rtg, ComputeContext &comp_ctx,
                           VkDescriptorPool particle_pool,
                           VkImageView velocity_views[2]) {
+    vkResetCommandBuffer(comp_ctx.compute_cmd_buf, 0);
+    VkCommandBufferBeginInfo begin_info{
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+        .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+    };
+    vkBeginCommandBuffer(comp_ctx.compute_cmd_buf, &begin_info);
+                        
     compute_pipeline.create(rtg);
 
     particle_buffer = rtg.helpers.create_buffer(
@@ -342,6 +349,19 @@ void ParticleSystem::init(RTG &rtg, ComputeContext &comp_ctx,
         VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
         0, 0, nullptr, 1, &barrier, 0, nullptr
     );
+
+    {//submit compute work
+        VK(vkEndCommandBuffer(comp_ctx.compute_cmd_buf));
+
+        VkSubmitInfo submit{
+            .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+            .commandBufferCount = 1,
+            .pCommandBuffers = &comp_ctx.compute_cmd_buf,
+        };
+
+        vkQueueSubmit(rtg.graphics_queue, 1, &submit, VK_NULL_HANDLE);
+        vkQueueWaitIdle(rtg.graphics_queue);
+    }   
 }
 
 void ParticleSystem::destroy(RTG &rtg) {

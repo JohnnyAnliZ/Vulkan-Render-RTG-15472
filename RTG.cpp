@@ -909,9 +909,10 @@ void RTG::run(Application &application) {
 		}
 		event_queue.clear();
 
+		float dt;
 		{ //elapsed time handling:
 			std::chrono::high_resolution_clock::time_point after = std::chrono::high_resolution_clock::now();
-			float dt = float(std::chrono::duration< double >(after - before).count());
+			dt = float(std::chrono::duration< double >(after - before).count());
 			before = after;
 
 			dt = std::min(dt, 0.1f); //lag if frame rate dips too low
@@ -992,6 +993,7 @@ void RTG::run(Application &application) {
 		//call render function(queue rendering work):
 
 		application.render(*this, RenderParams{
+			.dt = dt,
 			.workspace_index = workspace_index,
 			.image_index = image_index,
 			.image_available = workspaces[workspace_index].image_available,

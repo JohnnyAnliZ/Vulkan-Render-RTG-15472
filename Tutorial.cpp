@@ -40,19 +40,14 @@ Tutorial::Tutorial(RTG &rtg_)
 
 	
 	//initializing Compute System
-	std::cout<<"INITIALIZING Compute"<<std::endl;
-	compute_system.init_compute(rtg);
+	std::cout<<"INITIALIZING Compute/Fluid"<<std::endl;
 
-	std::cout<<"INITIALIZING fluid"<<std::endl;
-	ComputeContext comp_context = compute_system.begin_frame(rtg);
-	fluid_system.init_fluid(rtg, comp_context, material_system, scene_system);
-	compute_system.end_frame(comp_context);
+	compute_context = ComputeContext(rtg, workspaces[0].command_buffer, command_pool);
+	fluid_system.init_fluid(rtg, compute_context, material_system, scene_system);
 
 	{
-		ComputeContext part_ctx = compute_system.begin_frame(rtg);
-		particle_system.init(rtg, part_ctx, particle_descriptor_pool,
+		particle_system.init(rtg, compute_context, particle_descriptor_pool,
 		                     fluid_system.velocity_3D_views);
-		compute_system.end_frame(part_ctx);
 	}
 
 	texture_debug_system.init_texture_debug(rtg, material_system, fluid_system);
@@ -88,7 +83,7 @@ Tutorial::~Tutorial()
 		vkDestroyDescriptorPool(rtg.device, particle_descriptor_pool, nullptr);
 		particle_descriptor_pool = VK_NULL_HANDLE;
 	}
-	compute_system.destroy(rtg);
+	compute_context.destroy(rtg);
 	fluid_system.destroy(rtg);
 
 	for (Workspace &workspace : workspaces)
@@ -283,6 +278,11 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params)
 		};
 		VK(vkBeginCommandBuffer(workspace.command_buffer, &begin_info));
 	}
+
+	compute_context.compute_cmd_buf = workspace.command_buffer;
+	if (fluid_system.fluid_unpaused) fluid_system.update_fluid(render_params.dt, compute_context, scene_system);
+	particle_system.update(compute_context, render_params.dt, fluid_system.velocity_ind, frame_number);
+
 	// upload vertices
 	if (!scene_system.lines_vertices.empty())
 	{
@@ -921,7 +921,7 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params)
 		{//draw with the ray march smoke volume pipeline
 			vkCmdBindPipeline(workspace.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, ray_march_smoke_volume_pipeline.handle);
 			vkCmdBindDescriptorSets(workspace.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, ray_march_smoke_volume_pipeline.layout,
-										0, 1, &texture_debug_system.density_tex, 0, nullptr);
+										0, 1, &texture_debug_system.density_tex[fluid_system.density_ind], 0, nullptr);
 
 			mat4 WORLD_FROM_CLIP = scene_system.CLIP_FROM_WORLD.inverse();
 
@@ -952,10 +952,10 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params)
 			0, 1, &workspace.Shadow_Atlas_descriptors, 0, nullptr);
 
 			vkCmdBindDescriptorSets(workspace.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, texture_debug_system.texture_debug_pipeline.layout,
-			1, 1, &texture_debug_system.velocity_tex, 0, nullptr);
+			1, 1, &texture_debug_system.velocity_tex[fluid_system.velocity_ind], 0, nullptr);
 
 			vkCmdBindDescriptorSets(workspace.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, texture_debug_system.texture_debug_pipeline.layout,
-			2, 1, &texture_debug_system.density_tex, 0, nullptr);
+			2, 1, &texture_debug_system.density_tex[fluid_system.density_ind], 0, nullptr);
 
 			vkCmdDraw(workspace.command_buffer, 3, 1, 0, 0);
 		}
@@ -1079,12 +1079,7 @@ void Tutorial::update(float dt)
 		});
 	}
 
-	ComputeContext comp_context = compute_system.begin_frame(rtg);
-	if (fluid_system.fluid_unpaused) fluid_system.update_fluid(dt, comp_context, scene_system);
-	particle_system.update(comp_context, dt, fluid_system.velocity_ind, frame_number);
-	compute_system.end_frame(comp_context);
 
-	texture_debug_system.update_texture_debug(rtg, material_system, fluid_system);
 }
 
 // helper functions

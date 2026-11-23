@@ -438,7 +438,15 @@ void FluidSystem::advect_velocity(float dt, ComputeContext comp_context){
     velocity_ind = 1 - velocity_ind;
 }
 
+//this function records commands for creating transitioning fluid related resources to their initial state, all inside the function
 void FluidSystem::init_fluid(RTG &rtg, ComputeContext &comp_context, MaterialSystem &material_system, SceneSystem &scene_system){
+    vkResetCommandBuffer(comp_context.compute_cmd_buf, 0);
+    VkCommandBufferBeginInfo begin_info{
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+        .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+    };
+    vkBeginCommandBuffer(comp_context.compute_cmd_buf, &begin_info);
+
     add_scalar_sources_pipeline.create(rtg);
     diffuse_scalar_pipeline.create(rtg);
     advect_density_pipeline.create(rtg);
@@ -544,6 +552,7 @@ void FluidSystem::init_fluid(RTG &rtg, ComputeContext &comp_context, MaterialSys
     make_ping_pong_descriptor_sets(rtg, comp_context, velocity_volumes, add_vector_sources_pipeline.set0_velocity_volume, velocity_3D_views);
     std::cout<<"allocating ping-pong descriptor sets for Pressure"<<std::endl;
     make_ping_pong_descriptor_sets(rtg, comp_context, pressure_volumes, divergence_pipeline.set1_pressure_volume, pressure_3D_views);
+    std::cout<<"done allocating ping-pong descriptor sets"<<std::endl;
     //make descriptor set for divergence volume and updated with the divergence image view
     {
         VkDescriptorSetAllocateInfo alloc_info{
@@ -626,9 +635,18 @@ void FluidSystem::init_fluid(RTG &rtg, ComputeContext &comp_context, MaterialSys
     //project
     project_velocity(comp_context);
 
+    {//submit compute work
+        VK(vkEndCommandBuffer(comp_context.compute_cmd_buf));
 
+        VkSubmitInfo submit{
+            .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+            .commandBufferCount = 1,
+            .pCommandBuffers = &comp_context.compute_cmd_buf,
+        };
 
-
+        vkQueueSubmit(rtg.graphics_queue, 1, &submit, VK_NULL_HANDLE);
+        vkQueueWaitIdle(rtg.graphics_queue);
+    }   
 }
 
 void FluidSystem::update_fluid(float dt, ComputeContext comp_context, SceneSystem &scene_system){
@@ -675,9 +693,6 @@ void FluidSystem::update_fluid(float dt, ComputeContext comp_context, SceneSyste
             advect_density(dt, comp_context);
         }
     }
-
-
-    
 
 
 }

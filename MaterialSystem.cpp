@@ -118,7 +118,7 @@ void MaterialSystem::make_descriptor_set(std::string mat_name, MaterialType mat_
 
 
 void MaterialSystem::load_materials(){
-    	{ //create the texture descriptor pool
+    { //create the texture descriptor pool
 		uint32_t per_workspace = uint32_t(rtg.workspaces.size());
 
 		uint32_t num_lambertian = 0;
@@ -139,7 +139,7 @@ void MaterialSystem::load_materials(){
 		uint32_t env_mirror_material_descriptors = 2;
 		uint32_t pbr_material_descriptors = 8;
 		
-		uint32_t volume_sampler_descriptors = 2;
+		uint32_t volume_sampler_descriptors = 4;
 		std::array< VkDescriptorPoolSize, 1> pool_sizes{
 			VkDescriptorPoolSize{
 				.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,

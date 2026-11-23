@@ -222,8 +222,9 @@ struct RTG {
 
 	//parameters passed to Application::draw() when asking application to render a frame:
 	struct RenderParams {
-		uint32_t workspace_index; //which per-render workspace to use (e.g., you probably want a command buffer per workspace)
-		uint32_t image_index; //which swapchain image to render into
+		float dt = 0.0f;
+		uint32_t workspace_index = 0; //which per-render workspace to use (e.g., you probably want a command buffer per workspace)
+		uint32_t image_index = 0; //which swapchain image to render into
 		VkSemaphore image_available = VK_NULL_HANDLE; //nothing should use the swapchain image until this is signal'd
 		VkSemaphore image_done = VK_NULL_HANDLE; //this should be signal'd when the image is done being written to
 		VkFence workspace_available = VK_NULL_HANDLE; //this should be signal'd when *all* work is done for the frame

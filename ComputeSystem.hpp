@@ -2,23 +2,13 @@
 #include "RTG.hpp"
 
 
-struct ComputeContext {
-    RTG &rtg;
 
-    VkDescriptorPool storage_descriptor_pool = VK_NULL_HANDLE;
-    VkCommandPool compute_cmd_pool = VK_NULL_HANDLE;
-    VkCommandBuffer compute_cmd_buf = VK_NULL_HANDLE;
-};
-
-struct ComputeSystem{
-    void init_compute(RTG &rtg);
+struct ComputeContext{
+    ComputeContext(){};
+    ComputeContext(RTG &rtg, VkCommandBuffer cmd, VkCommandPool cmd_pool);
     void destroy(RTG &rtg);
 
-    ComputeContext begin_frame(RTG &rtg);
-    void end_frame(ComputeContext const &ctx);
-
-
-    VkDescriptorPool storage_descriptor_pool = VK_NULL_HANDLE;
-    VkCommandPool compute_cmd_pool = VK_NULL_HANDLE;
-    VkCommandBuffer compute_cmd_buf = VK_NULL_HANDLE;
+    VkDescriptorPool storage_descriptor_pool;
+    VkCommandBuffer compute_cmd_buf; 
+    VkCommandPool compute_cmd_pool;
 };

@@ -66,8 +66,8 @@ struct Tutorial : RTG::Application {
 	// camera, debug lines, and view state live in scene_system
 	SceneSystem scene_system;
 
-	//compute system that handles GPU compute shader work 
-	ComputeSystem compute_system;
+	//compute contex that stores compute resources
+	ComputeContext compute_context;
 
 	//fluid system that uses computes system to do voxel fluid simulation
 	FluidSystem fluid_system;

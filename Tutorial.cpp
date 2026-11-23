@@ -548,7 +548,7 @@ void Tutorial::render(RTG &rtg_, RTG::RenderParams const &render_params)
 
 			for (uint32_t i = 0; i < scene_system.lights.size(); i++)
 			{
-				if (scene_system.lights[i].shadow_atlases[0].z == 0.0f)
+				if (scene_system.lights[i].shadow_atlases[0].z == 0.0f)//scale is 0
 				{
 					continue;
 				}

@@ -988,7 +988,6 @@ void RTG::run(Application &application) {
 				//other non-success results are genuine errors:
 				throw std::runtime_error("Failed to acquire swapchain image (" + std::string(string_VkResult(result)) + ")!");
 			}
-			
 		}
 		//call render function(queue rendering work):
 

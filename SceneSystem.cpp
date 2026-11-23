@@ -44,7 +44,6 @@ void SceneSystem::load_scene() {
 		starts.reserve(512);
 	}
 
-
 	{//load cameras
 		std::deque<Item> current_nodes;
 		for (auto n : scene72.scene.roots) {

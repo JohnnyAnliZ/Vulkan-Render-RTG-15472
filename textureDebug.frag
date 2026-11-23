@@ -18,6 +18,7 @@ void main(){
     vec2 maxBR = vec2(1.0, 0.5 + 0.5 *s);
 
     if (uv.x >= minBR.x && uv.x <= maxBR.x && uv.y >= minBR.y && uv.y <= maxBR.y  ) {
+        discard;
         vec2 localUV = (uv - minBR) / s;
         vec3 col = texture(SHADOW_ATLAS, localUV).r * vec3(1.0,1.0,1.0);
         outColor = vec4(col, 1.0);
